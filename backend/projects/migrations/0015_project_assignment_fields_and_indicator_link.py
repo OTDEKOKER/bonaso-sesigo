@@ -102,6 +102,12 @@ def noop_reverse(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
+    # Run each operation in its own transaction. Several ADD COLUMN ... DEFAULT
+    # NOT NULL statements rewrite the table, and FK columns create indexes; doing
+    # all of that plus the data backfill in one transaction triggers Postgres
+    # "cannot CREATE INDEX ... pending trigger events". Non-atomic avoids it.
+    atomic = False
+
     dependencies = [
         ('projects', '0014_alter_projectindicator_target_group'),
     ]
