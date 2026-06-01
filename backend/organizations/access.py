@@ -165,8 +165,13 @@ def assert_project_write_allowed(request, project) -> None:
         May only write to projects where is_training=True.
     Live System (default):
         May never write to a project where is_training=True.
-    Admin opt-in (include_training=true → mode "all"):
-        Exempt; the admin has explicitly chosen to operate across both.
+
+    Writes are ALWAYS boundary-checked. Unlike read filtering, the admin
+    include_training ("all") opt-in does NOT exempt writes: write intent is
+    derived solely from the explicit training signal (training_only/mode), so a
+    user-controlled query parameter can never cause a record to land on the
+    wrong side of the live/training boundary — the target project's is_training
+    is the authority and the request's intent must match it.
 
     Raises rest_framework.exceptions.PermissionDenied on a boundary crossing.
     A None project (project-less write) is left to other validation.
@@ -176,16 +181,13 @@ def assert_project_write_allowed(request, project) -> None:
 
     from rest_framework.exceptions import PermissionDenied
 
-    mode = training_view_mode(request)
-    if mode == "all":
-        return
-
+    training_request = is_training_only_request(request)
     is_training_target = bool(getattr(project, "is_training", False))
-    if mode == "training" and not is_training_target:
+    if training_request and not is_training_target:
         raise PermissionDenied(
             "Sesigo Training Mode can only write to training projects."
         )
-    if mode == "live" and is_training_target:
+    if not training_request and is_training_target:
         raise PermissionDenied(
             "Sesigo Live System cannot write to a training project. "
             "Switch to Training Mode to enter training data."
