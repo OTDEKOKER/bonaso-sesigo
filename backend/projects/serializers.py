@@ -1,4 +1,5 @@
 from django.db import DatabaseError
+from collections import defaultdict
 from rest_framework import serializers
 from .models import (
     ClientOrganization,
@@ -45,6 +46,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     indicators_count = serializers.SerializerMethodField()
     tasks_count = serializers.SerializerMethodField()
     progress_percentage = serializers.IntegerField(read_only=True)
+    client_organizations = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
@@ -52,6 +54,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             'id', 'name', 'code', 'description', 'funder', 'status',
             'start_date', 'end_date', 'organizations', 'indicators_count',
             'tasks_count', 'progress_percentage', 'hierarchy_overrides',
+            'client_organizations',
             'is_training', 'training_expires_after_days', 'training_notes',
             'created_at', 'updated_at', 'created_by', 'created_by_name',
         ]
@@ -68,6 +71,19 @@ class ProjectSerializer(serializers.ModelSerializer):
         if annotated_count is not None:
             return annotated_count
         return obj.tasks.count()
+
+    def get_client_organizations(self, obj):
+        try:
+            rows = obj.client_organizations.all().order_by('name')
+        except DatabaseError:
+            return []
+        return [
+            {
+                'id': str(row.id),
+                'name': row.name or '',
+            }
+            for row in rows
+        ]
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -234,7 +250,10 @@ class ProjectDetailSerializer(ProjectSerializer):
                 ProjectOrganization.objects.filter(
                     project=obj
                 ).select_related(
-                    'organization'
+                    'organization',
+                    'client',
+                    'parent_assignment',
+                    'parent_assignment__organization',
                 ).order_by(
                     '-is_active',
                     'organization__name',
@@ -245,16 +264,125 @@ class ProjectDetailSerializer(ProjectSerializer):
             rows = []
 
         if rows:
+            org_ids = [row.organization_id for row in rows]
+            assigned_indicator_ids_by_org: dict[int, set[int]] = defaultdict(set)
+            reported_indicator_ids_by_org: dict[int, set[int]] = defaultdict(set)
+
+            try:
+                assignment_rows = ProjectIndicatorAssignment.objects.filter(
+                    project_indicator__project=obj,
+                    organization_id__in=org_ids,
+                    is_active=True,
+                ).values_list('organization_id', 'project_indicator__indicator_id')
+                for organization_id, indicator_id in assignment_rows:
+                    assigned_indicator_ids_by_org[int(organization_id)].add(int(indicator_id))
+            except DatabaseError:
+                pass
+
+            try:
+                from aggregates.models import Aggregate
+
+                reported_rows = Aggregate.objects.filter(
+                    project=obj,
+                    organization_id__in=org_ids,
+                ).exclude(
+                    status__in=['draft', 'rejected'],
+                ).values_list('organization_id', 'indicator_id')
+                for organization_id, indicator_id in reported_rows:
+                    reported_indicator_ids_by_org[int(organization_id)].add(int(indicator_id))
+            except Exception:
+                # Aggregates app may be unavailable in legacy/test bootstrap paths.
+                pass
+
+            def _normalize_scope_list(raw_value):
+                if isinstance(raw_value, list):
+                    return [str(value).strip() for value in raw_value if str(value).strip()]
+                if isinstance(raw_value, str):
+                    return [entry.strip() for entry in raw_value.split(',') if entry.strip()]
+                return []
+
+            def _partner_type_label(row):
+                # The senior coordinator (e.g. BONASO) is the project overseer.
+                # Reuse the canonical senior-coordinator derivation so the
+                # coverage page stays consistent with the rest of the app — and
+                # without changing any ProjectOrganization role values.
+                org = getattr(row, 'organization', None)
+                try:
+                    from analysis.views import _get_effective_organization_type
+                    effective_type = _get_effective_organization_type(
+                        getattr(org, 'name', ''), getattr(org, 'type', '')
+                    )
+                except Exception:
+                    effective_type = ''
+                if effective_type == 'senior_coordinator' or row.role == 'lead':
+                    return 'Overseer'
+                if row.is_coordinator and row.is_implementer:
+                    return 'Coordinator + Implementer'
+                if row.is_coordinator:
+                    return 'Coordinator'
+                if row.is_sub_grantee:
+                    return 'Sub-grantee'
+                if row.is_implementer:
+                    return 'Implementer'
+                return (row.role or 'other').replace('_', ' ').title()
+
+            def _reporting_status(row, assigned_count: int, reported_count: int):
+                if not row.can_report_indicators:
+                    return 'reporting_disabled'
+                if assigned_count <= 0:
+                    return 'not_assigned'
+                if reported_count <= 0:
+                    return 'not_reporting'
+                if reported_count < assigned_count:
+                    return 'partially_reporting'
+                return 'reporting'
+
             return [
                 {
                     'id': str(row.id),
                     'project': str(obj.id),
+                    'client': str(row.client_id) if row.client_id else None,
+                    'client_name': row.client.name if row.client_id else None,
                     'organization': str(row.organization_id),
                     'organization_name': row.organization.name or '',
                     'organization_code': row.organization.code or '',
+                    'parent_assignment': str(row.parent_assignment_id) if row.parent_assignment_id else None,
+                    'parent_organization': (
+                        str(row.parent_assignment.organization_id)
+                        if row.parent_assignment_id else None
+                    ),
+                    'parent_organization_name': (
+                        row.parent_assignment.organization.name
+                        if row.parent_assignment_id and row.parent_assignment.organization_id
+                        else None
+                    ),
                     'role': row.role,
+                    'cluster': row.cluster or '',
+                    'is_coordinator': bool(row.is_coordinator),
+                    'is_sub_grantee': bool(row.is_sub_grantee),
+                    'is_implementer': bool(row.is_implementer),
+                    'can_report_indicators': bool(row.can_report_indicators),
+                    'partner_type': _partner_type_label(row),
+                    'thematic_areas': _normalize_scope_list(row.thematic_areas),
+                    'districts_localities': _normalize_scope_list(row.districts_localities),
+                    'contract_start_date': row.contract_start_date,
+                    'contract_end_date': row.contract_end_date,
+                    'source_sheet': row.source_sheet or '',
+                    'source_row': row.source_row,
+                    'is_training': bool(row.is_training),
                     'is_active': bool(row.is_active),
                     'implementation_scope': row.implementation_scope or {},
+                    'assigned_indicator_count': len(
+                        assigned_indicator_ids_by_org.get(int(row.organization_id), set())
+                    ),
+                    'reported_indicator_count': len(
+                        reported_indicator_ids_by_org.get(int(row.organization_id), set())
+                    ),
+                    'reporting_status': _reporting_status(
+                        row,
+                        len(assigned_indicator_ids_by_org.get(int(row.organization_id), set())),
+                        len(reported_indicator_ids_by_org.get(int(row.organization_id), set())),
+                    ),
                 }
                 for row in rows
             ]
@@ -263,12 +391,33 @@ class ProjectDetailSerializer(ProjectSerializer):
             {
                 'id': f'legacy-{organization.id}',
                 'project': str(obj.id),
+                'client': None,
+                'client_name': None,
                 'organization': str(organization.id),
                 'organization_name': organization.name or '',
                 'organization_code': organization.code or '',
+                'parent_assignment': None,
+                'parent_organization': None,
+                'parent_organization_name': None,
                 'role': 'implementing_partner',
+                'cluster': '',
+                'is_coordinator': False,
+                'is_sub_grantee': False,
+                'is_implementer': True,
+                'can_report_indicators': True,
+                'partner_type': 'Implementer',
+                'thematic_areas': [],
+                'districts_localities': [],
+                'contract_start_date': None,
+                'contract_end_date': None,
+                'source_sheet': '',
+                'source_row': None,
+                'is_training': bool(getattr(obj, 'is_training', False)),
                 'is_active': True,
                 'implementation_scope': {},
+                'assigned_indicator_count': 0,
+                'reported_indicator_count': 0,
+                'reporting_status': 'not_assigned',
             }
             for organization in obj.organizations.all().order_by('name')
         ]
@@ -344,6 +493,7 @@ class ProjectDetailSerializer(ProjectSerializer):
                 'id': str(row.id),
                 'project': str(obj.id),
                 'project_indicator': str(row.project_indicator_id),
+                'project_organization': str(row.project_organization_id) if row.project_organization_id else None,
                 'indicator': str(row.project_indicator.indicator_id),
                 'indicator_name': row.project_indicator.indicator.name or '',
                 'indicator_code': row.project_indicator.indicator.code or '',

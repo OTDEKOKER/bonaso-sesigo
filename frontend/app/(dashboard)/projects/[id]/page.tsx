@@ -13,7 +13,7 @@ import { DataTable } from "@/components/shared/data-table"
 import { useAllIndicators, useAllOrganizations, useDeadlines, useNarrativeReports, useProject, useProjectActivities, useTasks } from "@/lib/hooks/use-api"
 import { deadlinesService, narrativeReportsService, projectActivitiesService, projectsService, tasksService } from "@/lib/api"
 import type { NarrativeReport, ProjectActivity } from "@/lib/api"
-import type { ProjectDeadline, ProjectIndicatorTarget, Task } from "@/lib/types"
+import type { Indicator, ProjectDeadline, ProjectIndicatorTarget, ProjectOrganizationMembership, Task } from "@/lib/types"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -46,6 +46,14 @@ const projectRoleOptions = [
   { value: "funder", label: "Funder" },
   { value: "other", label: "Other" },
 ] as const
+
+const reportingStatusLabels: Record<string, string> = {
+  reporting: "Reporting",
+  partially_reporting: "Partially Reporting",
+  not_reporting: "Not Reporting",
+  not_assigned: "No Indicator Assignment",
+  reporting_disabled: "Reporting Disabled",
+}
 
 function formatNumber(value: unknown): string {
   const numeric = Number(value)
@@ -155,6 +163,17 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [indicatorAssignmentDraft, setIndicatorAssignmentDraft] = useState<Record<string, string[]>>({})
   const [indicatorDisaggregationDraft, setIndicatorDisaggregationDraft] = useState<Record<string, string>>({})
   const [isIndicatorSetupSaving, setIsIndicatorSetupSaving] = useState(false)
+  const [coverageSearch, setCoverageSearch] = useState("")
+  const [coverageClientFilter, setCoverageClientFilter] = useState("all")
+  const [coverageProjectFilter, setCoverageProjectFilter] = useState("all")
+  const [coverageOverseerFilter, setCoverageOverseerFilter] = useState("all")
+  const [coverageCoordinatorFilter, setCoverageCoordinatorFilter] = useState("all")
+  const [coverageSubGranteeFilter, setCoverageSubGranteeFilter] = useState("all")
+  const [coverageClusterFilter, setCoverageClusterFilter] = useState("all")
+  const [coverageThematicAreaFilter, setCoverageThematicAreaFilter] = useState("all")
+  const [coverageDistrictFilter, setCoverageDistrictFilter] = useState("all")
+  const [coverageImplementerStatusFilter, setCoverageImplementerStatusFilter] = useState("all")
+  const [coverageReportingStatusFilter, setCoverageReportingStatusFilter] = useState("all")
 
   const groupedTargets = (() => {
     if (!project) return []
@@ -201,8 +220,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const narrativeReports = reportsData?.results || []
   const projectOrganizationScope = useMemo(
     () => (project?.organizations || []).map((organizationId) => String(organizationId)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [project],
+    [project?.organizations],
   )
   const projectOrgs = useMemo(
     () =>
@@ -245,9 +263,259 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     [project?.project_indicators],
   )
   const indicatorLookup = useMemo(
-    () => new Map((indicatorsData || []).map((indicator) => [String(indicator.id), indicator])),
+    () => new Map<string, Indicator>((indicatorsData || []).map((indicator) => [String(indicator.id), indicator])),
     [indicatorsData],
   )
+  const projectMembershipByOrgId = useMemo(() => {
+    const map = new Map<string, ProjectOrganizationMembership>()
+    ;(project?.project_organizations || []).forEach((membership) => {
+      const organizationId = coerceId(membership.organization)
+      if (!organizationId) return
+      map.set(organizationId, membership)
+    })
+    return map
+  }, [project?.project_organizations])
+  const fallbackAssignedIndicatorCountByOrgId = useMemo(() => {
+    const map = new Map<string, number>()
+    ;(project?.project_indicator_assignments || [])
+      .filter((assignment) => assignment.is_active)
+      .forEach((assignment) => {
+        const orgId = coerceId(assignment.organization)
+        if (!orgId) return
+        map.set(orgId, (map.get(orgId) || 0) + 1)
+      })
+    return map
+  }, [project?.project_indicator_assignments])
+  const coverageRows = useMemo(() => {
+    type CoverageRow = {
+      organizationId: string
+      organizationName: string
+      organizationCode: string
+      projectId: string
+      projectName: string
+      clientId: string | null
+      clientName: string | null
+      parentOrganizationId: string | null
+      role: string
+      partnerType: string
+      cluster: string
+      thematicAreas: string[]
+      districts: string[]
+      isOverseer: boolean
+      isCoordinator: boolean
+      isSubGrantee: boolean
+      isImplementer: boolean
+      canReportIndicators: boolean
+      assignedIndicatorCount: number
+      reportedIndicatorCount: number
+      reportingStatus: string
+      overseerId: string | null
+    }
+
+    const rows: CoverageRow[] = projectOrgs.map((org) => {
+      const orgId = coerceId(org.id)
+      const membership = projectMembershipByOrgId.get(orgId)
+      const role = String(membership?.role || organizationRoleDraft[orgId] || "implementing_partner")
+      const isCoordinator = Boolean(membership?.is_coordinator || role === "coordinator")
+      const isSubGrantee = Boolean(membership?.is_sub_grantee || role === "sub_grantee")
+      const isImplementer = membership?.is_implementer !== undefined
+        ? Boolean(membership?.is_implementer)
+        : role === "implementing_partner" || role === "coordinator" || role === "sub_grantee"
+      const partnerType = membership?.partner_type
+        || (role === "lead"
+          ? "Overseer"
+          : isCoordinator && isImplementer
+            ? "Coordinator + Implementer"
+            : isCoordinator
+              ? "Coordinator"
+              : isSubGrantee
+                ? "Sub-grantee"
+                : isImplementer
+                  ? "Implementer"
+                  : role.replace(/_/g, " "))
+
+      const thematicAreas = Array.isArray(membership?.thematic_areas)
+        ? membership?.thematic_areas.map((entry) => String(entry).trim()).filter(Boolean)
+        : []
+      const districts = Array.isArray(membership?.districts_localities)
+        ? membership?.districts_localities.map((entry) => String(entry).trim()).filter(Boolean)
+        : []
+
+      const assignedIndicatorCount = Number.isFinite(Number(membership?.assigned_indicator_count))
+        ? Number(membership?.assigned_indicator_count)
+        : Number(fallbackAssignedIndicatorCountByOrgId.get(orgId) || 0)
+      const reportedIndicatorCount = Number.isFinite(Number(membership?.reported_indicator_count))
+        ? Number(membership?.reported_indicator_count)
+        : 0
+      const canReportIndicators = membership?.can_report_indicators !== undefined
+        ? Boolean(membership?.can_report_indicators)
+        : true
+
+      const reportingStatus = membership?.reporting_status
+        || (!canReportIndicators
+          ? "reporting_disabled"
+          : assignedIndicatorCount <= 0
+            ? "not_assigned"
+            : reportedIndicatorCount <= 0
+              ? "not_reporting"
+              : reportedIndicatorCount < assignedIndicatorCount
+                ? "partially_reporting"
+                : "reporting")
+
+      return {
+        organizationId: orgId,
+        organizationName: String(org.name || `Organization ${org.id}`),
+        organizationCode: String(org.code || "—"),
+        projectId: coerceId(project?.id),
+        projectName: String(project?.name || ""),
+        clientId: membership?.client || coerceId(project?.client_organizations?.[0]?.id) || null,
+        clientName: membership?.client_name || String(project?.client_organizations?.[0]?.name || "") || null,
+        parentOrganizationId: membership?.parent_organization || null,
+        role,
+        partnerType,
+        cluster: String(membership?.cluster || ""),
+        thematicAreas,
+        districts,
+        isOverseer: role === "lead" || partnerType === "Overseer",
+        isCoordinator,
+        isSubGrantee,
+        isImplementer,
+        canReportIndicators,
+        assignedIndicatorCount,
+        reportedIndicatorCount,
+        reportingStatus,
+        overseerId: null,
+      }
+    })
+
+    const rowByOrgId = new Map(rows.map((row) => [row.organizationId, row]))
+    const resolveOverseerId = (row: CoverageRow): string | null => {
+      if (row.isOverseer) return row.organizationId
+      const visited = new Set<string>([row.organizationId])
+      let current: CoverageRow | undefined = row
+      while (current?.parentOrganizationId && !visited.has(current.parentOrganizationId)) {
+        visited.add(current.parentOrganizationId)
+        const parent = rowByOrgId.get(current.parentOrganizationId)
+        if (!parent) return current.parentOrganizationId
+        if (parent.isOverseer) return parent.organizationId
+        current = parent
+      }
+      return current?.parentOrganizationId || null
+    }
+
+    return rows
+      .map((row) => ({ ...row, overseerId: resolveOverseerId(row) }))
+      .sort((left, right) => left.organizationName.localeCompare(right.organizationName))
+  }, [
+    fallbackAssignedIndicatorCountByOrgId,
+    organizationRoleDraft,
+    project?.client_organizations,
+    project?.id,
+    project?.name,
+    projectMembershipByOrgId,
+    projectOrgs,
+  ])
+  const coverageClientOptions = useMemo(
+    () =>
+      (project?.client_organizations || [])
+        .map((client) => ({ id: coerceId(client.id), name: String(client.name || "") }))
+        .filter((client) => client.id && client.name),
+    [project?.client_organizations],
+  )
+  const coverageOverseerOptions = useMemo(
+    () =>
+      coverageRows
+        .filter((row) => row.isOverseer)
+        .map((row) => ({ id: row.organizationId, name: row.organizationName }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [coverageRows],
+  )
+  const coverageCoordinatorOptions = useMemo(
+    () =>
+      coverageRows
+        .filter((row) => row.isCoordinator)
+        .map((row) => ({ id: row.organizationId, name: row.organizationName }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [coverageRows],
+  )
+  const coverageSubGranteeOptions = useMemo(
+    () =>
+      coverageRows
+        .filter((row) => row.isSubGrantee)
+        .map((row) => ({ id: row.organizationId, name: row.organizationName }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [coverageRows],
+  )
+  const coverageClusterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(coverageRows.map((row) => row.cluster).filter((value) => value.length > 0)),
+      ).sort((left, right) => left.localeCompare(right)),
+    [coverageRows],
+  )
+  const coverageThematicAreaOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(coverageRows.flatMap((row) => row.thematicAreas).filter((value) => value.length > 0)),
+      ).sort((left, right) => left.localeCompare(right)),
+    [coverageRows],
+  )
+  const coverageDistrictOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(coverageRows.flatMap((row) => row.districts).filter((value) => value.length > 0)),
+      ).sort((left, right) => left.localeCompare(right)),
+    [coverageRows],
+  )
+  const filteredCoverageRows = useMemo(() => {
+    const search = coverageSearch.trim().toLowerCase()
+
+    return coverageRows.filter((row) => {
+      if (search) {
+        const haystack = [
+          row.organizationName,
+          row.organizationCode,
+          row.partnerType,
+          row.cluster,
+          row.thematicAreas.join(" "),
+          row.districts.join(" "),
+          row.role,
+        ].join(" ").toLowerCase()
+        if (!haystack.includes(search)) return false
+      }
+
+      if (coverageClientFilter !== "all" && row.clientId !== coverageClientFilter) return false
+      if (coverageProjectFilter !== "all" && row.projectId !== coverageProjectFilter) return false
+      if (coverageOverseerFilter !== "all" && row.overseerId !== coverageOverseerFilter) return false
+      if (coverageCoordinatorFilter !== "all") {
+        if (row.organizationId !== coverageCoordinatorFilter && row.parentOrganizationId !== coverageCoordinatorFilter) {
+          return false
+        }
+      }
+      if (coverageSubGranteeFilter !== "all" && row.organizationId !== coverageSubGranteeFilter) return false
+      if (coverageClusterFilter !== "all" && row.cluster !== coverageClusterFilter) return false
+      if (coverageThematicAreaFilter !== "all" && !row.thematicAreas.includes(coverageThematicAreaFilter)) return false
+      if (coverageDistrictFilter !== "all" && !row.districts.includes(coverageDistrictFilter)) return false
+      if (coverageImplementerStatusFilter === "implementer" && !row.isImplementer) return false
+      if (coverageImplementerStatusFilter === "non_implementer" && row.isImplementer) return false
+      if (coverageImplementerStatusFilter === "coordinator_implementer" && !(row.isCoordinator && row.isImplementer)) return false
+      if (coverageReportingStatusFilter !== "all" && row.reportingStatus !== coverageReportingStatusFilter) return false
+      return true
+    })
+  }, [
+    coverageClientFilter,
+    coverageClusterFilter,
+    coverageCoordinatorFilter,
+    coverageDistrictFilter,
+    coverageImplementerStatusFilter,
+    coverageOverseerFilter,
+    coverageProjectFilter,
+    coverageReportingStatusFilter,
+    coverageRows,
+    coverageSearch,
+    coverageSubGranteeFilter,
+    coverageThematicAreaFilter,
+  ])
 
   useEffect(() => {
     if (!project || !isResolvedProject) {
@@ -336,7 +604,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
     setIndicatorAssignmentDraft(assignmentSeed)
     setIndicatorDisaggregationDraft(disaggregationSeed)
-  }, [isResolvedProject, project, projectIndicators])
+  }, [isResolvedProject, project, projectIndicators, projectOrganizationOptions])
 
   if (isLoading) {
     return (
@@ -359,6 +627,20 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       return err.message
     }
     return fallback
+  }
+
+  const resetCoverageFilters = () => {
+    setCoverageSearch("")
+    setCoverageClientFilter("all")
+    setCoverageProjectFilter("all")
+    setCoverageOverseerFilter("all")
+    setCoverageCoordinatorFilter("all")
+    setCoverageSubGranteeFilter("all")
+    setCoverageClusterFilter("all")
+    setCoverageThematicAreaFilter("all")
+    setCoverageDistrictFilter("all")
+    setCoverageImplementerStatusFilter("all")
+    setCoverageReportingStatusFilter("all")
   }
 
   const addHierarchyCoordinator = (coordinatorId: string) => {
@@ -499,7 +781,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const handleSaveOrganizationRoles = async () => {
     setIsRoleSaving(true)
     try {
-      const validRoleValues = new Set(projectRoleOptions.map((option) => option.value))
+      const validRoleValues = new Set<string>(projectRoleOptions.map((option) => option.value))
       const rolesPayload = projectOrganizationIds.map((organizationId) => {
         const roleCandidate = organizationRoleDraft[organizationId] || "implementing_partner"
         const normalizedRole = validRoleValues.has(roleCandidate)
@@ -1080,6 +1362,174 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 </Button>
               </div>
             </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Project Partner Coverage</CardTitle>
+                <CardDescription>
+                  Partner role and reporting coverage by assignment. Coordinators may appear as coordinator-only or coordinator + implementer.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Input
+                    value={coverageSearch}
+                    onChange={(event) => setCoverageSearch(event.target.value)}
+                    placeholder="Search organization, role, cluster..."
+                  />
+                  <Select value={coverageClientFilter} onValueChange={setCoverageClientFilter}>
+                    <SelectTrigger><SelectValue placeholder="Client" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All clients</SelectItem>
+                      {coverageClientOptions.map((option) => (
+                        <SelectItem key={`coverage-client-${option.id}`} value={option.id}>{option.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageProjectFilter} onValueChange={setCoverageProjectFilter}>
+                    <SelectTrigger><SelectValue placeholder="Project" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All projects</SelectItem>
+                      <SelectItem value={coerceId(project?.id)}>{project?.name}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageOverseerFilter} onValueChange={setCoverageOverseerFilter}>
+                    <SelectTrigger><SelectValue placeholder="Overseer" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All overseers</SelectItem>
+                      {coverageOverseerOptions.map((option) => (
+                        <SelectItem key={`coverage-overseer-${option.id}`} value={option.id}>{option.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageCoordinatorFilter} onValueChange={setCoverageCoordinatorFilter}>
+                    <SelectTrigger><SelectValue placeholder="Coordinator" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All coordinators</SelectItem>
+                      {coverageCoordinatorOptions.map((option) => (
+                        <SelectItem key={`coverage-coordinator-${option.id}`} value={option.id}>{option.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageSubGranteeFilter} onValueChange={setCoverageSubGranteeFilter}>
+                    <SelectTrigger><SelectValue placeholder="Sub-grantee" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All sub-grantees</SelectItem>
+                      {coverageSubGranteeOptions.map((option) => (
+                        <SelectItem key={`coverage-sub-${option.id}`} value={option.id}>{option.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageClusterFilter} onValueChange={setCoverageClusterFilter}>
+                    <SelectTrigger><SelectValue placeholder="Cluster" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All clusters</SelectItem>
+                      {coverageClusterOptions.map((option) => (
+                        <SelectItem key={`coverage-cluster-${option}`} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageThematicAreaFilter} onValueChange={setCoverageThematicAreaFilter}>
+                    <SelectTrigger><SelectValue placeholder="Thematic area" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All thematic areas</SelectItem>
+                      {coverageThematicAreaOptions.map((option) => (
+                        <SelectItem key={`coverage-theme-${option}`} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageDistrictFilter} onValueChange={setCoverageDistrictFilter}>
+                    <SelectTrigger><SelectValue placeholder="District" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All districts</SelectItem>
+                      {coverageDistrictOptions.map((option) => (
+                        <SelectItem key={`coverage-district-${option}`} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageImplementerStatusFilter} onValueChange={setCoverageImplementerStatusFilter}>
+                    <SelectTrigger><SelectValue placeholder="Implementer status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="implementer">Implementer</SelectItem>
+                      <SelectItem value="non_implementer">Non-implementer</SelectItem>
+                      <SelectItem value="coordinator_implementer">Coordinator + Implementer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={coverageReportingStatusFilter} onValueChange={setCoverageReportingStatusFilter}>
+                    <SelectTrigger><SelectValue placeholder="Reporting status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All reporting statuses</SelectItem>
+                      <SelectItem value="reporting">Reporting</SelectItem>
+                      <SelectItem value="partially_reporting">Partially Reporting</SelectItem>
+                      <SelectItem value="not_reporting">Not Reporting</SelectItem>
+                      <SelectItem value="not_assigned">No Indicator Assignment</SelectItem>
+                      <SelectItem value="reporting_disabled">Reporting Disabled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end">
+                  <Button type="button" variant="outline" size="sm" onClick={resetCoverageFilters}>
+                    Reset Coverage Filters
+                  </Button>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-border">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Organization</th>
+                        <th className="px-4 py-3">Partner Type</th>
+                        <th className="px-4 py-3 hidden md:table-cell">Cluster</th>
+                        <th className="px-4 py-3 hidden lg:table-cell">Thematic Area</th>
+                        <th className="px-4 py-3 hidden lg:table-cell">District</th>
+                        <th className="px-4 py-3 text-center">Assigned</th>
+                        <th className="px-4 py-3 text-center">Reported</th>
+                        <th className="px-4 py-3">Reporting Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {filteredCoverageRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                            No partners matched the selected coverage filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredCoverageRows.map((row) => (
+                          <tr
+                            key={`coverage-row-${row.organizationId}`}
+                            className="cursor-pointer hover:bg-muted/20 transition-colors"
+                            onClick={() => router.push(`/organizations/${row.organizationId}`)}
+                          >
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium">{row.organizationName}</p>
+                                <p className="text-xs text-muted-foreground">{row.organizationCode}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant={row.partnerType === "Coordinator + Implementer" ? "default" : "secondary"} className="text-xs">
+                                {row.partnerType}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 hidden md:table-cell">{row.cluster || "—"}</td>
+                            <td className="px-4 py-3 hidden lg:table-cell">{row.thematicAreas.join(", ") || "—"}</td>
+                            <td className="px-4 py-3 hidden lg:table-cell">{row.districts.join(", ") || "—"}</td>
+                            <td className="px-4 py-3 text-center">{formatNumber(row.assignedIndicatorCount)}</td>
+                            <td className="px-4 py-3 text-center">{formatNumber(row.reportedIndicatorCount)}</td>
+                            <td className="px-4 py-3">
+                              <Badge variant="outline" className="text-xs">
+                                {reportingStatusLabels[row.reportingStatus] || row.reportingStatus.replace(/_/g, " ")}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* ── Visual hierarchy tree ── */}
             <div className="rounded-lg border border-border bg-card">

@@ -157,9 +157,14 @@ export interface ProjectIndicatorTarget {
 export interface ProjectOrganizationMembership {
   id: string
   project: string
+  client?: string | null
+  client_name?: string | null
   organization: string
   organization_name?: string
   organization_code?: string
+  parent_assignment?: string | null
+  parent_organization?: string | null
+  parent_organization_name?: string | null
   role:
     | "lead"
     | "coordinator"
@@ -168,8 +173,24 @@ export interface ProjectOrganizationMembership {
     | "data_reviewer"
     | "funder"
     | "other"
+  cluster?: string
+  is_coordinator?: boolean
+  is_sub_grantee?: boolean
+  is_implementer?: boolean
+  can_report_indicators?: boolean
+  partner_type?: string
+  thematic_areas?: string[]
+  districts_localities?: string[]
+  contract_start_date?: string | null
+  contract_end_date?: string | null
+  source_sheet?: string
+  source_row?: number | null
+  is_training?: boolean
   is_active: boolean
   implementation_scope?: Record<string, unknown>
+  assigned_indicator_count?: number
+  reported_indicator_count?: number
+  reporting_status?: "reporting" | "partially_reporting" | "not_reporting" | "not_assigned" | "reporting_disabled"
 }
 
 export interface ProjectHierarchyLink {
@@ -186,6 +207,7 @@ export interface ProjectIndicatorAssignment {
   id: string
   project: string
   project_indicator: string
+  project_organization?: string | null
   indicator: string
   indicator_name?: string
   indicator_code?: string
@@ -286,6 +308,7 @@ export interface Project {
   created_at: string
   updated_at: string
   hierarchy_overrides?: Record<string, string[]>
+  client_organizations?: Array<{ id: string; name: string }>
   /** True for the Training Project — data excluded from official reports by default. */
   is_training?: boolean
   training_expires_after_days?: number
@@ -597,7 +620,5 @@ export interface Column<T> {
   sortable?: boolean
   render?: (item: T) => React.ReactNode
 }
-
-
 
 

@@ -52,3 +52,6 @@ backend/data/
 backend/reports/
 frontend/reports/
 frontend/scripts/reports/
+
+# Spreadsheet source data (may contain real programme data)
+*.ods

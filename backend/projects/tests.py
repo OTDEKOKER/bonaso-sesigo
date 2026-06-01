@@ -553,6 +553,12 @@ class ProjectSetupAndReportingEnforcementTests(APITestCase):
                 is_active=True,
             ).exists()
         )
+        membership_org_b = ProjectOrganization.objects.get(
+            project=self.project,
+            organization=self.org_b,
+        )
+        self.assertTrue(membership_org_b.is_sub_grantee)
+        self.assertTrue(membership_org_b.can_report_indicators)
 
     def test_set_indicator_assignments_updates_assignments_and_rules(self):
         response = self.client.post(
@@ -613,6 +619,120 @@ class ProjectSetupAndReportingEnforcementTests(APITestCase):
                 is_active=True,
             ).exists()
         )
+
+    def test_indicator_assignment_links_project_assignment_and_supports_coordinator_implementer_reporting(self):
+        self.client.post(
+            f'/api/manage/projects/{self.project.id}/set_organization_roles/',
+            {
+                'roles': [
+                    {
+                        'organization_id': self.org_a.id,
+                        'role': 'coordinator',
+                        'is_coordinator': True,
+                        'is_implementer': True,
+                        'can_report_indicators': True,
+                        'is_active': True,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        response = self.client.post(
+            f'/api/manage/projects/{self.project.id}/set_indicator_assignments/',
+            {
+                'replace': True,
+                'assignments': [
+                    {
+                        'indicator_id': self.indicator_a.id,
+                        'organization_ids': [self.org_a.id],
+                        'disaggregation_rules': [],
+                    },
+                ],
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        project_indicator = ProjectIndicator.objects.get(
+            project=self.project,
+            indicator=self.indicator_a,
+        )
+        assignment = ProjectIndicatorAssignment.objects.get(
+            project_indicator=project_indicator,
+            organization=self.org_a,
+            is_active=True,
+        )
+        self.assertIsNotNone(assignment.project_organization_id)
+        self.assertEqual(assignment.project_organization.organization_id, self.org_a.id)
+        self.assertTrue(assignment.project_organization.is_coordinator)
+        self.assertTrue(assignment.project_organization.is_implementer)
+
+        aggregate_response = self.client.post(
+            '/api/aggregates/',
+            {
+                'indicator': self.indicator_a.id,
+                'project': self.project.id,
+                'organization': self.org_a.id,
+                'period_start': '2026-04-01',
+                'period_end': '2026-06-30',
+                'value': {'total': 12},
+            },
+            format='json',
+        )
+        self.assertEqual(aggregate_response.status_code, status.HTTP_201_CREATED)
+
+    def test_project_setup_payload_includes_partner_coverage_fields(self):
+        self.client.post(
+            f'/api/manage/projects/{self.project.id}/set_organization_roles/',
+            {
+                'roles': [
+                    {
+                        'organization_id': self.org_a.id,
+                        'role': 'lead',
+                        'cluster': 'NCD',
+                        'thematic_areas': ['Hypertension and Diabetes'],
+                        'districts_localities': ['Gaborone'],
+                        'is_active': True,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        response = self.client.get(f'/api/manage/projects/{self.project.id}/setup/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        first_row = payload.get('project_organizations', [])[0]
+        self.assertIn('partner_type', first_row)
+        self.assertIn('reporting_status', first_row)
+        self.assertIn('thematic_areas', first_row)
+        self.assertIn('districts_localities', first_row)
+
+    def test_senior_coordinator_is_labeled_overseer(self):
+        # Hierarchy: Client -> Project -> overseen by BONASO -> coordinates
+        # through Coordinator Orgs -> manage Sub-grantees. BONASO is the
+        # OVERSEER (not a coordinator). The coverage page must label the senior
+        # coordinator as Overseer purely from senior-coordinator detection — so
+        # we assign it a neutral (non-lead, non-coordinator) role here to prove
+        # the label is not coming from the role value.
+        bonaso = Organization.objects.create(name='BONASO', code='BONASO_OVS', type='headquarters')
+        self.project.organizations.add(bonaso)
+        self.client.post(
+            f'/api/manage/projects/{self.project.id}/set_organization_roles/',
+            {
+                'roles': [
+                    {'organization_id': bonaso.id, 'role': 'implementing_partner', 'is_active': True},
+                ],
+            },
+            format='json',
+        )
+        response = self.client.get(f'/api/manage/projects/{self.project.id}/setup/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.json().get('project_organizations', [])
+        bonaso_row = next((r for r in rows if str(r.get('organization')) == str(bonaso.id)), None)
+        self.assertIsNotNone(bonaso_row, 'BONASO row missing from coverage payload')
+        self.assertEqual(bonaso_row.get('partner_type'), 'Overseer')
 
     def test_interaction_capture_rejects_unassigned_indicator_for_project(self):
         self.client.post(

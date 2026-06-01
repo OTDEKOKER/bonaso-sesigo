@@ -162,6 +162,13 @@ class ProjectIndicatorAssignment(models.Model):
         on_delete=models.CASCADE,
         related_name='assignments',
     )
+    project_organization = models.ForeignKey(
+        'projects.ProjectOrganization',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='project_indicator_assignments',
+    )
     organization = models.ForeignKey(
         'organizations.Organization',
         on_delete=models.CASCADE,
@@ -187,6 +194,19 @@ class ProjectIndicatorAssignment(models.Model):
             f"{self.project_indicator.indicator.code} / "
             f"{self.organization.code} ({self.assignment_source})"
         )
+
+    def save(self, *args, **kwargs):
+        if self.project_organization_id:
+            if (
+                self.project_indicator_id
+                and self.project_organization.project_id != self.project_indicator.project_id
+            ):
+                # Never allow cross-project assignment references.
+                self.project_organization = None
+            else:
+                # Keep legacy organization FK aligned with project assignment.
+                self.organization_id = self.project_organization.organization_id
+        super().save(*args, **kwargs)
 
 
 class ProjectIndicatorDisaggregationRule(models.Model):
@@ -244,16 +264,42 @@ class ProjectOrganization(models.Model):
         on_delete=models.CASCADE,
         related_name='project_organizations',
     )
+    client = models.ForeignKey(
+        'projects.ClientOrganization',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='project_assignments',
+    )
     organization = models.ForeignKey(
         'organizations.Organization',
         on_delete=models.CASCADE,
         related_name='project_memberships',
     )
+    parent_assignment = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='child_assignments',
+    )
+    cluster = models.CharField(max_length=255, blank=True, default='')
     role = models.CharField(
         max_length=32,
         choices=ROLE_CHOICES,
         default='implementing_partner',
     )
+    is_coordinator = models.BooleanField(default=False)
+    is_sub_grantee = models.BooleanField(default=False)
+    is_implementer = models.BooleanField(default=True)
+    can_report_indicators = models.BooleanField(default=True)
+    thematic_areas = models.JSONField(default=list, blank=True)
+    districts_localities = models.JSONField(default=list, blank=True)
+    contract_start_date = models.DateField(null=True, blank=True)
+    contract_end_date = models.DateField(null=True, blank=True)
+    source_sheet = models.CharField(max_length=255, blank=True, default='')
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+    is_training = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     implementation_scope = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

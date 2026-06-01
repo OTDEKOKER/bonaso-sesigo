@@ -104,6 +104,20 @@ export interface ProjectOrganizationRoleRequest {
     | 'data_reviewer'
     | 'funder'
     | 'other';
+  client_id?: number | null;
+  parent_assignment_id?: number | null;
+  cluster?: string;
+  is_coordinator?: boolean;
+  is_sub_grantee?: boolean;
+  is_implementer?: boolean;
+  can_report_indicators?: boolean;
+  thematic_areas?: string[];
+  districts_localities?: string[];
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
+  source_sheet?: string;
+  source_row?: number | null;
+  is_training?: boolean;
   is_active?: boolean;
   implementation_scope?: Record<string, unknown>;
 }

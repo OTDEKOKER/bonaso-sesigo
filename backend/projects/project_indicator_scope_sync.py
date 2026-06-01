@@ -37,6 +37,27 @@ def _active_project_org_ids(project) -> set[int]:
         return set()
 
 
+def _active_project_org_assignment_ids(project) -> dict[int, int]:
+    try:
+        rows = ProjectOrganization.objects.filter(
+            project=project,
+            is_active=True,
+        ).values_list('organization_id', 'id')
+        mapping = {int(organization_id): int(assignment_id) for organization_id, assignment_id in rows}
+        if mapping:
+            return mapping
+    except DatabaseError:
+        pass
+
+    try:
+        rows = ProjectOrganization.objects.filter(
+            project=project,
+        ).values_list('organization_id', 'id')
+        return {int(organization_id): int(assignment_id) for organization_id, assignment_id in rows}
+    except DatabaseError:
+        return {}
+
+
 @transaction.atomic
 def ensure_project_indicator_assignments(
     project_indicator,
@@ -64,6 +85,8 @@ def ensure_project_indicator_assignments(
     if not target_org_ids:
         return
 
+    assignment_id_by_org_id = _active_project_org_assignment_ids(project_indicator.project)
+
     try:
         existing_rows = {
             row.organization_id: row
@@ -79,8 +102,10 @@ def ensure_project_indicator_assignments(
         row = existing_rows.get(organization_id)
         if row is None:
             try:
+                assignment_id = assignment_id_by_org_id.get(int(organization_id))
                 ProjectIndicatorAssignment.objects.create(
                     project_indicator=project_indicator,
+                    project_organization_id=assignment_id,
                     organization_id=organization_id,
                     assignment_source=source,
                     is_active=True,
@@ -90,10 +115,17 @@ def ensure_project_indicator_assignments(
             continue
 
         should_promote_source = _source_rank(source) > _source_rank(row.assignment_source)
-        if row.is_active and not should_promote_source:
+        assignment_id = assignment_id_by_org_id.get(int(organization_id))
+        should_link_assignment = assignment_id and row.project_organization_id != assignment_id
+        if row.is_active and not should_promote_source and not should_link_assignment:
             continue
 
         row.is_active = True
         if should_promote_source:
             row.assignment_source = source
-        row.save(update_fields=['is_active', 'assignment_source', 'updated_at'])
+        if should_link_assignment:
+            row.project_organization_id = assignment_id
+            row.organization_id = organization_id
+            row.save(update_fields=['is_active', 'assignment_source', 'project_organization', 'organization', 'updated_at'])
+        else:
+            row.save(update_fields=['is_active', 'assignment_source', 'updated_at'])

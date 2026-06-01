@@ -9,6 +9,7 @@ from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.db import models
 from django.db import DatabaseError
 from django.db.models import Count, F, Prefetch, Q, Sum
@@ -71,7 +72,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Project.objects.select_related('created_by').prefetch_related(
-            'organizations'
+            'organizations',
+            'client_organizations',
         ).annotate(
             indicators_count=Count('indicators', distinct=True),
             tasks_count=Count('tasks', distinct=True),
@@ -316,6 +318,28 @@ class ProjectViewSet(viewsets.ModelViewSet):
         allowed_org_ids = None if is_organization_admin(request.user) else set(get_user_organization_ids(request.user) or [])
         touched_org_ids = set()
 
+        def _normalize_scope_list(value):
+            if value in (None, ''):
+                return []
+            if isinstance(value, list):
+                return [str(item).strip() for item in value if str(item).strip()]
+            if isinstance(value, str):
+                return [entry.strip() for entry in value.split(',') if entry.strip()]
+            return []
+
+        def _coerce_bool(value, default=False):
+            if value is None:
+                return bool(default)
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {'1', 'true', 'yes', 'y', 'on'}:
+                    return True
+                if normalized in {'0', 'false', 'no', 'n', 'off'}:
+                    return False
+            return bool(value)
+
         try:
             for row in role_rows:
                 if not isinstance(row, dict):
@@ -331,7 +355,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 if role_value not in valid_roles:
                     return Response({'detail': f'Invalid role: {role_value}.'}, status=status.HTTP_400_BAD_REQUEST)
 
-                is_active = bool(row.get('is_active', True))
+                is_active = _coerce_bool(row.get('is_active', True), default=True)
                 implementation_scope = row.get('implementation_scope') or {}
                 if not isinstance(implementation_scope, dict):
                     return Response(
@@ -339,11 +363,96 @@ class ProjectViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
+                existing = ProjectOrganization.objects.filter(
+                    project=project,
+                    organization_id=organization_id,
+                ).first()
+
+                role_for_flags = role_value or (existing.role if existing else 'implementing_partner')
+                default_is_coordinator = role_for_flags == 'coordinator'
+                default_is_sub_grantee = role_for_flags == 'sub_grantee'
+                default_is_implementer = role_for_flags in {'implementing_partner', 'coordinator', 'sub_grantee'}
+
+                client_id = row.get('client_id')
+                if client_id in ('', None):
+                    normalized_client_id = existing.client_id if existing else None
+                else:
+                    try:
+                        normalized_client_id = int(client_id)
+                    except (TypeError, ValueError):
+                        return Response({'detail': 'client_id must be an integer when provided.'}, status=status.HTTP_400_BAD_REQUEST)
+                    if not ClientOrganization.objects.filter(id=normalized_client_id).exists():
+                        return Response({'detail': f'Client organization {normalized_client_id} does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+                    project.client_organizations.add(normalized_client_id)
+
+                parent_assignment_id = row.get('parent_assignment_id')
+                if parent_assignment_id in ('', None):
+                    normalized_parent_assignment_id = existing.parent_assignment_id if existing else None
+                else:
+                    try:
+                        normalized_parent_assignment_id = int(parent_assignment_id)
+                    except (TypeError, ValueError):
+                        return Response({'detail': 'parent_assignment_id must be an integer when provided.'}, status=status.HTTP_400_BAD_REQUEST)
+                    if not ProjectOrganization.objects.filter(
+                        id=normalized_parent_assignment_id,
+                        project=project,
+                    ).exists():
+                        return Response(
+                            {'detail': f'parent_assignment_id {normalized_parent_assignment_id} is not in this project.'},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                contract_start_date_raw = row.get('contract_start_date', existing.contract_start_date if existing else None)
+                contract_end_date_raw = row.get('contract_end_date', existing.contract_end_date if existing else None)
+                contract_start_date = parse_date(str(contract_start_date_raw)) if contract_start_date_raw else None
+                contract_end_date = parse_date(str(contract_end_date_raw)) if contract_end_date_raw else None
+                if contract_start_date_raw and contract_start_date is None:
+                    return Response({'detail': 'contract_start_date must be in YYYY-MM-DD format.'}, status=status.HTTP_400_BAD_REQUEST)
+                if contract_end_date_raw and contract_end_date is None:
+                    return Response({'detail': 'contract_end_date must be in YYYY-MM-DD format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                source_row_raw = row.get('source_row', existing.source_row if existing else None)
+                source_row = None
+                if source_row_raw not in (None, ''):
+                    try:
+                        source_row = int(source_row_raw)
+                    except (TypeError, ValueError):
+                        return Response({'detail': 'source_row must be an integer when provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
                 ProjectOrganization.objects.update_or_create(
                     project=project,
                     organization_id=organization_id,
                     defaults={
                         'role': role_value,
+                        'client_id': normalized_client_id,
+                        'parent_assignment_id': normalized_parent_assignment_id,
+                        'cluster': str(row.get('cluster', existing.cluster if existing else '') or '').strip(),
+                        'is_coordinator': _coerce_bool(
+                            row.get('is_coordinator', existing.is_coordinator if existing else default_is_coordinator),
+                            default=existing.is_coordinator if existing else default_is_coordinator,
+                        ),
+                        'is_sub_grantee': _coerce_bool(
+                            row.get('is_sub_grantee', existing.is_sub_grantee if existing else default_is_sub_grantee),
+                            default=existing.is_sub_grantee if existing else default_is_sub_grantee,
+                        ),
+                        'is_implementer': _coerce_bool(
+                            row.get('is_implementer', existing.is_implementer if existing else default_is_implementer),
+                            default=existing.is_implementer if existing else default_is_implementer,
+                        ),
+                        'can_report_indicators': _coerce_bool(
+                            row.get('can_report_indicators', existing.can_report_indicators if existing else True),
+                            default=existing.can_report_indicators if existing else True,
+                        ),
+                        'thematic_areas': _normalize_scope_list(row.get('thematic_areas', existing.thematic_areas if existing else [])),
+                        'districts_localities': _normalize_scope_list(row.get('districts_localities', existing.districts_localities if existing else [])),
+                        'contract_start_date': contract_start_date,
+                        'contract_end_date': contract_end_date,
+                        'source_sheet': str(row.get('source_sheet', existing.source_sheet if existing else '') or '').strip(),
+                        'source_row': source_row,
+                        'is_training': _coerce_bool(
+                            row.get('is_training', existing.is_training if existing else project.is_training),
+                            default=existing.is_training if existing else project.is_training,
+                        ),
                         'is_active': is_active,
                         'implementation_scope': implementation_scope,
                     },
@@ -435,6 +544,41 @@ class ProjectViewSet(viewsets.ModelViewSet):
                     defaults={'is_active': True},
                 )
 
+            # Keep assignment parent links aligned with project hierarchy links.
+            parent_assignment_by_child_org: dict[int, int] = {}
+            for parent_org_id, child_org_id in sorted(desired_pairs):
+                if child_org_id in parent_assignment_by_child_org:
+                    continue
+                parent_assignment = ProjectOrganization.objects.filter(
+                    project=project,
+                    organization_id=parent_org_id,
+                ).first()
+                child_assignment = ProjectOrganization.objects.filter(
+                    project=project,
+                    organization_id=child_org_id,
+                ).first()
+                if not parent_assignment or not child_assignment:
+                    continue
+                parent_assignment_by_child_org[child_org_id] = parent_assignment.id
+                if child_assignment.parent_assignment_id != parent_assignment.id or not child_assignment.is_sub_grantee:
+                    child_assignment.parent_assignment_id = parent_assignment.id
+                    child_assignment.is_sub_grantee = True
+                    child_assignment.save(update_fields=['parent_assignment', 'is_sub_grantee', 'updated_at'])
+                if not parent_assignment.is_coordinator:
+                    parent_assignment.is_coordinator = True
+                    parent_assignment.save(update_fields=['is_coordinator', 'updated_at'])
+
+            # Clear parent_assignment for rows no longer linked under this project.
+            if replace:
+                active_child_org_ids = set(parent_assignment_by_child_org.keys())
+                stale_child_rows = ProjectOrganization.objects.filter(
+                    project=project,
+                    parent_assignment__isnull=False,
+                )
+                if active_child_org_ids:
+                    stale_child_rows = stale_child_rows.exclude(organization_id__in=active_child_org_ids)
+                stale_child_rows.update(parent_assignment=None)
+
             # Dual-write: keep hierarchy_overrides JSON in sync for backward compat.
             from collections import defaultdict
             children_by_parent: dict[str, list[str]] = defaultdict(list)
@@ -500,6 +644,14 @@ class ProjectViewSet(viewsets.ModelViewSet):
                         raise PermissionDenied('You do not have permission to assign indicators for this organization.')
                     normalized_org_ids.add(normalized_org_id)
 
+                project_assignments_by_org_id = {
+                    int(row.organization_id): row
+                    for row in ProjectOrganization.objects.filter(
+                        project=project,
+                        organization_id__in=normalized_org_ids,
+                    )
+                }
+
                 if replace:
                     ProjectIndicatorAssignment.objects.filter(
                         project_indicator=project_indicator,
@@ -511,10 +663,17 @@ class ProjectViewSet(viewsets.ModelViewSet):
                     )
 
                 for organization_id in normalized_org_ids:
+                    project_assignment = project_assignments_by_org_id.get(int(organization_id))
+                    if project_assignment and (not project_assignment.is_implementer or not project_assignment.can_report_indicators):
+                        project_assignment.is_implementer = True
+                        project_assignment.can_report_indicators = True
+                        project_assignment.save(update_fields=['is_implementer', 'can_report_indicators', 'updated_at'])
+
                     ProjectIndicatorAssignment.objects.update_or_create(
                         project_indicator=project_indicator,
                         organization_id=organization_id,
                         defaults={
+                            'project_organization': project_assignment,
                             'assignment_source': 'manual',
                             'is_active': True,
                         },

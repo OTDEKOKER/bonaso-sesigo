@@ -96,12 +96,19 @@ def get_assigned_indicator_ids_for_organization(
 
     if _has_project_indicator_assignments(project_id):
         try:
+            queryset = ProjectIndicatorAssignment.objects.filter(
+                project_indicator__project_id=project_id,
+                organization_id=organization_id,
+                is_active=True,
+            ).filter(
+                Q(project_organization__isnull=True)
+                | Q(
+                    project_organization__is_active=True,
+                    project_organization__can_report_indicators=True,
+                )
+            )
             return set(
-                ProjectIndicatorAssignment.objects.filter(
-                    project_indicator__project_id=project_id,
-                    organization_id=organization_id,
-                    is_active=True,
-                ).values_list(
+                queryset.values_list(
                     'project_indicator__indicator_id',
                     flat=True,
                 )
@@ -152,6 +159,12 @@ def count_project_indicators_for_organization_scope(
             queryset = ProjectIndicatorAssignment.objects.filter(
                 project_indicator__project_id=project_id,
                 is_active=True,
+            ).filter(
+                Q(project_organization__isnull=True)
+                | Q(
+                    project_organization__is_active=True,
+                    project_organization__can_report_indicators=True,
+                )
             )
             if organization_ids is not None:
                 if len(organization_ids) == 0:
