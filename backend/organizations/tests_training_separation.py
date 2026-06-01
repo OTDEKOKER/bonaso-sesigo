@@ -128,3 +128,38 @@ class TrainingSeparationTests(TestCase):
         # live active projects counts only the live one; training only the demo one
         self.assertEqual(live["active_projects"], 1)
         self.assertEqual(train["active_projects"], 1)
+
+    # ---- endpoint-level (real viewsets) --------------------------------
+    def _vs_codes(self, viewset_cls, qs=""):
+        from rest_framework.test import APIRequestFactory
+        w = APIRequestFactory().get("/api/x/" + qs)
+        r = Request(w); r.user = self.admin
+        v = viewset_cls(); v.request = r; v.kwargs = {}; v.format_kwarg = None; v.action = "list"
+        return set(v.get_queryset().values_list("code", flat=True))
+
+    def test_indicator_viewset_live_hides_demo(self):
+        from indicators.views import IndicatorViewSet
+        live = self._vs_codes(IndicatorViewSet, "")
+        train = self._vs_codes(IndicatorViewSet, "?training_only=true")
+        self.assertNotIn("DEMO-IND-T", live)
+        self.assertIn("LIVE-IND", live)
+        self.assertEqual(train, {"DEMO-IND-T"})
+
+    def test_organization_viewset_live_hides_demo(self):
+        from organizations.views import OrganizationViewSet
+        live = self._vs_codes(OrganizationViewSet, "")
+        train = self._vs_codes(OrganizationViewSet, "?training_only=true")
+        self.assertNotIn("DEMO-ORG-T", live)
+        self.assertIn("LIVE-ORG", live)
+        self.assertEqual(train, {"DEMO-ORG-T"})
+
+    def test_indicator_trends_excludes_demo_in_live(self):
+        # The demo indicator has only a training-project aggregate; in live mode
+        # its trend series must contain no approved values.
+        from analysis.views import indicator_trends
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        r = APIRequestFactory().get("/api/analysis/indicators/%d/trends/" % self.demo_ind.id)
+        force_authenticate(r, user=self.admin)
+        resp = indicator_trends(r, indicator_id=self.demo_ind.id)
+        total = sum(pt.get("value", 0) or 0 for pt in (resp.data.get("series") or resp.data.get("points") or []))
+        self.assertEqual(total, 0)

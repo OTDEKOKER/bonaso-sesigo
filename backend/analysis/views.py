@@ -400,6 +400,7 @@ def _build_message_analytics_cache_key(
     date_from,
     date_to,
     effective_org_ids,
+    mode='live',
 ):
     key_source = '|'.join(
         [
@@ -410,6 +411,9 @@ def _build_message_analytics_cache_key(
             f'date_from:{date_from.isoformat() if date_from else "none"}',
             f'date_to:{date_to.isoformat() if date_to else "none"}',
             f'scope:{_message_analytics_effective_scope_signature(effective_org_ids)}',
+            # Separate cache entries per data-isolation mode so a live request
+            # can never be served a training-cached payload (or vice versa).
+            f'mode:{mode}',
         ]
     )
     digest = hashlib.sha1(key_source.encode('utf-8')).hexdigest()
@@ -429,6 +433,8 @@ def indicator_trends(request, indicator_id: int):
 
     user = request.user
     aggregates = Aggregate.objects.filter(indicator_id=indicator_id, status='approved')
+    # Isolate Sesigo Live System / Training Mode trend data.
+    aggregates = apply_training_filter(aggregates, request, project_lookup='project')
     parsed_org_id = _safe_parse_int(org_id) if org_id not in (None, "") else None
     parsed_coordinator_id = _safe_parse_int(coordinator_id) if coordinator_id not in (None, "") else None
     parsed_project_id = _safe_parse_int(project_param) if project_param not in (None, "") else None
@@ -519,6 +525,8 @@ def indicator_trends_bulk(request):
 
     user = request.user
     aggregates = Aggregate.objects.filter(indicator_id__in=indicator_ids, status='approved')
+    # Isolate Sesigo Live System / Training Mode trend data.
+    aggregates = apply_training_filter(aggregates, request, project_lookup='project')
     parsed_org_id = _safe_parse_int(org_id) if org_id not in (None, "") else None
     parsed_coordinator_id = _safe_parse_int(coordinator_id) if coordinator_id not in (None, "") else None
     parsed_project_id = _safe_parse_int(project_param) if project_param not in (None, "") else None
@@ -1262,6 +1270,7 @@ class DashboardView(viewsets.ViewSet):
             date_from=date_from,
             date_to=date_to,
             effective_org_ids=effective_org_ids,
+            mode=training_view_mode(request),
         )
         cached_payload = cache.get(cache_key)
         if isinstance(cached_payload, dict):

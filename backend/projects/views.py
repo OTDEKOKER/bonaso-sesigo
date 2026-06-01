@@ -841,10 +841,14 @@ class ClientOrganizationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from .models import ClientOrganization
+        from organizations.access import apply_training_filter_via_projects
         user = self.request.user
+        qs = ClientOrganization.objects.prefetch_related('projects')
+        # Hide client orgs linked only to training projects from live views.
+        qs = apply_training_filter_via_projects(qs, self.request, projects_lookup='projects')
         if is_organization_admin(user):
-            return ClientOrganization.objects.prefetch_related('projects').all()
-        return ClientOrganization.objects.prefetch_related('projects').filter(is_active=True)
+            return qs
+        return qs.filter(is_active=True)
 
 
 class NarrativeReportViewSet(viewsets.ModelViewSet):
