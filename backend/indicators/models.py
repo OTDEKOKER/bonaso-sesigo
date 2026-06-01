@@ -40,7 +40,11 @@ class Indicator(models.Model):
     
     # For multi_int type
     sub_labels = models.JSONField(default=list, blank=True, help_text='Labels for multi-int fields')
-    
+
+    # Aggregate disaggregation matrix config (dimensions/values used when
+    # entering aggregate data). Empty dict means no disaggregation.
+    aggregate_disaggregation_config = models.JSONField(default=dict, blank=True)
+
     # Aggregation and calculation
     aggregation_method = models.CharField(
         max_length=20,
