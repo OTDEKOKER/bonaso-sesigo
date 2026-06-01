@@ -1,0 +1,63 @@
+# Production-oriented example only: this frontend repo does not contain the Django backend
+# image/build context. Replace `your-registry/bonaso-backend:latest` with the real backend
+# image or add the backend source as a build context before using this file.
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: https://sesigo.org.bw/api
+        BACKEND_API_URL: https://sesigo.org.bw/api
+    environment:
+      NODE_ENV: production
+      PORT: 13000
+      NEXT_PUBLIC_API_URL: https://sesigo.org.bw/api
+      BACKEND_API_URL: https://sesigo.org.bw/api
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "13000:13000"
+
+  backend:
+    image: your-registry/bonaso-backend:latest
+    environment:
+      DOTENV_OVERRIDE: "False"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY before starting}
+      DEBUG: "False"
+      DATABASE_URL: ${DJANGO_DATABASE_URL:?Set DJANGO_DATABASE_URL before starting}
+      DB_SSL_REQUIRE: ${DJANGO_DB_SSL_REQUIRE:-True}
+      ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?Set DJANGO_ALLOWED_HOSTS before starting}
+      CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:?Set DJANGO_CORS_ALLOWED_ORIGINS before starting}
+      CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:?Set DJANGO_CSRF_TRUSTED_ORIGINS before starting}
+      USE_X_FORWARDED_PROTO: "True"
+      SECURE_SSL_REDIRECT: "True"
+      SESSION_COOKIE_SECURE: "True"
+      CSRF_COOKIE_SECURE: "True"
+      SECURE_HSTS_SECONDS: ${DJANGO_SECURE_HSTS_SECONDS:-31536000}
+      SECURE_HSTS_INCLUDE_SUBDOMAINS: "True"
+      SECURE_HSTS_PRELOAD: "True"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "18000:18000"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bonaso}
+      POSTGRES_USER: ${POSTGRES_USER:-bonaso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bonaso -d bonaso"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

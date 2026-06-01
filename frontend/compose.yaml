@@ -1,0 +1,14 @@
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: ${DOCKER_NEXT_PUBLIC_API_URL:-https://sesigo.org.bw/api}
+        BACKEND_API_URL: ${DOCKER_BACKEND_API_URL:-https://sesigo.org.bw/api}
+    environment:
+      NODE_ENV: production
+      PORT: 13000
+      NEXT_PUBLIC_API_URL: ${DOCKER_NEXT_PUBLIC_API_URL:-https://sesigo.org.bw/api}
+      BACKEND_API_URL: ${DOCKER_BACKEND_API_URL:-https://sesigo.org.bw/api}
+    ports:
+      - "${FRONTEND_PORT:-13000}:13000"

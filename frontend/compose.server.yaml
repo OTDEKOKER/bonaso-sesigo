@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PORT: "18000"
+      SECURE_SSL_REDIRECT: "True"
+      USE_X_FORWARDED_PROTO: "True"
+      BONASO_DJANGO_ROOT: "/app"
+    volumes:
+      - ../backend/.env:/app/.env:ro
+      - ../backend/uploads:/app/uploads
+      - ../backend/media:/app/media
+      - ../backend/reports:/app/reports
+      - ../backend/staticfiles:/app/staticfiles
+      - ../frontend/scripts:/app/workbook-imports:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://sesigo.org.bw/api
+        BACKEND_API_URL: https://sesigo.org.bw/api
+    depends_on:
+      - backend
+    network_mode: host
+    restart: unless-stopped
+    # Bind Next.js to loopback only. The host-networked container would
+    # otherwise listen on 0.0.0.0:13000 and be reachable directly (bypassing
+    # nginx/TLS). nginx proxies / to 127.0.0.1:13000, so loopback is sufficient.
+    command: ["npm", "run", "start", "--", "--hostname", "127.0.0.1"]
+    environment:
+      NODE_ENV: production
+      PORT: 13000
+      HOSTNAME: 127.0.0.1
+      NEXT_PUBLIC_API_URL: https://sesigo.org.bw/api
+      NEXT_PUBLIC_API_BASE_URL: https://sesigo.org.bw/api
+      BACKEND_API_URL: https://sesigo.org.bw/api
+      NEXT_PUBLIC_APP_URL: https://sesigo.org.bw

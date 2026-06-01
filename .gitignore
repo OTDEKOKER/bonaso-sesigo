@@ -1,0 +1,54 @@
+# ---- Secrets / environment ----
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# ---- Python ----
+**/venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ---- Node / Next.js ----
+**/node_modules/
+**/.next/
+**/out/
+*.tsbuildinfo
+
+# ---- Databases / dumps / backups ----
+*.sqlite3
+*.dump
+*.sql
+backend/backups/
+*.bak
+.git.broken*/
+
+# ---- Runtime state / user content ----
+backend/media/
+backend/uploads/
+backend/staticfiles/
+training/state/
+
+# ---- Data exports / audit artifacts (may contain real programme data) ----
+*.jsonl
+*.csv
+*.xlsx
+*.xlsm
+*.pptx
+*.docx
+imports/
+downloads/
+
+# ---- Logs / OS ----
+*.log
+.DS_Store
+
+# ---- Data output / fixture dirs (real programme data — never commit) ----
+backend/data/
+backend/reports/
+frontend/reports/
+frontend/scripts/reports/
