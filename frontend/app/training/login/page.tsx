@@ -65,89 +65,98 @@ export default function TrainingLoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#005a2f] p-6">
-      <section className="w-full max-w-[620px] border-4 border-amber-400 bg-[#004a27] px-10 py-12 text-white shadow-2xl">
-        <div className="mx-auto mb-6 flex w-full max-w-[320px] flex-col items-center">
-          <p className="text-4xl font-bold tracking-wide">Sesigo</p>
-          <p className="mt-1 text-sm font-medium text-white/70">Data Portal</p>
-          <div
-            className="mt-3 h-0 w-0 border-l-[68px] border-r-[68px] border-t-[120px] border-l-transparent border-r-transparent border-t-amber-400/90"
-            aria-hidden="true"
-          />
-          <h1 className="mt-8 text-4xl font-bold text-amber-400">Training Login</h1>
-          <p className="mt-1 text-xs text-white/60">Powered by BONASO</p>
-        </div>
-
-        {/* Training mode warning */}
-        <div className="mx-auto mb-6 w-full max-w-[320px] rounded border border-amber-400 bg-amber-900/30 px-4 py-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
-            <p className="text-xs text-amber-200">
-              <span className="font-semibold">Sesigo Training Mode.</span>{" "}
-              Demo data only. Not for official reporting. Training data may be automatically
-              cleared after 7 days.
-            </p>
+    <main className="flex h-[100dvh] items-stretch justify-center overflow-hidden bg-[#005a2f] p-1.5 sm:p-3 md:p-4">
+      <section className="flex w-full max-w-[760px] flex-col overflow-y-auto border-[3px] border-amber-400 bg-[#004a27] px-4 py-5 text-white shadow-2xl sm:px-6 sm:py-6 md:px-8 md:py-8">
+        <div className="flex flex-1 flex-col items-center justify-center">
+          <div className="mx-auto flex w-full max-w-[420px] flex-col items-center text-center">
+            <p className="text-[clamp(2.75rem,4vw,4rem)] font-bold tracking-wide leading-none">Sesigo</p>
+            <p className="mt-2 text-[clamp(0.95rem,1.5vw,1.35rem)] font-medium text-white/70">Data Portal</p>
+            <div
+              className="mt-3 h-0 w-0 border-l-[clamp(44px,4vw,68px)] border-r-[clamp(44px,4vw,68px)] border-t-[clamp(78px,11vh,120px)] border-l-transparent border-r-transparent border-t-amber-400/90"
+              aria-hidden="true"
+            />
+            <h1 className="mt-5 text-[clamp(2.5rem,4.4vw,4rem)] font-bold leading-none text-amber-400">
+              Training Login
+            </h1>
+            <p className="mt-2 text-xs text-white/60 sm:text-sm">Powered by BONASO</p>
           </div>
-        </div>
 
-        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-[320px] space-y-5">
-          {error ? (
-            <div className="rounded bg-red-100/95 px-3 py-2 text-sm font-medium text-red-900">
-              {error}
+          <div className="mx-auto mt-5 w-full max-w-[420px] rounded border border-amber-400 bg-amber-900/30 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
+              <p className="text-xs leading-snug text-amber-200">
+                <span className="font-semibold">Sesigo Training Mode.</span>{" "}
+                Demo data only. Not for official reporting. Training data may be automatically
+                cleared after 7 days.
+              </p>
             </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <Label htmlFor="username" className="block text-center text-3xl font-semibold text-white">
-              Username or Email
-            </Label>
-            <Input
-              id="username"
-              type="text"
-              autoComplete="username"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              required
-              placeholder="Enter your username or email"
-              className="h-12 rounded-none border-0 bg-[#d7dde7] text-lg text-black placeholder:text-slate-600"
-            />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password" className="block text-center text-3xl font-semibold text-white">
-              Password
-            </Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="h-12 rounded-none border-0 bg-[#d7dde7] text-lg text-black placeholder:text-slate-600"
-            />
+          <form onSubmit={handleSubmit} className="mx-auto mt-5 w-full max-w-[420px] space-y-4 sm:space-y-5">
+            {error ? (
+              <div className="rounded bg-red-100/95 px-3 py-2 text-sm font-medium text-red-900">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <Label
+                htmlFor="username"
+                className="block text-center text-[clamp(2rem,3.2vw,3rem)] font-semibold leading-none text-white"
+              >
+                Username or Email
+              </Label>
+              <Input
+                id="username"
+                type="text"
+                autoComplete="username"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                required
+                placeholder="Enter your username or email"
+                className="h-11 rounded-none border-0 bg-[#d7dde7] text-base text-black placeholder:text-slate-600 sm:h-12 sm:text-lg"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label
+                htmlFor="password"
+                className="block text-center text-[clamp(2rem,3.2vw,3rem)] font-semibold leading-none text-white"
+              >
+                Password
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="h-11 rounded-none border-0 bg-[#d7dde7] text-base text-black placeholder:text-slate-600 sm:h-12 sm:text-lg"
+              />
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="mt-1 h-11 w-full rounded-none bg-amber-400 text-xl font-semibold text-[#004a27] hover:bg-amber-300 sm:h-12 sm:text-2xl"
+            >
+              {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
+              Enter Training Mode
+            </Button>
+          </form>
+
+          <div className="mx-auto mt-5 w-full max-w-[420px] text-center">
+            <a
+              href="/login"
+              className="text-sm text-white/60 underline hover:text-white/90"
+            >
+              Sign in to Sesigo Live System instead
+            </a>
           </div>
-
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="mt-2 h-12 w-full rounded-none bg-amber-400 text-2xl font-semibold text-[#004a27] hover:bg-amber-300"
-          >
-            {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-            Enter Training Mode
-          </Button>
-        </form>
-
-        <div className="mx-auto mt-6 w-full max-w-[320px] text-center">
-          <a
-            href="/login"
-            className="text-sm text-white/60 underline hover:text-white/90"
-          >
-            Sign in to Sesigo Live System instead
-          </a>
         </div>
 
-        <p className="mt-8 text-center text-xs text-white/40">
+        <p className="pt-4 text-center text-[11px] text-white/40 sm:text-xs">
           © 2026 Sesigo Data Portal. Powered by BONASO.
         </p>
       </section>

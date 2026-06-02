@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db import models, transaction
 from django.db.models import Count, Sum, Avg, Q
@@ -613,12 +614,21 @@ def indicator_trends_bulk(request):
 
 
 
+class CoordinatorTargetPagination(PageNumberPagination):
+    """Honour a client-supplied page_size so the targets page can fetch the full
+    set (e.g. to build the coordinator/indicator filter dropdowns)."""
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 2000
+
+
 class CoordinatorTargetViewSet(viewsets.ModelViewSet):
     """Coordinator target CRUD API backed by the live coordinator target table."""
 
     queryset = CoordinatorTarget.objects.select_related('project', 'coordinator', 'indicator').all()
     serializer_class = CoordinatorTargetSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = CoordinatorTargetPagination
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['project__name', 'coordinator__name', 'indicator__name', 'notes']
     ordering_fields = ['year', 'quarter', 'target_value', 'updated_at', 'created_at']
