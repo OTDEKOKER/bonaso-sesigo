@@ -355,6 +355,21 @@ export function CoordinatorTargetsPage() {
     isLoading: coordinatorTargetsLoading,
     mutate: mutateCoordinatorTargets,
   } = useCoordinatorTargets(targetFilters);
+
+  // Unfiltered-by-coordinator/indicator list (scoped only to project + year) used
+  // to populate the Coordinator and Indicator dropdowns from the data that
+  // actually exists for the project — so every coordinator/indicator with a
+  // target is selectable (independent of org-tree/hierarchy_overrides).
+  const optionFilters = useMemo<CoordinatorTargetFilters>(
+    () => ({
+      project_id: filters.projectId !== "all" ? filters.projectId : undefined,
+      year: filters.year !== "all" ? filters.year : undefined,
+      page_size: "1000",
+    }),
+    [filters.projectId, filters.year],
+  );
+  const { data: optionTargetsData } = useCoordinatorTargets(optionFilters);
+  const optionTargets = (optionTargetsData?.results ?? EMPTY_ITEMS) as CoordinatorTarget[];
   const { data: allProjectsData } = useAllProjects();
   const { data: allOrganizationsData } = useAllOrganizations();
   const { data: allIndicatorsData } = useAllIndicators();
@@ -386,56 +401,27 @@ export function CoordinatorTargetsPage() {
     [filters.projectId, projects],
   );
 
-  const coordinatorOptions = useMemo<NamedOption[]>(
-    () => {
-      const selectedProjectOrganizationIds = selectedProject
-        ? toIdArray((selectedProject as { organizations?: unknown[] }).organizations)
-        : [];
-      const descendantsByParent = buildOrganizationDescendantMap(
-        organizations as Organization[],
-        selectedProject
-          ? {
-              hierarchyOverrides: normalizeHierarchyOverrides(selectedProject.hierarchy_overrides),
-              scopedOrganizationIds: selectedProjectOrganizationIds,
-            }
-          : undefined,
-      );
+  const coordinatorOptions = useMemo<NamedOption[]>(() => {
+    const seen = new Map<string, string>();
+    for (const target of optionTargets) {
+      const id = coerceId(target.coordinator_id);
+      if (id && !seen.has(id)) seen.set(id, String(target.coordinator_name || `Coordinator ${id}`));
+    }
+    return Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+  }, [optionTargets]);
 
-      return organizations
-        .filter((organization) => {
-          const organizationId = coerceId(organization.id);
-          const descendants = descendantsByParent[organizationId] || [];
-          if (descendants.length === 0) return false;
-          return !isBonasoOrganizationName(organization.name);
-        })
-        .map((organization) => ({
-          value: coerceId(organization.id),
-          label: String(organization.name || `Coordinator ${organization.id}`),
-        }))
-        .sort((left, right) => left.label.localeCompare(right.label));
-    },
-    [organizations, selectedProject],
-  );
-
-  const indicatorOptions = useMemo<NamedOption[]>(
-    () =>
-      indicators
-        .map((indicator) => {
-          const label = String(indicator.short_name || indicator.name || `Indicator ${indicator.id}`);
-          const fullName = String(indicator.name || "").trim();
-          const code = String(indicator.code || "").trim();
-          const hint = [code, fullName !== label ? fullName : ""].filter(Boolean).join(" • ");
-
-          return {
-            value: coerceId(indicator.id),
-            label,
-            hint: hint || undefined,
-            searchText: [label, fullName, code].filter(Boolean).join(" "),
-          };
-        })
-        .sort((left, right) => left.label.localeCompare(right.label)),
-    [indicators],
-  );
+  const indicatorOptions = useMemo<NamedOption[]>(() => {
+    const seen = new Map<string, string>();
+    for (const target of optionTargets) {
+      const id = coerceId(target.indicator_id);
+      if (id && !seen.has(id)) seen.set(id, String(target.indicator_name || `Indicator ${id}`));
+    }
+    return Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+  }, [optionTargets]);
 
   const fiscalYears = useMemo(
     () =>

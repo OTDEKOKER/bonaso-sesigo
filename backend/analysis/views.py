@@ -639,16 +639,22 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                 return qs.none()
 
         params = self.request.query_params
-        if params.get('project_id'):
-            qs = qs.filter(project_id=params.get('project_id'))
-        if params.get('coordinator_id'):
-            qs = qs.filter(coordinator_id=params.get('coordinator_id'))
-        if params.get('indicator_id'):
-            qs = qs.filter(indicator_id=params.get('indicator_id'))
-        if params.get('year'):
-            qs = qs.filter(year=params.get('year'))
-        if params.get('quarter'):
-            qs = qs.filter(quarter=params.get('quarter'))
+
+        def _val(key):
+            # Ignore empty/"all" sentinels so they never filter to nothing.
+            v = (params.get(key) or '').strip()
+            return v if v and v.lower() != 'all' else None
+
+        if _val('project_id'):
+            qs = qs.filter(project_id=_val('project_id'))
+        if _val('coordinator_id'):
+            qs = qs.filter(coordinator_id=_val('coordinator_id'))
+        if _val('indicator_id'):
+            qs = qs.filter(indicator_id=_val('indicator_id'))
+        if _val('year'):
+            qs = qs.filter(year=_val('year'))
+        if _val('quarter'):
+            qs = qs.filter(quarter=_val('quarter'))
         if params.get('is_active') in {'true', 'false'}:
             qs = qs.filter(is_active=(params.get('is_active') == 'true'))
         return qs
