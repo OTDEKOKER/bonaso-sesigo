@@ -4,7 +4,6 @@ import { Pencil, Trash2 } from "lucide-react";
 
 import type { CoordinatorTarget } from "@/lib/api";
 import type { CoordinatorPerformanceRow, CoordinatorPerformanceStatus } from "@/components/targets/coordinator-targets-types";
-import { getFiscalQuarterLabel } from "@/components/targets/coordinator-targets-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -62,8 +61,6 @@ export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="min-w-[7rem]">Period</TableHead>
-            <TableHead className="min-w-[12rem]">Coordinator</TableHead>
             <TableHead className="min-w-[14rem]">Indicator</TableHead>
             <TableHead className="text-right">Target</TableHead>
             <TableHead className="text-right">Actual</TableHead>
@@ -80,8 +77,6 @@ export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {
 
             return (
               <TableRow key={row.target.id}>
-                <TableCell>{getFiscalQuarterLabel(row.target.year, row.target.quarter)}</TableCell>
-                <TableCell className="max-w-[18rem] truncate">{row.coordinatorName}</TableCell>
                 <TableCell className="max-w-[20rem] truncate">{row.indicatorName}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatNumber(Number(row.target.target_value || 0))}</TableCell>
                 <TableCell className="text-right tabular-nums">
