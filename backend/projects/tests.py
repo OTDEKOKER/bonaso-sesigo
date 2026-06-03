@@ -692,7 +692,8 @@ class ProjectSetupAndReportingEnforcementTests(APITestCase):
                         'role': 'lead',
                         'cluster': 'NCD',
                         'thematic_areas': ['Hypertension and Diabetes'],
-                        'districts_localities': ['Gaborone'],
+                        'districts': ['Gaborone'],
+                        'localities': ['Tlokweng'],
                         'is_active': True,
                     },
                 ],
@@ -707,22 +708,26 @@ class ProjectSetupAndReportingEnforcementTests(APITestCase):
         self.assertIn('partner_type', first_row)
         self.assertIn('reporting_status', first_row)
         self.assertIn('thematic_areas', first_row)
-        self.assertIn('districts_localities', first_row)
+        self.assertIn('districts', first_row)
+        self.assertIn('localities', first_row)
 
-    def test_senior_coordinator_is_labeled_overseer(self):
+    def test_bonaso_is_labeled_senior_coordinator(self):
         # Hierarchy: Client -> Project -> overseen by BONASO -> coordinates
-        # through Coordinator Orgs -> manage Sub-grantees. BONASO is the
-        # OVERSEER (not a coordinator). The coverage page must label the senior
-        # coordinator as Overseer purely from senior-coordinator detection — so
-        # we assign it a neutral (non-lead, non-coordinator) role here to prove
-        # the label is not coming from the role value.
+        # through Coordinator Orgs -> manage Sub-grantees. BONASO is the sole
+        # Project Senior Coordinator / Admin (not a coordinator). The coverage
+        # page must label BONASO as Project Senior Coordinator / Admin purely
+        # from BONASO detection — so we assign it a neutral (non-lead,
+        # non-coordinator) role here to prove the label is not from the role.
         bonaso = Organization.objects.create(name='BONASO', code='BONASO_OVS', type='headquarters')
-        self.project.organizations.add(bonaso)
+        # A non-BONASO NGO sub-grantee: must NOT be labeled senior coordinator.
+        sub = Organization.objects.create(name='Some Sub-grantee NGO', code='SUB_OVS', type='ngo')
+        self.project.organizations.add(bonaso, sub)
         self.client.post(
             f'/api/manage/projects/{self.project.id}/set_organization_roles/',
             {
                 'roles': [
                     {'organization_id': bonaso.id, 'role': 'implementing_partner', 'is_active': True},
+                    {'organization_id': sub.id, 'role': 'implementing_partner', 'is_active': True},
                 ],
             },
             format='json',
@@ -732,7 +737,10 @@ class ProjectSetupAndReportingEnforcementTests(APITestCase):
         rows = response.json().get('project_organizations', [])
         bonaso_row = next((r for r in rows if str(r.get('organization')) == str(bonaso.id)), None)
         self.assertIsNotNone(bonaso_row, 'BONASO row missing from coverage payload')
-        self.assertEqual(bonaso_row.get('partner_type'), 'Overseer')
+        self.assertEqual(bonaso_row.get('partner_type'), 'Project Senior Coordinator / Admin')
+        sub_row = next((r for r in rows if str(r.get('organization')) == str(sub.id)), None)
+        self.assertIsNotNone(sub_row, 'Sub-grantee row missing from coverage payload')
+        self.assertNotEqual(sub_row.get('partner_type'), 'Project Senior Coordinator / Admin')
 
     def test_interaction_capture_rejects_unassigned_indicator_for_project(self):
         self.client.post(

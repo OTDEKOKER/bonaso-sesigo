@@ -302,20 +302,18 @@ class ProjectDetailSerializer(ProjectSerializer):
                 return []
 
             def _partner_type_label(row):
-                # The senior coordinator (e.g. BONASO) is the project overseer.
-                # Reuse the canonical senior-coordinator derivation so the
-                # coverage page stays consistent with the rest of the app — and
-                # without changing any ProjectOrganization role values.
+                # There is exactly one overseer per project — BONASO, the
+                # Project Senior Coordinator / Admin. It is identified by the
+                # 'lead' project role (or the BONASO org name), NOT by org type:
+                # most partners are NGOs and must not be labelled overseer.
                 org = getattr(row, 'organization', None)
                 try:
-                    from analysis.views import _get_effective_organization_type
-                    effective_type = _get_effective_organization_type(
-                        getattr(org, 'name', ''), getattr(org, 'type', '')
-                    )
+                    from analysis.views import _is_bonaso_organization_name
+                    is_bonaso = _is_bonaso_organization_name(getattr(org, 'name', ''))
                 except Exception:
-                    effective_type = ''
-                if effective_type == 'senior_coordinator' or row.role == 'lead':
-                    return 'Overseer'
+                    is_bonaso = False
+                if row.role == 'lead' or is_bonaso:
+                    return 'Project Senior Coordinator / Admin'
                 if row.is_coordinator and row.is_implementer:
                     return 'Coordinator + Implementer'
                 if row.is_coordinator:
@@ -364,7 +362,8 @@ class ProjectDetailSerializer(ProjectSerializer):
                     'can_report_indicators': bool(row.can_report_indicators),
                     'partner_type': _partner_type_label(row),
                     'thematic_areas': _normalize_scope_list(row.thematic_areas),
-                    'districts_localities': _normalize_scope_list(row.districts_localities),
+                    'districts': _normalize_scope_list(row.districts),
+                    'localities': _normalize_scope_list(row.localities),
                     'contract_start_date': row.contract_start_date,
                     'contract_end_date': row.contract_end_date,
                     'source_sheet': row.source_sheet or '',
@@ -407,7 +406,8 @@ class ProjectDetailSerializer(ProjectSerializer):
                 'can_report_indicators': True,
                 'partner_type': 'Implementer',
                 'thematic_areas': [],
-                'districts_localities': [],
+                'districts': [],
+                'localities': [],
                 'contract_start_date': None,
                 'contract_end_date': None,
                 'source_sheet': '',

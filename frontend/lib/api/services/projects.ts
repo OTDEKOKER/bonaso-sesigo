@@ -112,7 +112,8 @@ export interface ProjectOrganizationRoleRequest {
   is_implementer?: boolean;
   can_report_indicators?: boolean;
   thematic_areas?: string[];
-  districts_localities?: string[];
+  districts?: string[];
+  localities?: string[];
   contract_start_date?: string | null;
   contract_end_date?: string | null;
   source_sheet?: string;

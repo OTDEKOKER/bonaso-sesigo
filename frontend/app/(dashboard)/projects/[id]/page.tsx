@@ -135,6 +135,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [manageOrgSearch, setManageOrgSearch] = useState("")
   const [managedOrgIds, setManagedOrgIds] = useState<string[]>([])
   const [isManageOrgsSaving, setIsManageOrgsSaving] = useState(false)
+  const [coverageScopeRow, setCoverageScopeRow] = useState<{
+    organizationId: string
+    organizationName: string
+    role: string
+  } | null>(null)
+  const [coverageDistrictsDraft, setCoverageDistrictsDraft] = useState("")
+  const [coverageLocalitiesDraft, setCoverageLocalitiesDraft] = useState("")
+  const [isCoverageScopeSaving, setIsCoverageScopeSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editForm, setEditForm] = useState({
     name: "",
@@ -301,6 +309,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       cluster: string
       thematicAreas: string[]
       districts: string[]
+      localities: string[]
       isOverseer: boolean
       isCoordinator: boolean
       isSubGrantee: boolean
@@ -323,7 +332,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         : role === "implementing_partner" || role === "coordinator" || role === "sub_grantee"
       const partnerType = membership?.partner_type
         || (role === "lead"
-          ? "Overseer"
+          ? "Project Senior Coordinator / Admin"
           : isCoordinator && isImplementer
             ? "Coordinator + Implementer"
             : isCoordinator
@@ -337,8 +346,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       const thematicAreas = Array.isArray(membership?.thematic_areas)
         ? membership?.thematic_areas.map((entry) => String(entry).trim()).filter(Boolean)
         : []
-      const districts = Array.isArray(membership?.districts_localities)
-        ? membership?.districts_localities.map((entry) => String(entry).trim()).filter(Boolean)
+      const districts = Array.isArray(membership?.districts)
+        ? membership?.districts.map((entry) => String(entry).trim()).filter(Boolean)
+        : []
+      const localities = Array.isArray(membership?.localities)
+        ? membership?.localities.map((entry) => String(entry).trim()).filter(Boolean)
         : []
 
       const assignedIndicatorCount = Number.isFinite(Number(membership?.assigned_indicator_count))
@@ -376,7 +388,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         cluster: String(membership?.cluster || ""),
         thematicAreas,
         districts,
-        isOverseer: role === "lead" || partnerType === "Overseer",
+        localities,
+        isOverseer: role === "lead" || partnerType === "Project Senior Coordinator / Admin",
         isCoordinator,
         isSubGrantee,
         isImplementer,
@@ -479,6 +492,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           row.cluster,
           row.thematicAreas.join(" "),
           row.districts.join(" "),
+          row.localities.join(" "),
           row.role,
         ].join(" ").toLowerCase()
         if (!haystack.includes(search)) return false
@@ -815,6 +829,73 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       })
     } finally {
       setIsRoleSaving(false)
+    }
+  }
+
+  const openCoverageScopeEditor = (row: {
+    organizationId: string
+    organizationName: string
+    role: string
+    districts: string[]
+    localities: string[]
+  }) => {
+    setCoverageScopeRow({
+      organizationId: row.organizationId,
+      organizationName: row.organizationName,
+      role: row.role,
+    })
+    setCoverageDistrictsDraft(row.districts.join(", "))
+    setCoverageLocalitiesDraft(row.localities.join(", "))
+  }
+
+  const parseScopeInput = (value: string) => {
+    const out: string[] = []
+    for (const part of value.split(",")) {
+      const v = part.trim()
+      if (v && !out.includes(v)) out.push(v)
+    }
+    return out
+  }
+
+  const handleSaveCoverageScope = async () => {
+    if (!coverageScopeRow) return
+    setIsCoverageScopeSaving(true)
+    try {
+      const validRoleValues = new Set<string>(projectRoleOptions.map((option) => option.value))
+      const normalizedRole = validRoleValues.has(coverageScopeRow.role)
+        ? coverageScopeRow.role
+        : "implementing_partner"
+      await projectsService.setOrganizationRoles(activeProjectId, [
+        {
+          organization_id: Number(coverageScopeRow.organizationId),
+          role: normalizedRole as
+            | "lead"
+            | "coordinator"
+            | "sub_grantee"
+            | "implementing_partner"
+            | "data_reviewer"
+            | "funder"
+            | "other",
+          is_active: true,
+          districts: parseScopeInput(coverageDistrictsDraft),
+          localities: parseScopeInput(coverageLocalitiesDraft),
+        },
+      ])
+      await mutateProject()
+      const savedName = coverageScopeRow.organizationName
+      setCoverageScopeRow(null)
+      toast({
+        title: "Coverage updated",
+        description: `Districts & localities saved for ${savedName}.`,
+      })
+    } catch (err) {
+      toast({
+        title: "Save failed",
+        description: getApiErrorMessage(err, "Could not save districts & localities."),
+        variant: "destructive",
+      })
+    } finally {
+      setIsCoverageScopeSaving(false)
     }
   }
 
@@ -1394,9 +1475,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     </SelectContent>
                   </Select>
                   <Select value={coverageOverseerFilter} onValueChange={setCoverageOverseerFilter}>
-                    <SelectTrigger><SelectValue placeholder="Overseer" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Senior Coordinator / Admin" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All overseers</SelectItem>
+                      <SelectItem value="all">All senior coordinators / admins</SelectItem>
                       {coverageOverseerOptions.map((option) => (
                         <SelectItem key={`coverage-overseer-${option.id}`} value={option.id}>{option.name}</SelectItem>
                       ))}
@@ -1481,16 +1562,18 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                         <th className="px-4 py-3">Partner Type</th>
                         <th className="px-4 py-3 hidden md:table-cell">Cluster</th>
                         <th className="px-4 py-3 hidden lg:table-cell">Thematic Area</th>
-                        <th className="px-4 py-3 hidden lg:table-cell">District</th>
+                        <th className="px-4 py-3 hidden lg:table-cell">Districts</th>
+                        <th className="px-4 py-3 hidden xl:table-cell">Localities</th>
                         <th className="px-4 py-3 text-center">Assigned</th>
                         <th className="px-4 py-3 text-center">Reported</th>
                         <th className="px-4 py-3">Reporting Status</th>
+                        <th className="px-4 py-3 text-right">Scope</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {filteredCoverageRows.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                          <td colSpan={10} className="px-4 py-6 text-center text-sm text-muted-foreground">
                             No partners matched the selected coverage filters.
                           </td>
                         </tr>
@@ -1515,12 +1598,26 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                             <td className="px-4 py-3 hidden md:table-cell">{row.cluster || "—"}</td>
                             <td className="px-4 py-3 hidden lg:table-cell">{row.thematicAreas.join(", ") || "—"}</td>
                             <td className="px-4 py-3 hidden lg:table-cell">{row.districts.join(", ") || "—"}</td>
+                            <td className="px-4 py-3 hidden xl:table-cell">{row.localities.join(", ") || "—"}</td>
                             <td className="px-4 py-3 text-center">{formatNumber(row.assignedIndicatorCount)}</td>
                             <td className="px-4 py-3 text-center">{formatNumber(row.reportedIndicatorCount)}</td>
                             <td className="px-4 py-3">
                               <Badge variant="outline" className="text-xs">
                                 {reportingStatusLabels[row.reportingStatus] || row.reportingStatus.replace(/_/g, " ")}
                               </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openCoverageScopeEditor(row)
+                                }}
+                                title="Edit districts & localities"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
                             </td>
                           </tr>
                         ))
@@ -2249,6 +2346,52 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             <Button variant="outline" onClick={() => setIsActivityOpen(false)} disabled={isSavingActivity}>Cancel</Button>
             <Button onClick={handleSaveActivity} disabled={isSavingActivity}>
               {isSavingActivity ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={coverageScopeRow !== null} onOpenChange={(open) => { if (!open) setCoverageScopeRow(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit coverage</DialogTitle>
+            <DialogDescription>
+              {coverageScopeRow
+                ? `Districts & localities for ${coverageScopeRow.organizationName}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="coverage-districts">Districts</Label>
+              <Textarea
+                id="coverage-districts"
+                value={coverageDistrictsDraft}
+                onChange={(e) => setCoverageDistrictsDraft(e.target.value)}
+                placeholder="e.g. Gaborone, South East, Central"
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground">Separate multiple districts with commas.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="coverage-localities">Localities</Label>
+              <Textarea
+                id="coverage-localities"
+                value={coverageLocalitiesDraft}
+                onChange={(e) => setCoverageLocalitiesDraft(e.target.value)}
+                placeholder="e.g. Tlokweng, Mogoditshane, Molepolole"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">Separate multiple localities with commas.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCoverageScopeRow(null)} disabled={isCoverageScopeSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCoverageScope} disabled={isCoverageScopeSaving}>
+              {isCoverageScopeSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save
             </Button>
           </DialogFooter>
