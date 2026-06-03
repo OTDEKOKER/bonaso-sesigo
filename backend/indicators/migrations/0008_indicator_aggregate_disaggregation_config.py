@@ -11,6 +11,47 @@
 from django.db import migrations, models
 
 
+def add_disaggregation_config_column(apps, schema_editor):
+    """Idempotently add the column on whatever backend we are running on.
+
+    Postgres production already has this column (added out-of-band), so we use
+    ADD COLUMN IF NOT EXISTS there. SQLite (used for the test database and local
+    dev) does not support IF NOT EXISTS, so we add it plainly and tolerate the
+    "duplicate column" error in case it is already present.
+    """
+    if schema_editor.connection.vendor == 'postgresql':
+        schema_editor.execute(
+            "ALTER TABLE indicators_indicator "
+            "ADD COLUMN IF NOT EXISTS aggregate_disaggregation_config "
+            "jsonb NOT NULL DEFAULT '{}'::jsonb;"
+        )
+    else:
+        try:
+            schema_editor.execute(
+                "ALTER TABLE indicators_indicator "
+                "ADD COLUMN aggregate_disaggregation_config text NOT NULL DEFAULT '{}';"
+            )
+        except Exception:
+            # Column already exists on this backend; nothing to do.
+            pass
+
+
+def drop_disaggregation_config_column(apps, schema_editor):
+    if schema_editor.connection.vendor == 'postgresql':
+        schema_editor.execute(
+            "ALTER TABLE indicators_indicator "
+            "DROP COLUMN IF EXISTS aggregate_disaggregation_config;"
+        )
+    else:
+        try:
+            schema_editor.execute(
+                "ALTER TABLE indicators_indicator "
+                "DROP COLUMN aggregate_disaggregation_config;"
+            )
+        except Exception:
+            pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -27,16 +68,9 @@ class Migration(migrations.Migration):
                 ),
             ],
             database_operations=[
-                migrations.RunSQL(
-                    sql=(
-                        "ALTER TABLE indicators_indicator "
-                        "ADD COLUMN IF NOT EXISTS aggregate_disaggregation_config "
-                        "jsonb NOT NULL DEFAULT '{}'::jsonb;"
-                    ),
-                    reverse_sql=(
-                        "ALTER TABLE indicators_indicator "
-                        "DROP COLUMN IF EXISTS aggregate_disaggregation_config;"
-                    ),
+                migrations.RunPython(
+                    add_disaggregation_config_column,
+                    drop_disaggregation_config_column,
                 ),
             ],
         ),

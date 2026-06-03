@@ -6,6 +6,7 @@
  */
 
 import { api, setAuthTokens, clearAuthTokens, getRefreshToken } from '../client';
+import { isTrainingMode } from '@/lib/training-mode';
 import type { User } from '@/lib/types';
 
 const USERS_BASE_PATH = '/users';
@@ -76,9 +77,16 @@ export const authService = {
    * Django endpoint: POST /api/users/request-token/
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
+    // H1: if the user is logging in from a Training Mode context, ask the
+    // backend to stamp a tamper-proof `mode=training` claim on the token so the
+    // session is bound to training mode server-side (not just via query param).
+    const payload =
+      typeof window !== 'undefined' && isTrainingMode()
+        ? { ...credentials, mode: 'training' as const }
+        : credentials;
     const { data } = await api.post<JWTTokenResponse>(
       `${USERS_BASE_PATH}/request-token/`,
-      credentials
+      payload
     );
     setAuthTokens(data.access, data.refresh);
     if (typeof window !== 'undefined') {

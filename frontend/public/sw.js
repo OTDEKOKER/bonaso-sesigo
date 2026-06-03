@@ -618,7 +618,47 @@ self.addEventListener("message", (event) => {
       event.waitUntil(task)
     }
   }
+
+  // Shared-device data-leak fix (audit finding H3): on logout the page asks the
+  // worker to drop all cached authenticated data and any queued offline work so
+  // the next user on this device starts clean. We flush pending mutations first
+  // (best effort, while the outgoing user's token is still valid) so offline
+  // work is not silently lost, THEN wipe everything.
+  if (event.data?.type === "PURGE_OFFLINE_DATA") {
+    const task = purgeOfflineData()
+    if (typeof event.waitUntil === "function") {
+      event.waitUntil(task)
+    }
+  }
 })
+
+async function purgeOfflineData() {
+  // Always clear the cached read responses: this is the shared-device leak the
+  // audit (H3) flagged — the next user must not see the previous user's data.
+  try {
+    await Promise.all([caches.delete(API_CACHE), caches.delete(SHELL_CACHE)])
+  } catch {}
+
+  // Try to flush any un-synced offline writes while the outgoing user's token
+  // is still valid, so their fieldwork is not lost.
+  try {
+    await replayQueuedMutations()
+  } catch {}
+
+  // Only wipe the mutation queue if it is now empty. If writes remain (offline,
+  // or the server rejected them) we keep them rather than silently destroy the
+  // user's data; they are tied to that user's stored token and will sync or
+  // expire safely. An empty DB is deleted to leave the device clean.
+  try {
+    const remaining = await countQueuedMutations()
+    if (!remaining && "indexedDB" in self) {
+      await new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase(MUTATION_DB)
+        req.onsuccess = req.onerror = req.onblocked = () => resolve()
+      })
+    }
+  } catch {}
+}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event

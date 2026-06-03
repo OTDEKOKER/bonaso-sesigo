@@ -63,6 +63,13 @@ class TrainingSeparationTests(TestCase):
         r.user = self.admin
         return r
 
+    def _req_token(self, qs="", mode=None):
+        """Build a request whose verified JWT carries a `mode` claim (H1)."""
+        r = self._req(qs)
+        # Mirror a validated AccessToken: token_mode reads request._auth.get('mode').
+        r._auth = {"mode": mode} if mode is not None else {}
+        return r
+
     # ---- write boundary -------------------------------------------------
     def test_live_write_to_live_allowed(self):
         assert_project_write_allowed(self._req(""), self.live_proj)  # no raise
@@ -83,6 +90,34 @@ class TrainingSeparationTests(TestCase):
         # in a training project, and a live param must not write to training.
         with self.assertRaises(PermissionDenied):
             assert_project_write_allowed(self._req("?include_training=true"), self.train_proj)
+
+    # ---- H1: server-bound mode via signed JWT claim ---------------------
+    def test_token_claim_forces_training_read_even_without_param(self):
+        # A training-stamped token sees ONLY training data even though the
+        # request carries no training_only param.
+        from organizations.access import is_training_only_request, training_view_mode
+        r = self._req_token(qs="", mode="training")
+        self.assertTrue(is_training_only_request(r))
+        self.assertEqual(training_view_mode(r), "training")
+        qs = apply_training_filter(Aggregate.objects.all(), r, project_lookup="project")
+        self.assertEqual(set(qs.values_list("project__is_training", flat=True)), {True})
+
+    def test_token_claim_overrides_param_attempt_to_read_live(self):
+        # The leak the audit flagged: a training user dropping the param to read
+        # live data. With a training-bound token they cannot — the claim wins.
+        from organizations.access import training_view_mode
+        r = self._req_token(qs="?training_only=false&include_training=true", mode="training")
+        self.assertEqual(training_view_mode(r), "training")
+
+    def test_training_token_cannot_write_to_live(self):
+        with self.assertRaises(PermissionDenied):
+            assert_project_write_allowed(self._req_token(mode="training"), self.live_proj)
+
+    def test_no_claim_falls_back_to_param(self):
+        # Backward compatibility: tokens without the claim behave exactly as before.
+        from organizations.access import is_training_only_request
+        self.assertFalse(is_training_only_request(self._req_token(qs="", mode=None)))
+        self.assertTrue(is_training_only_request(self._req_token(qs="?training_only=true", mode=None)))
 
     # ---- read isolation -------------------------------------------------
     def test_aggregates_live_excludes_training(self):

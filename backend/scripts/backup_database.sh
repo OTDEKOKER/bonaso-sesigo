@@ -85,3 +85,49 @@ find "$BACKUP_DIR" -type f \( -name 'bonasov1_db_*.dump' -o -name 'bonasov1_db_*
 
 log "Backup complete: $BACKUP_FILE"
 log "Manifest: $MANIFEST_FILE"
+
+# ---------------------------------------------------------------------------
+# Off-site replication (audit finding C1).
+#
+# A local-only backup does not survive host/disk loss. Configure ONE of:
+#   BONASO_OFFSITE_RCLONE_REMOTE  e.g. "b2:bonaso-backups/db"    (needs rclone)
+#   BONASO_OFFSITE_SSH_DEST       e.g. "backup@host:/srv/bonaso" (needs ssh/scp)
+# Both the .dump and the .json manifest are pushed. If a target IS configured
+# but the push fails, we exit non-zero so the cron log / monitoring alerts.
+# If NO target is configured we log a loud WARNING (so the gap stays visible)
+# but do not fail the local backup.
+# ---------------------------------------------------------------------------
+OFFSITE_RCLONE_REMOTE="${BONASO_OFFSITE_RCLONE_REMOTE:-}"
+OFFSITE_SSH_DEST="${BONASO_OFFSITE_SSH_DEST:-}"
+OFFSITE_STATUS="not_configured"
+
+push_offsite() {
+  if [ -n "$OFFSITE_RCLONE_REMOTE" ]; then
+    command -v rclone >/dev/null 2>&1 || { log "ERROR: rclone not installed but BONASO_OFFSITE_RCLONE_REMOTE is set."; return 1; }
+    log "Off-site (rclone) -> $OFFSITE_RCLONE_REMOTE"
+    rclone copy "$BACKUP_FILE" "$OFFSITE_RCLONE_REMOTE" \
+      && rclone copy "$MANIFEST_FILE" "$OFFSITE_RCLONE_REMOTE" || return 1
+    OFFSITE_STATUS="rclone_ok"
+    return 0
+  fi
+  if [ -n "$OFFSITE_SSH_DEST" ]; then
+    command -v scp >/dev/null 2>&1 || { log "ERROR: scp not installed but BONASO_OFFSITE_SSH_DEST is set."; return 1; }
+    log "Off-site (scp) -> $OFFSITE_SSH_DEST"
+    scp -q -o BatchMode=yes "$BACKUP_FILE" "$MANIFEST_FILE" "$OFFSITE_SSH_DEST/" || return 1
+    OFFSITE_STATUS="scp_ok"
+    return 0
+  fi
+  return 2  # not configured
+}
+
+if push_offsite; then
+  [ "$OFFSITE_STATUS" = "not_configured" ] || log "Off-site replication complete: $OFFSITE_STATUS"
+else
+  rc=$?
+  if [ "$rc" -eq 2 ]; then
+    log "WARNING: no off-site backup target configured (set BONASO_OFFSITE_RCLONE_REMOTE or BONASO_OFFSITE_SSH_DEST). Backup is LOCAL-ONLY and will not survive host loss."
+  else
+    log "ERROR: off-site replication FAILED. Local backup is intact at $BACKUP_FILE but is not replicated."
+    exit 1
+  fi
+fi
