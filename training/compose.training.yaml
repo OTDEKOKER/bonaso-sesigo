@@ -32,6 +32,10 @@ services:
       DEBUG: ${TRAINING_DEBUG}
       DB_SSL_REQUIRE: "False"
       PORT: "18000"
+      # This stack is bridge-networked (unlike the host-networked live stack,
+      # which binds loopback for nginx). Gunicorn must bind 0.0.0.0 so the
+      # published port and the training-frontend container can reach it.
+      GUNICORN_BIND: "0.0.0.0:18000"
       ALLOWED_HOSTS: ${TRAINING_ALLOWED_HOSTS}
       CORS_ALLOW_ALL_ORIGINS: "False"
       CORS_ALLOWED_ORIGINS: ${TRAINING_CORS_ALLOWED_ORIGINS}
