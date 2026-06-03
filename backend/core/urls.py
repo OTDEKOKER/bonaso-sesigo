@@ -7,6 +7,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from .status_views import SystemStatusView
+from .offline_views import OfflineBootstrapView
 
 urlpatterns = [
     # Admin site
@@ -35,6 +36,9 @@ urlpatterns = [
     path('api/uploads/', include('uploads.urls')),
     path('api/messages/', include('messaging.urls')),
     path('api/system/status/', SystemStatusView.as_view(), name='system_status'),
+
+    # Offline sync-down package for field data capture
+    path('api/offline/bootstrap/', OfflineBootstrapView.as_view(), name='offline_bootstrap'),
 ]
 
 # Serve media files during development

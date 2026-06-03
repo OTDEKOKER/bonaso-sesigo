@@ -7,6 +7,8 @@
 
 import { api, setAuthTokens, clearAuthTokens, getRefreshToken } from '../client';
 import { isTrainingMode } from '@/lib/training-mode';
+import { saveOfflineCredential, offlineLogin } from '@/lib/offline/offline-auth';
+import { downloadOfflinePackage } from '@/lib/offline/local-store';
 import type { User } from '@/lib/types';
 
 const USERS_BASE_PATH = '/users';
@@ -92,14 +94,48 @@ export const authService = {
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('show_login_disclaimer', '1');
     }
-    
+
     // Fetch user info after login
+    let user: User | undefined;
     try {
-      const user = await this.getCurrentUser();
-      return { ...data, user };
+      user = await this.getCurrentUser();
     } catch {
-      return data;
+      /* profile fetch is best-effort */
     }
+
+    // Offline-first: cache an offline credential and pre-download the offline
+    // package so the worker can keep working (and log in) with no internet.
+    if (typeof window !== 'undefined') {
+      try {
+        await saveOfflineCredential(credentials.username, credentials.password, {
+          access: data.access,
+          refresh: data.refresh,
+          profile: (user as unknown as Record<string, unknown>) ?? null,
+        });
+      } catch {
+        /* offline credential is best-effort */
+      }
+      // Fire-and-forget metadata download (don't block the login UI).
+      void downloadOfflinePackage().catch(() => undefined);
+    }
+
+    return user ? { ...data, user } : data;
+  },
+
+  /**
+   * Offline login fallback. When there is no network, verify the password
+   * against the locally-stored credential and restore the saved tokens so the
+   * worker can continue capturing. Returns the restored profile or null.
+   */
+  async offlineLogin(credentials: LoginCredentials): Promise<LoginResponse | null> {
+    const restored = await offlineLogin(credentials.username, credentials.password);
+    if (!restored) return null;
+    setAuthTokens(restored.access, restored.refresh);
+    return {
+      access: restored.access,
+      refresh: restored.refresh,
+      user: (restored.profile as unknown as User) ?? undefined,
+    } as LoginResponse;
   },
 
   /**

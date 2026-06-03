@@ -252,12 +252,19 @@ async function networkFirstApi(request) {
     if (!cached) {
       throw new Error("network_and_cache_miss")
     }
-    const ttl = getApiCacheTtlMs(url.pathname)
-    if (!isFreshCachedResponse(cached, ttl)) {
-      await cache.delete(request)
-      throw new Error("stale_api_cache")
-    }
-    return cached
+    // We are offline (the fetch above threw). For field use we serve whatever we
+    // have rather than failing on the short TTL: stale reference data beats no
+    // data when a worker is offline for a full shift. The TTL still governs the
+    // ONLINE path above (where we revalidate from the network). We tag the
+    // response so the UI can show an "offline / cached" indicator.
+    const headers = new Headers(cached.headers)
+    headers.set("x-bonaso-offline-cache", "1")
+    const body = await cached.arrayBuffer()
+    return new Response(body, {
+      status: cached.status,
+      statusText: cached.statusText,
+      headers,
+    })
   }
 }
 

@@ -56,23 +56,49 @@ function LoginForm() {
     setIsLoading(true)
     setError("")
 
-    try {
-      await authService.login({ username: identifier.trim(), password })
+    const applyModeAndRedirect = (offline: boolean) => {
       if (mode === "training") {
         setTrainingMode()
       } else {
         clearTrainingMode()
       }
       toast({
-        title: "Welcome!",
-        description:
-          mode === "training"
+        title: offline ? "Signed in offline" : "Welcome!",
+        description: offline
+          ? "No internet detected — restored your offline session. Data will sync when you reconnect."
+          : mode === "training"
             ? "Signed in to Sesigo Training Mode."
             : "Signed in to Sesigo Live System.",
       })
       router.push(mode === "training" ? "/training/dashboard" : "/dashboard")
+    }
+
+    try {
+      await authService.login({ username: identifier.trim(), password })
+      applyModeAndRedirect(false)
     } catch (err: unknown) {
-      const errorMessage = getLoginErrorMessage(err)
+      // Offline-first fallback: if we are offline (or the network failed),
+      // try to restore a previously-saved offline session for this device.
+      const looksOffline =
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        getLoginErrorMessage(err).toLowerCase().includes("network")
+      if (looksOffline) {
+        try {
+          const restored = await authService.offlineLogin({
+            username: identifier.trim(),
+            password,
+          })
+          if (restored) {
+            applyModeAndRedirect(true)
+            return
+          }
+        } catch {
+          /* fall through to the normal error */
+        }
+      }
+      const errorMessage = looksOffline
+        ? "You appear to be offline and no saved offline session matched. Connect to the internet to sign in the first time on this device."
+        : getLoginErrorMessage(err)
       setError(errorMessage)
       toast({
         title: "Login Failed",

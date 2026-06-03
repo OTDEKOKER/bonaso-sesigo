@@ -444,6 +444,13 @@ export async function purgeOfflineCaches(): Promise<void> {
     }
     // Ask the active SW to drop its IndexedDB offline-mutation queue too.
     navigator.serviceWorker?.controller?.postMessage({ type: 'PURGE_OFFLINE_DATA' });
+    // Drop the downloaded offline package + the offline-login credential.
+    // Deleted by DB name to avoid a circular import with the offline modules.
+    if ('indexedDB' in window) {
+      for (const name of ['bonaso_offline_store', 'bonaso_offline_auth']) {
+        try { indexedDB.deleteDatabase(name); } catch { /* ignore */ }
+      }
+    }
   } catch {
     // Best-effort: never block logout on cache cleanup.
   }
