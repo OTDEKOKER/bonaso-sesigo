@@ -13,7 +13,20 @@ from django.utils.dateparse import parse_date
 from django.db import models
 from django.db import DatabaseError
 from django.db.models import Count, F, Prefetch, Q, Sum
-from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects
+from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, assert_project_write_allowed
+
+
+def _guard_project_write(request, serializer):
+    """Enforce the training/live boundary for a project-scoped write.
+
+    Resolves the target project from the incoming data (create) or the existing
+    instance (partial update) and defers to assert_project_write_allowed. Audit
+    finding H4 — applied to every project-scoped write path.
+    """
+    project = serializer.validated_data.get('project')
+    if project is None and serializer.instance is not None:
+        project = getattr(serializer.instance, 'project', None)
+    assert_project_write_allowed(request, project)
 
 from .models import (
     ClientOrganization,
@@ -832,8 +845,13 @@ class TaskViewSet(viewsets.ModelViewSet):
         return queryset.filter(assigned_to=user)
     
     def perform_create(self, serializer):
+        _guard_project_write(self.request, serializer)
         serializer.save(created_by=self.request.user)
-    
+
+    def perform_update(self, serializer):
+        _guard_project_write(self.request, serializer)
+        serializer.save()
+
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         """Mark task as complete."""
@@ -947,6 +965,14 @@ class DeadlineViewSet(viewsets.ModelViewSet):
         )
         return Response(DeadlineSerializer(deadlines, many=True).data)
     
+    def perform_create(self, serializer):
+        _guard_project_write(self.request, serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        _guard_project_write(self.request, serializer)
+        serializer.save()
+
     @action(detail=True, methods=['post'])
     def submit(self, request, pk=None):
         """Submit deadline."""
@@ -1035,4 +1061,9 @@ class NarrativeReportViewSet(viewsets.ModelViewSet):
         return apply_training_filter(qs, self.request, project_lookup='project')
 
     def perform_create(self, serializer):
+        _guard_project_write(self.request, serializer)
         serializer.save(uploaded_by=self.request.user)
+
+    def perform_update(self, serializer):
+        _guard_project_write(self.request, serializer)
+        serializer.save()

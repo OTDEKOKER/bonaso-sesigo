@@ -2,6 +2,7 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.throttling import ScopedRateThrottle
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
@@ -199,9 +200,19 @@ class EventPhaseViewSet(viewsets.ModelViewSet):
 
 
 class EventCheckinViewSet(viewsets.ViewSet):
-    """Public check-in endpoint (token-based)."""
+    """Public check-in endpoint (token-based).
+
+    This is the only unauthenticated write path in the system, so it is rate
+    limited (audit finding M1): per-IP throttling via DRF + a hard per-event
+    participant cap to stop a leaked token being used to flood the table.
+    """
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'event_checkin'
+
+    # Defence-in-depth ceiling on rows a single public token can create.
+    MAX_PARTICIPANTS_PER_EVENT = 5000
 
     def retrieve(self, request, pk=None):
         event = Event.objects.filter(checkin_token=pk).first()
@@ -216,6 +227,11 @@ class EventCheckinViewSet(viewsets.ViewSet):
         event = Event.objects.filter(checkin_token=pk).first()
         if not event:
             return Response({'detail': 'Invalid check-in token.'}, status=status.HTTP_404_NOT_FOUND)
+        if event.participants.count() >= self.MAX_PARTICIPANTS_PER_EVENT:
+            return Response(
+                {'detail': 'This event has reached its check-in limit.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
         serializer = ParticipantSerializer(data={
             'event': event.id,
             'name': request.data.get('name', ''),

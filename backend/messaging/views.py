@@ -36,6 +36,11 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        # Keep project-scoped announcements on the correct side of the
+        # training/live boundary (audit finding H4). The guard no-ops when the
+        # announcement is not tied to a project.
+        from organizations.access import assert_project_write_allowed
+        assert_project_write_allowed(self.request, serializer.validated_data.get('project'))
         serializer.save(created_by=self.request.user)
 
 

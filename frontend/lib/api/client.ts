@@ -422,6 +422,37 @@ export function clearAuthTokens(): void {
     // tab/browser does not inherit a stale training session.
     localStorage.removeItem('sesigo_mode');
     sessionStorage.removeItem('sesigo_mode');
+    // Shared-device data-leak fix (audit finding H3): the service worker caches
+    // authenticated API responses for offline use. Purge them on logout so the
+    // next user on this device cannot read the previous user's cached data.
+    void purgeOfflineCaches();
+  }
+}
+
+/**
+ * Wipe the service-worker offline caches and any queued offline mutations.
+ * Called on logout (H3) and exposed for the "clear offline data" control.
+ */
+export async function purgeOfflineCaches(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((k) => k.startsWith('bonaso-')).map((k) => caches.delete(k)),
+      );
+    }
+    // Ask the active SW to drop its IndexedDB offline-mutation queue too.
+    navigator.serviceWorker?.controller?.postMessage({ type: 'PURGE_OFFLINE_DATA' });
+    // Drop the downloaded offline package + the offline-login credential.
+    // Deleted by DB name to avoid a circular import with the offline modules.
+    if ('indexedDB' in window) {
+      for (const name of ['bonaso_offline_store', 'bonaso_offline_auth']) {
+        try { indexedDB.deleteDatabase(name); } catch { /* ignore */ }
+      }
+    }
+  } catch {
+    // Best-effort: never block logout on cache cleanup.
   }
 }
 

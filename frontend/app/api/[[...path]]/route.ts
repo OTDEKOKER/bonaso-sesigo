@@ -47,11 +47,34 @@ function getForwardedHost(targetUrl: URL) {
   return targetUrl.host
 }
 
+// Audit finding M3: forward only an explicit allowlist of request headers to the
+// Django backend instead of relaying every client-supplied header. This shrinks
+// the header-injection / request-smuggling surface. The x-forwarded-* and host
+// headers are set deliberately below; auth/content/conditional headers are the
+// only client headers the API actually needs.
+const forwardableRequestHeaders = new Set([
+  'authorization',
+  'content-type',
+  'accept',
+  'accept-language',
+  'cookie',
+  'x-csrftoken',
+  'x-requested-with',
+  'user-agent',
+  'range',
+  'if-none-match',
+  'if-modified-since',
+])
+
 function buildRequestHeaders(request: NextRequest, targetUrl: URL, bodyLength: number) {
   const headers = new Map<string, string>()
 
   for (const [key, value] of request.headers.entries()) {
-    if (hopByHopHeaders.has(key.toLowerCase())) {
+    const lower = key.toLowerCase()
+    if (hopByHopHeaders.has(lower)) {
+      continue
+    }
+    if (!forwardableRequestHeaders.has(lower)) {
       continue
     }
 

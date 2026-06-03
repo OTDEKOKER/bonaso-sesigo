@@ -87,6 +87,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     groups = serializers.ListField(
         child=serializers.CharField(),
         required=False,
+        write_only=True,
     )
 
     class Meta:

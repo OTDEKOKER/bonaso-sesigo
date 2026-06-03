@@ -82,6 +82,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.ApiCacheControlMiddleware',
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -198,6 +199,23 @@ SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', not DEBUG)
 SECURE_REFERRER_POLICY = os.getenv('SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
 X_FRAME_OPTIONS = os.getenv('X_FRAME_OPTIONS', 'DENY')
 
+# Production safety guards (audit findings L2, L4). When DEBUG is off we refuse
+# to start with a wide-open CORS policy or on the SQLite dev database, so a
+# misconfiguration can never silently weaken or mis-store production data.
+# Skipped under the test runner.
+if not DEBUG and not TESTING:
+    from django.core.exceptions import ImproperlyConfigured
+    if os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() == 'true':
+        raise ImproperlyConfigured(
+            'CORS_ALLOW_ALL_ORIGINS must not be True in production. '
+            'Set explicit CORS_ALLOWED_ORIGINS instead.'
+        )
+    if DATABASES['default']['ENGINE'].endswith('sqlite3'):
+        raise ImproperlyConfigured(
+            'Refusing to run in production on SQLite. Set DATABASE_URL or '
+            'USE_POSTGRES=True so production data is stored in PostgreSQL.'
+        )
+
 # Upload size caps. Note: FILE_UPLOAD_MAX_MEMORY_SIZE is the in-memory threshold,
 # not a hard cap — larger uploads stream to a temp file. Hard caps on file size
 # must still be enforced in upload views/serializers for the workbook flow.
@@ -219,6 +237,14 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ),
+    # Throttling. Scoped rates protect the public/unauthenticated surface
+    # (event check-in) without rate-limiting normal authenticated traffic.
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.ScopedRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'event_checkin': os.getenv('THROTTLE_EVENT_CHECKIN', '30/minute'),
+    },
 }
 
 # Simple JWT settings

@@ -32,8 +32,42 @@ def user_can_include_training(user) -> bool:
     return is_organization_admin(user)
 
 
+def token_mode(request) -> str | None:
+    """
+    Read the authoritative training/live mode from the verified JWT, if present.
+
+    Audit finding H1. When a user logs in through Sesigo Training Mode the access
+    token is stamped with a signed ``mode='training'`` claim. Because the claim is
+    part of the cryptographically-verified token it CANNOT be tampered with by the
+    client, unlike the legacy ``training_only`` query parameter. A training-stamped
+    token therefore binds the session to training mode server-side: the user can no
+    longer reach live data simply by dropping the query parameter.
+
+    Returns 'training', 'live', or None (no claim → fall back to the query param,
+    preserving backward compatibility with already-issued tokens and clients that
+    have not yet adopted the claim).
+    """
+    # Read the cached, already-validated token. We deliberately read the private
+    # ``_auth`` attribute rather than ``request.auth``: the public property lazily
+    # runs authentication if it has not happened yet, which has side effects on
+    # requests built without credentials. In production DRF authenticates during
+    # dispatch (before get_queryset), so ``_auth`` is already populated here.
+    auth = getattr(request, "_auth", None)
+    if auth is None:
+        return None
+    try:
+        value = auth.get("mode")  # AccessToken supports dict-style .get()
+    except (AttributeError, TypeError):
+        return None
+    value = str(value or "").strip().lower()
+    return value if value in {"training", "live"} else None
+
+
 def should_include_training(request) -> bool:
     """Return True if the caller explicitly requested training data AND is an admin."""
+    # A training-bound token can never escalate to "see everything".
+    if token_mode(request) == "training":
+        return False
     param = str(request.query_params.get("include_training") or "").strip().lower()
     return param in {"1", "true", "yes", "y"} and user_can_include_training(request.user)
 
@@ -43,10 +77,14 @@ def is_training_only_request(request) -> bool:
     Return True if the caller is operating inside Sesigo Training Mode and should
     see ONLY training-project data.
 
-    The frontend signals this by appending training_only=true (or mode=training)
-    to every request made from a /training/* route. This is safe for all users:
-    training data is dummy/demo data, and the filter can never expose live data.
+    Authority order:
+      1. Signed JWT ``mode`` claim (H1) — tamper-proof, wins when present.
+      2. Legacy ``training_only=true`` / ``mode=training`` query parameter — used
+         only when the token carries no claim (backward compatible).
     """
+    claim = token_mode(request)
+    if claim is not None:
+        return claim == "training"
     training_only = str(request.query_params.get("training_only") or "").strip().lower()
     mode = str(request.query_params.get("mode") or "").strip().lower()
     return training_only in {"1", "true", "yes", "y"} or mode == "training"

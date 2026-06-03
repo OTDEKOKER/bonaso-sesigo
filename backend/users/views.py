@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission, Group
 from django.utils import timezone
@@ -33,8 +34,33 @@ class IsPortalAdmin(BasePermission):
 # ---------------------------
 # JWT Token Views
 # ---------------------------
+class TrainingAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Stamp a tamper-proof training/live mode claim onto the token (H1).
+
+    When the login request carries ``mode=training`` the issued token is bound to
+    Sesigo Training Mode server-side. The claim is set on the refresh token so it
+    survives access-token refresh, and propagates to the access token. Logins
+    without ``mode=training`` are unchanged (no claim → query-param fallback).
+    """
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        request = self.context.get("request")
+        requested_mode = ""
+        if request is not None:
+            requested_mode = str(request.data.get("mode") or "").strip().lower()
+        if requested_mode == "training":
+            refresh = self.get_token(self.user)
+            refresh["mode"] = "training"
+            data["refresh"] = str(refresh)
+            data["access"] = str(refresh.access_token)
+        return data
+
+
 class CookieTokenObtainPairView(TokenObtainPairView):
     """Custom login view that logs user activity."""
+
+    serializer_class = TrainingAwareTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
