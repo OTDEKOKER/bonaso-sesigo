@@ -16,6 +16,9 @@ class ApiCacheControlMiddleware:
 
     # Path fragments (after /api) whose responses must never be stored at all.
     NO_STORE_PREFIXES = (
+        # Individual-level data collection lives under /api/record/
+        # (respondents, interactions, responses) — all PII-bearing.
+        "/record",
         "/respondents",
         "/interactions",
         "/users",
