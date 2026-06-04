@@ -98,27 +98,51 @@ class Interaction(models.Model):
 
 
 class Response(models.Model):
-    """Individual response to an indicator within an interaction."""
-    
+    """Individual answer to a question within an interaction.
+
+    Responses are keyed by ``question``. ``indicator`` is derived from the
+    question's optional reporting link (kept denormalised so existing rollup
+    queries can continue to filter by indicator) and is null for questions
+    that do not feed an indicator.
+    """
+
     interaction = models.ForeignKey(
         Interaction,
         on_delete=models.CASCADE,
         related_name='responses'
     )
+    question = models.ForeignKey(
+        'indicators.Question',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='responses',
+    )
     indicator = models.ForeignKey(
         'indicators.Indicator',
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='responses'
     )
-    
+
     # Store value as JSON to handle different types
     value = models.JSONField()
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
-        unique_together = ['interaction', 'indicator']
-    
+        unique_together = ['interaction', 'question']
+
+    def save(self, *args, **kwargs):
+        # Keep the denormalised indicator in sync with the question's link.
+        if self.question_id and self.indicator_id is None:
+            self.indicator_id = self.question.indicator_id
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.interaction} - {self.indicator.code}"
+        label = self.question.text if self.question_id else (
+            self.indicator.code if self.indicator_id else 'response'
+        )
+        return f"{self.interaction} - {label}"

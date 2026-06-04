@@ -1,14 +1,12 @@
 from django.contrib import admin
-from .models import Indicator, IndicatorAlias, Assessment, AssessmentIndicator
+from .models import Indicator, IndicatorAlias, Assessment, AssessmentQuestion, Question
 
 
-class AssessmentIndicatorInline(admin.TabularInline):
-    model = AssessmentIndicator
+class AssessmentQuestionInline(admin.TabularInline):
+    model = AssessmentQuestion
     extra = 1
-    fields = [
-        'indicator', 'question_text', 'response_type', 'aggregate_mode',
-        'order', 'is_required', 'depends_on', 'condition_value',
-    ]
+    raw_id_fields = ['question', 'depends_on']
+    fields = ['question', 'order', 'is_required', 'depends_on', 'condition_value']
 
 
 class IndicatorAliasInline(admin.TabularInline):
@@ -34,9 +32,17 @@ class IndicatorAliasAdmin(admin.ModelAdmin):
     autocomplete_fields = ['indicator', 'created_by']
 
 
+@admin.register(Question)
+class QuestionAdmin(admin.ModelAdmin):
+    list_display = ['text', 'code', 'response_type', 'category', 'indicator', 'is_active']
+    list_filter = ['response_type', 'category', 'is_active']
+    search_fields = ['text', 'code']
+    autocomplete_fields = ['indicator', 'created_by']
+
+
 @admin.register(Assessment)
 class AssessmentAdmin(admin.ModelAdmin):
     list_display = ['name', 'is_active', 'created_at']
     list_filter = ['is_active']
     search_fields = ['name', 'description']
-    inlines = [AssessmentIndicatorInline]
+    inlines = [AssessmentQuestionInline]

@@ -270,3 +270,85 @@ DJOSER = {
         'current_user': 'users.serializers.UserSerializer',
     },
 }
+
+# Logging
+# ----------------------------------------------------------------------------
+# Audit finding: production had no LOGGING config, so 500s and failed imports
+# were only visible in ephemeral container stdout with no structure. We log to
+# stdout (captured by Docker/journald) at LOG_LEVEL, always surface unhandled
+# request errors via django.request, and optionally mirror to a rotating file
+# when LOG_DIR is set. Skipped under the test runner to keep test output clean.
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+LOG_DIR = os.getenv('LOG_DIR', '').strip()
+
+_log_handlers = {
+    'console': {
+        'class': 'logging.StreamHandler',
+        'formatter': 'verbose',
+        'stream': sys.stdout,
+    },
+}
+_default_handlers = ['console']
+
+if LOG_DIR:
+    os.makedirs(LOG_DIR, exist_ok=True)
+    _log_handlers['file'] = {
+        'class': 'logging.handlers.RotatingFileHandler',
+        'formatter': 'verbose',
+        'filename': os.path.join(LOG_DIR, 'app.log'),
+        'maxBytes': env_int('LOG_FILE_MAX_BYTES', 10 * 1024 * 1024),
+        'backupCount': env_int('LOG_FILE_BACKUP_COUNT', 5),
+    }
+    _default_handlers.append('file')
+
+if not TESTING:
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'verbose': {
+                'format': '[{asctime}] {levelname} {name}: {message}',
+                'style': '{',
+            },
+        },
+        'handlers': _log_handlers,
+        'root': {
+            'handlers': _default_handlers,
+            'level': LOG_LEVEL,
+        },
+        'loggers': {
+            'django': {
+                'handlers': _default_handlers,
+                'level': LOG_LEVEL,
+                'propagate': False,
+            },
+            # Unhandled 500s in views are logged here at ERROR with a traceback.
+            'django.request': {
+                'handlers': _default_handlers,
+                'level': 'ERROR',
+                'propagate': False,
+            },
+        },
+    }
+
+# Optional error tracking. Only activates when SENTRY_DSN is set AND the
+# sentry-sdk package is installed, so it is a zero-cost no-op in environments
+# (or test runs) that don't opt in. Install with: pip install sentry-sdk.
+SENTRY_DSN = os.getenv('SENTRY_DSN', '').strip()
+if SENTRY_DSN and not TESTING:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration()],
+            environment=os.getenv('SENTRY_ENVIRONMENT', 'production'),
+            traces_sample_rate=float(os.getenv('SENTRY_TRACES_SAMPLE_RATE', '0.0')),
+            send_default_pii=False,
+        )
+    except ImportError:
+        import logging
+        logging.getLogger(__name__).warning(
+            'SENTRY_DSN is set but sentry-sdk is not installed; error tracking disabled.'
+        )

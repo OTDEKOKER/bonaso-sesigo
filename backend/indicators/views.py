@@ -11,10 +11,14 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import models, transaction, IntegrityError
 from django.db.models import Count, Prefetch
 
-from .models import Indicator, IndicatorAlias, Assessment, AssessmentIndicator
+from .models import (
+    Indicator, IndicatorAlias, Assessment, AssessmentQuestion, Question,
+    AGGREGATE_MODE_CHOICES,
+)
 from .serializers import (
     IndicatorSerializer, IndicatorListSerializer, IndicatorSimpleSerializer, IndicatorAliasSerializer,
-    AssessmentSerializer, AssessmentListSerializer, AssessmentSimpleSerializer, AssessmentIndicatorSerializer
+    AssessmentSerializer, AssessmentListSerializer, AssessmentSimpleSerializer,
+    AssessmentQuestionSerializer, QuestionSerializer, QuestionSimpleSerializer,
 )
 
 # Known target-group terms stripped when comparing indicator names for deduplication.
@@ -329,18 +333,19 @@ class AssessmentViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Assessment.objects.annotate(
-            indicators_count=Count('indicators', distinct=True)
+            questions_count=Count('questions', distinct=True)
         )
         if self.action == 'list':
-            queryset = queryset.prefetch_related('organizations', 'indicators')
+            queryset = queryset.prefetch_related('organizations')
         else:
             queryset = queryset.select_related('created_by').prefetch_related(
                 'organizations',
                 Prefetch(
-                    'assessmentindicator_set',
-                    queryset=AssessmentIndicator.objects.select_related(
-                        'indicator', 'depends_on'
+                    'assessmentquestion_set',
+                    queryset=AssessmentQuestion.objects.select_related(
+                        'question', 'question__indicator', 'depends_on'
                     ).order_by('order'),
+                    to_attr='prefetched_questions',
                 ),
             )
         user = self.request.user
@@ -370,146 +375,144 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         except (TypeError, ValueError):
             return default
 
-    def _validate_question_payload(self, payload):
-        response_type = payload.get('response_type')
-        if response_type in (None, ''):
-            response_type = ''
-        elif response_type not in {choice[0] for choice in Indicator.TYPE_CHOICES}:
-            return Response(
-                {'detail': 'Invalid response_type supplied.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        response_options = payload.get('response_options')
-        if response_options is not None and not isinstance(response_options, list):
-            return Response(
-                {'detail': 'response_options must be a list.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        response_sub_labels = payload.get('response_sub_labels')
-        if response_sub_labels is not None and not isinstance(response_sub_labels, list):
-            return Response(
-                {'detail': 'response_sub_labels must be a list.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        aggregate_mode = payload.get('aggregate_mode')
-        if aggregate_mode not in (None, '') and aggregate_mode not in {
-            choice[0] for choice in AssessmentIndicator.AGGREGATE_MODE_CHOICES
-        }:
-            return Response(
-                {'detail': 'Invalid aggregate_mode supplied.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        aggregate_match_values = payload.get('aggregate_match_values')
-        if aggregate_match_values is not None and not isinstance(aggregate_match_values, list):
-            return Response(
-                {'detail': 'aggregate_match_values must be a list.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return None
-    
     @action(detail=False, methods=['get'])
     def simple(self, request):
         """Get simple list for dropdowns."""
         assessments = self.get_queryset().filter(is_active=True)
         serializer = AssessmentSimpleSerializer(assessments, many=True)
         return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def add_indicator(self, request, pk=None):
-        """Create or update an assessment question linked to an indicator."""
-        assessment = self.get_object()
-        from respondents.rollups import sync_assessment_question_rollups
 
+    @action(detail=True, methods=['post'], url_path='add_question')
+    def add_question(self, request, pk=None):
+        """Attach an existing bank question to this assessment (or update its placement).
+
+        Body:
+          question_id   — Question to attach (required when creating a link)
+          link_id       — AssessmentQuestion id to update an existing placement
+          order, is_required, depends_on, condition_value — placement fields
+        """
+        assessment = self.get_object()
+        from respondents.rollups import sync_question_rollups
+
+        link_id = request.data.get('link_id')
         question_id = request.data.get('question_id')
-        indicator_id = request.data.get('indicator_id')
         order = self._coerce_int(request.data.get('order'), 0)
         is_required = self._coerce_bool(request.data.get('is_required'), True)
+        depends_on_id = request.data.get('depends_on')
+        condition_value = request.data.get('condition_value')
 
-        validation_error = self._validate_question_payload(request.data)
-        if validation_error is not None:
-            return validation_error
-        
-        try:
-            indicator = Indicator.objects.get(id=indicator_id)
-            if question_id:
-                ai = AssessmentIndicator.objects.filter(
-                    assessment=assessment,
-                    id=question_id,
-                ).first()
-                if ai is None:
-                    return Response(
-                        {'detail': 'Assessment question not found.'},
-                        status=status.HTTP_404_NOT_FOUND,
-                    )
-                duplicate = AssessmentIndicator.objects.filter(
-                    assessment=assessment,
-                    indicator=indicator,
-                ).exclude(id=ai.id)
-                if duplicate.exists():
-                    return Response(
-                        {'detail': 'That indicator is already linked to this assessment.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                ai.indicator = indicator
-            else:
-                ai, _ = AssessmentIndicator.objects.get_or_create(
-                    assessment=assessment,
-                    indicator=indicator,
+        if link_id:
+            link = AssessmentQuestion.objects.filter(assessment=assessment, id=link_id).first()
+            if link is None:
+                return Response(
+                    {'detail': 'Assessment question not found.'},
+                    status=status.HTTP_404_NOT_FOUND,
                 )
+        else:
+            try:
+                question = Question.objects.get(id=question_id)
+            except (Question.DoesNotExist, ValueError, TypeError):
+                return Response({'detail': 'Question not found.'}, status=status.HTTP_404_NOT_FOUND)
+            link, _ = AssessmentQuestion.objects.get_or_create(
+                assessment=assessment, question=question,
+            )
 
-            ai.order = order
-            ai.is_required = is_required
+        link.order = order
+        link.is_required = is_required
+        if 'depends_on' in request.data:
+            link.depends_on_id = depends_on_id or None
+        if 'condition_value' in request.data:
+            link.condition_value = condition_value
 
-            if 'question_text' in request.data:
-                ai.question_text = (request.data.get('question_text') or '').strip()
-            if 'help_text' in request.data:
-                ai.help_text = request.data.get('help_text') or ''
-            if 'response_type' in request.data:
-                ai.response_type = request.data.get('response_type') or ''
-            if 'response_options' in request.data:
-                ai.response_options = request.data.get('response_options') or []
-            if 'response_sub_labels' in request.data:
-                ai.response_sub_labels = request.data.get('response_sub_labels') or []
-            if 'aggregate_mode' in request.data:
-                ai.aggregate_mode = request.data.get('aggregate_mode') or 'none'
-            if 'aggregate_match_values' in request.data:
-                ai.aggregate_match_values = request.data.get('aggregate_match_values') or []
+        link.save()
+        sync_question_rollups(link.question_id)
+        return Response(AssessmentQuestionSerializer(link).data)
 
-            ai.save()
-            sync_assessment_question_rollups(ai.assessment_id, ai.indicator_id)
-            return Response(AssessmentIndicatorSerializer(ai).data)
-        except Indicator.DoesNotExist:
-            return Response({'detail': 'Indicator not found.'}, status=status.HTTP_404_NOT_FOUND)
-    
-    @action(detail=True, methods=['post'])
-    def remove_indicator(self, request, pk=None):
-        """Remove a question from an assessment."""
+    @action(detail=True, methods=['post'], url_path='remove_question')
+    def remove_question(self, request, pk=None):
+        """Remove a question placement from this assessment."""
         assessment = self.get_object()
-        from respondents.rollups import sync_assessment_question_rollups
+        from respondents.rollups import sync_question_rollups
 
+        link_id = request.data.get('link_id')
         question_id = request.data.get('question_id')
-        indicator_id = request.data.get('indicator_id')
 
-        queryset = AssessmentIndicator.objects.filter(assessment=assessment)
-        if question_id:
-            queryset = queryset.filter(id=question_id)
-        elif indicator_id:
-            queryset = queryset.filter(indicator_id=indicator_id)
+        queryset = AssessmentQuestion.objects.filter(assessment=assessment)
+        if link_id:
+            queryset = queryset.filter(id=link_id)
+        elif question_id:
+            queryset = queryset.filter(question_id=question_id)
         else:
             return Response(
-                {'detail': 'question_id or indicator_id is required.'},
+                {'detail': 'link_id or question_id is required.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        affected_pairs = list(queryset.values_list('assessment_id', 'indicator_id').distinct())
+        affected_question_ids = list(queryset.values_list('question_id', flat=True).distinct())
         queryset.delete()
-        for affected_assessment_id, affected_indicator_id in affected_pairs:
-            sync_assessment_question_rollups(affected_assessment_id, affected_indicator_id)
+        for qid in affected_question_ids:
+            sync_question_rollups(qid)
 
         return Response({'detail': 'Question removed from assessment.'})
+
+
+class QuestionViewSet(viewsets.ModelViewSet):
+    """ViewSet for the reusable question bank."""
+
+    queryset = Question.objects.all()
+    serializer_class = QuestionSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = IndicatorPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['response_type', 'category', 'is_active', 'indicator', 'organizations']
+    search_fields = ['text', 'code']
+    ordering_fields = ['text', 'created_at', 'category']
+    ordering = ['text']
+
+    def get_serializer_class(self):
+        if self.action == 'simple':
+            return QuestionSimpleSerializer
+        return QuestionSerializer
+
+    def get_queryset(self):
+        queryset = Question.objects.select_related('indicator', 'created_by').prefetch_related(
+            'organizations'
+        ).annotate(
+            organizations_count=Count('organizations', distinct=True),
+            assessments_count=Count('assessments', distinct=True),
+        )
+        user = self.request.user
+        if user.is_superuser or user.is_staff or user.role == 'admin':
+            return queryset
+        elif user.organization:
+            return queryset.filter(
+                models.Q(organizations=user.organization) | models.Q(organizations__isnull=True)
+            ).distinct()
+        return queryset.filter(organizations__isnull=True)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def simple(self, request):
+        """Get simple list for question pickers."""
+        questions = self.get_queryset().filter(is_active=True)
+        serializer = QuestionSimpleSerializer(questions, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def types(self, request):
+        """Get available response types (shared with indicators)."""
+        return Response([
+            {'value': choice[0], 'label': choice[1]}
+            for choice in Indicator.TYPE_CHOICES
+        ])
+
+    @action(detail=False, methods=['get'], url_path='aggregate_modes')
+    def aggregate_modes(self, request):
+        """Get available aggregate (roll-up) modes."""
+        return Response([
+            {'value': choice[0], 'label': choice[1]}
+            for choice in AGGREGATE_MODE_CHOICES
+        ])
 

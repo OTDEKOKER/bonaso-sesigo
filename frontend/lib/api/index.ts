@@ -154,7 +154,7 @@ export type {
 } from './services/reports';
 
 // Legacy Analytics
-export { dashboardSettingsService, pivotTablesService, lineListsService, requestLogsService } from './services/analytics';
+export { dashboardSettingsService, requestLogsService } from './services/analytics';
 export type {
   ChartField,
   ChartFieldName,
@@ -169,12 +169,6 @@ export type {
   DashboardSettingsFilters,
   DashboardSettingRequest,
   DashboardChartRequest,
-  PivotTable,
-  PivotTableFilters,
-  PivotTableRequest,
-  LineList,
-  LineListFilters,
-  LineListRequest,
   RequestLog,
 } from './services/analytics';
 
@@ -188,39 +182,7 @@ export type {
   UpdateCoordinatorTargetRequest,
   CoordinatorTargetBulkAssignRequest,
   CoordinatorTargetChildContribution,
-  CoordinatorTargetPerformanceRow,
 } from "./services/coordinator-targets";
-
-// Excel Report Workbooks
-export { reportWorkbooksService } from './services/report-workbooks';
-export type {
-  WorkbookImportStatus,
-  WorkbookIssueSeverity,
-  WorkbookExportScope,
-  WorkbookSheetRole,
-  FinancialQuarterCode,
-  WorkbookTemplateSummary,
-  WorkbookTemplateMatch,
-  WorkbookTablePreview,
-  WorkbookQuarterTargetMap,
-  WorkbookIndicatorAssignmentPreview,
-  WorkbookMissingIndicatorCandidate,
-  WorkbookSheetAnalysis,
-  WorkbookValidationIssue,
-  WorkbookImportSummary,
-  WorkbookImportSession,
-  WorkbookImportFilters,
-  CreateWorkbookImportRequest,
-  ConfirmWorkbookImportRequest,
-  CreateMissingIndicatorsRequest,
-  WorkbookExportRequest,
-  WorkbookExportJob,
-} from './services/report-workbooks';
-export {
-  buildMissingIndicatorPayload,
-  buildCreateMissingIndicatorsRequest,
-} from './services/report-workbooks';
-
 
 // Uploads
 export { uploadsService } from './services/uploads';

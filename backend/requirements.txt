@@ -12,3 +12,6 @@ gunicorn>=21.2.0
 uvicorn>=0.30.0
 whitenoise>=6.6.0
 openpyxl>=3.1.2
+
+# Optional: error tracking. Uncomment and set SENTRY_DSN to enable.
+# sentry-sdk>=2.0.0
