@@ -22,6 +22,28 @@ import { ChevronDown, ChevronUp, FileImage, FileSpreadsheet, Loader2, Maximize2,
 import * as XLSX from "xlsx-js-style";
 
 import { cleanLabel, normalizeBreakdownLabel, triggerBlobDownload, type BreakdownMap } from "@/components/analysis/analytics-utils";
+import { appendWorksheetFromRows, toExcelCellValue, type ExcelRow } from "@/components/analysis/chart-card-export";
+import type {
+  AggregateDisaggregationConfigLike,
+  BiologicalFigureRow,
+  ChartAxisTickProps,
+  ChartFilterGroup,
+  ChartFilterOption,
+  ChartTableRow,
+  DashboardChartCardProps,
+  DisaggregateCategoryMap,
+  DisaggregateCompareMode,
+  DisaggregateEntry,
+  GroupingCompareMode,
+  LegacyChartKey,
+  PieDisplayRow,
+  PresentationLegendItem,
+  RenderedSeries,
+  SinglePeriodComparisonRow,
+  SinglePeriodLayoutConfig,
+  TooltipEntry,
+  TrendSeries,
+} from "@/components/analysis/chart-card-types";
 import { ChartHeader } from "@/components/analysis/chart-header";
 import { ConsolidatedMatrixTable } from "@/components/analysis/consolidated-matrix-table";
 import { Button } from "@/components/ui/button";
@@ -38,7 +60,7 @@ import {
   getAggregateValueDisaggregateRows,
   normalizeAggregateValueToDisaggregateMap,
 } from "@/lib/aggregates/disaggregate-normalization";
-import { dashboardSettingsService, type DashboardSetting, type IndicatorChartSetting } from "@/lib/api";
+import { dashboardSettingsService, type IndicatorChartSetting } from "@/lib/api";
 import { useAllAggregates, useAllOrganizations, useIndicatorTrendsBulk } from "@/lib/hooks/use-api";
 import { getIndicatorChartLabel } from "@/lib/indicators/display-name";
 import { resolveIndicatorId } from "@/lib/indicators/id-aliases";
@@ -79,122 +101,6 @@ const PROFESSIONAL_CHART_COLORS = [
   "#9E480E",
 ] as const;
 
-type DashboardChartCardProps = {
-  chart: IndicatorChartSetting;
-  dashboard: DashboardSetting;
-  onEdit: (chart: IndicatorChartSetting) => void;
-  onDelete: (chart: IndicatorChartSetting) => Promise<void> | void;
-  onRefresh: () => Promise<void> | void;
-  deleteDisabled?: boolean;
-  zoomable?: boolean;
-  zoomedView?: boolean;
-};
-
-type TrendSeries = {
-  indicator_id: number;
-  indicator_name: string;
-  data: Array<{ month: string; value: number; target: number }>;
-};
-
-type LegacyChartKey = {
-  key: string;
-  label: string;
-  stackId?: string;
-};
-
-type RenderedSeries = {
-  key: string;
-  label: string;
-  stackId?: string;
-};
-
-type PresentationLegendItem = {
-  key: string;
-  label: string;
-  color: string;
-  total: number;
-};
-
-type ChartFilterOption = {
-  value: string;
-  label: string;
-};
-
-type ChartFilterGroup = {
-  name: string;
-  label: string;
-  options: ChartFilterOption[];
-};
-
-type AggregateDisaggregationDimension = {
-  key?: unknown;
-  label?: unknown;
-  values?: unknown[];
-};
-
-type AggregateDisaggregationConfigLike = {
-  dimensions?: AggregateDisaggregationDimension[];
-};
-
-type DisaggregateCompareMode = "period" | "organization" | "coordinator";
-type GroupingCompareMode = Exclude<DisaggregateCompareMode, "period">;
-
-type ChartTableRow = {
-  key: string;
-  label: string;
-  color: string;
-  values: Array<string | number>;
-};
-
-type SinglePeriodComparisonRow = {
-  key: string;
-  label: string;
-  value: number;
-  color: string;
-  share: number;
-};
-
-type ChartAxisTickProps = {
-  x?: number;
-  y?: number;
-  payload?: {
-    value?: string | number;
-  };
-};
-
-type SinglePeriodLayoutConfig = {
-  labelWidth: number;
-  maxCharsPerLine: number;
-  lineHeight: number;
-  rowMinHeight: number;
-  compactSummary: boolean;
-};
-
-type PieDisplayRow = {
-  key: string;
-  name: string;
-  value: number;
-};
-
-type TooltipEntry = {
-  color?: string;
-  dataKey?: string | number;
-  name?: string;
-  payload?: Record<string, unknown>;
-  value?: string | number;
-};
-
-type BiologicalFigureRow = {
-  factor: string;
-  sex: "Female" | "Male";
-  screened: number;
-  referred: number;
-  period?: string;
-};
-
-type DisaggregateEntry = Record<string, unknown>;
-type DisaggregateSecondLevel = Record<string, DisaggregateEntry | number | string | null | undefined>;
-type DisaggregateCategoryMap = Record<string, DisaggregateSecondLevel>;
 
 const AGE_ORDER: Record<string, number> = {
   "10 14": 1,
@@ -549,55 +455,6 @@ function SinglePeriodComparisonXAxisTick({
   );
 }
 
-type ExcelCellValue = string | number | null;
-type ExcelRow = ExcelCellValue[];
-
-function toExcelCellValue(value: unknown): ExcelCellValue {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return "";
-    const compact = trimmed.replaceAll(",", "");
-    if (/^-?\d+(\.\d+)?$/.test(compact)) {
-      const parsed = Number(compact);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-    return trimmed;
-  }
-
-  if (value === null || value === undefined) return null;
-  return String(value);
-}
-
-function normalizeWorksheetName(name: string, fallback: string) {
-  const sanitized = name.replace(/[\\/*?:[\]]/g, " ").replace(/\s+/g, " ").trim();
-  if (!sanitized) return fallback;
-  return sanitized.slice(0, 31);
-}
-
-function applyWorksheetColumnWidths(sheet: XLSX.WorkSheet, rows: ExcelRow[]) {
-  if (rows.length === 0) return;
-  const maxColumns = Math.max(...rows.map((row) => row.length));
-  const widths = Array.from({ length: maxColumns }, (_, columnIndex) => {
-    const maxLength = rows.reduce((currentMax, row) => {
-      const value = row[columnIndex];
-      const text = value === null || value === undefined ? "" : String(value);
-      return Math.max(currentMax, text.length);
-    }, 0);
-    return { wch: Math.min(Math.max(maxLength + 2, 12), 70) };
-  });
-  sheet["!cols"] = widths;
-}
-
-function appendWorksheetFromRows(workbook: XLSX.WorkBook, sheetName: string, rows: ExcelRow[], fallbackName: string) {
-  if (rows.length === 0) return;
-  const worksheet = XLSX.utils.aoa_to_sheet(rows);
-  applyWorksheetColumnWidths(worksheet, rows);
-  XLSX.utils.book_append_sheet(workbook, worksheet, normalizeWorksheetName(sheetName, fallbackName));
-}
 
 function parseMonthLabel(value: string) {
   const trimmed = value.trim();
