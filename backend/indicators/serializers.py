@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import Indicator, IndicatorAlias, Assessment, AssessmentIndicator
+from .models import (
+    Indicator, IndicatorAlias, Assessment, AssessmentQuestion, Question,
+)
 
 
 class IndicatorAliasSerializer(serializers.ModelSerializer):
@@ -85,90 +87,129 @@ class IndicatorSimpleSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code', 'type', 'category']
 
 
-class AssessmentIndicatorSerializer(serializers.ModelSerializer):
-    """Serializer for AssessmentIndicator through model."""
-    
+class QuestionSerializer(serializers.ModelSerializer):
+    """Full serializer for the reusable question bank."""
+
     indicator_detail = IndicatorSimpleSerializer(source='indicator', read_only=True)
-    question_text_display = serializers.SerializerMethodField()
-    response_type_display = serializers.SerializerMethodField()
-    response_options_display = serializers.SerializerMethodField()
-    response_sub_labels_display = serializers.SerializerMethodField()
-    
+    organizations_count = serializers.SerializerMethodField()
+    assessments_count = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+
     class Meta:
-        model = AssessmentIndicator
+        model = Question
         fields = [
-            'id', 'assessment', 'indicator', 'indicator_detail',
-            'question_text', 'question_text_display', 'help_text',
-            'response_type', 'response_type_display',
-            'response_options', 'response_options_display',
-            'response_sub_labels', 'response_sub_labels_display',
+            'id', 'text', 'code', 'help_text', 'response_type',
+            'options', 'sub_labels', 'category',
+            'indicator', 'indicator_detail',
             'aggregate_mode', 'aggregate_match_values',
-            'order', 'is_required', 'depends_on', 'condition_value'
+            'organizations', 'organizations_count', 'assessments_count',
+            'is_active', 'created_at', 'updated_at', 'created_by', 'created_by_name',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+    def get_organizations_count(self, obj):
+        annotated = getattr(obj, 'organizations_count', None)
+        if annotated is not None:
+            return annotated
+        return obj.organizations.count()
+
+    def get_assessments_count(self, obj):
+        annotated = getattr(obj, 'assessments_count', None)
+        if annotated is not None:
+            return annotated
+        return obj.assessments.count()
+
+
+class QuestionSimpleSerializer(serializers.ModelSerializer):
+    """Slim serializer for question pickers/dropdowns."""
+
+    indicator_detail = IndicatorSimpleSerializer(source='indicator', read_only=True)
+
+    class Meta:
+        model = Question
+        fields = [
+            'id', 'text', 'code', 'response_type', 'options', 'sub_labels',
+            'category', 'indicator', 'indicator_detail',
         ]
 
-    def get_question_text_display(self, obj):
-        return obj.question_text or obj.indicator.name
 
-    def get_response_type_display(self, obj):
-        return obj.response_type or obj.indicator.type
+class AssessmentQuestionSerializer(serializers.ModelSerializer):
+    """Serializer for a question placed on an assessment (AssessmentQuestion).
 
-    def get_response_options_display(self, obj):
-        return obj.response_options or obj.indicator.options
+    Exposes ``*_display`` helpers (sourced from the linked Question) so the
+    capture UI can render each question without a second fetch.
+    """
 
-    def get_response_sub_labels_display(self, obj):
-        return obj.response_sub_labels or obj.indicator.sub_labels
+    question_detail = QuestionSimpleSerializer(source='question', read_only=True)
+    # Backwards-compatible display fields used by the capture form.
+    question_text_display = serializers.CharField(source='question.text', read_only=True)
+    response_type_display = serializers.CharField(source='question.response_type', read_only=True)
+    response_options_display = serializers.JSONField(source='question.options', read_only=True)
+    response_sub_labels_display = serializers.JSONField(source='question.sub_labels', read_only=True)
+    indicator = serializers.IntegerField(source='question.indicator_id', read_only=True)
+    indicator_detail = IndicatorSimpleSerializer(source='question.indicator', read_only=True)
+
+    class Meta:
+        model = AssessmentQuestion
+        fields = [
+            'id', 'assessment', 'question', 'question_detail',
+            'question_text_display', 'response_type_display',
+            'response_options_display', 'response_sub_labels_display',
+            'indicator', 'indicator_detail',
+            'order', 'is_required', 'depends_on', 'condition_value',
+        ]
 
 
 class AssessmentSerializer(serializers.ModelSerializer):
     """Serializer for Assessment model."""
-    
-    indicators_detail = serializers.SerializerMethodField()
+
+    questions_detail = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
-    indicators_count = serializers.SerializerMethodField()
-    
+    questions_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Assessment
         fields = [
-            'id', 'name', 'description', 'indicators', 'indicators_detail',
-            'indicators_count', 'logic_rules', 'is_active', 'organizations',
+            'id', 'name', 'description', 'questions', 'questions_detail',
+            'questions_count', 'logic_rules', 'is_active', 'organizations',
             'created_at', 'updated_at', 'created_by', 'created_by_name'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
-    
-    def get_indicators_detail(self, obj):
-        assessment_indicators = getattr(obj, 'assessmentindicator_set', None)
-        if assessment_indicators is None:
-            assessment_indicators = AssessmentIndicator.objects.filter(
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'questions']
+
+    def get_questions_detail(self, obj):
+        links = getattr(obj, 'prefetched_questions', None)
+        if links is None:
+            links = AssessmentQuestion.objects.filter(
                 assessment=obj
-            ).select_related('indicator', 'depends_on').order_by('order')
-        return AssessmentIndicatorSerializer(assessment_indicators, many=True).data
-    
-    def get_indicators_count(self, obj):
-        annotated_count = getattr(obj, 'indicators_count', None)
+            ).select_related('question', 'question__indicator', 'depends_on').order_by('order')
+        return AssessmentQuestionSerializer(links, many=True).data
+
+    def get_questions_count(self, obj):
+        annotated_count = getattr(obj, 'questions_count', None)
         if annotated_count is not None:
             return annotated_count
-        return obj.indicators.count()
+        return obj.questions.count()
 
 
 class AssessmentListSerializer(serializers.ModelSerializer):
     """Slim serializer for assessment list endpoints."""
 
-    indicators_count = serializers.SerializerMethodField()
+    questions_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Assessment
         fields = [
-            'id', 'name', 'description', 'indicators',
-            'indicators_count', 'logic_rules', 'is_active', 'organizations',
+            'id', 'name', 'description',
+            'questions_count', 'logic_rules', 'is_active', 'organizations',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def get_indicators_count(self, obj):
-        annotated_count = getattr(obj, 'indicators_count', None)
+    def get_questions_count(self, obj):
+        annotated_count = getattr(obj, 'questions_count', None)
         if annotated_count is not None:
             return annotated_count
-        return obj.indicators.count()
+        return obj.questions.count()
 
 
 class AssessmentSimpleSerializer(serializers.ModelSerializer):
