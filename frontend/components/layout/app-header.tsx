@@ -121,7 +121,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
         const text = `${item.title || ""} ${item.content || ""}`.toLowerCase()
         if (text.includes("aggregate") || text.includes("review")) return "/aggregates"
         if (text.includes("flag")) return "/flags"
-        if (text.includes("report")) return "/reports"
+        if (text.includes("report")) return "/analysis/reports"
         if (text.includes("project") || text.includes("deadline")) return "/projects"
         if (text.includes("organization")) return "/organizations"
         if (text.includes("user")) return "/users"

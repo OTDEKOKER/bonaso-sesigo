@@ -158,9 +158,9 @@ export default function TrainingPage() {
 
   const handleViewReports = () => {
     if (trainingProject) {
-      router.push(`/reports?project=${trainingProject.id}`)
+      router.push(`/training/analysis/reports?project=${trainingProject.id}`)
     } else {
-      router.push("/reports")
+      router.push("/training/analysis/reports")
     }
   }
 

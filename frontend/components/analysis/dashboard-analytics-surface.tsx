@@ -41,8 +41,6 @@ import {
   type NormalizedAggregateRecord,
   type VisualizationChart,
 } from "@/lib/visualization/engine";
-import { buildVisualizationResultV2Compat } from "@/lib/visualization/engine-v2-compat";
-import { ENABLE_VISUALIZATION_ENGINE_V2 } from "@/lib/visualization/feature-flags";
 
 type DashboardAnalyticsSurfaceProps = {
   dashboard: DashboardSetting;
@@ -303,7 +301,6 @@ function DashboardVisualizationPanels(props: {
     organizations,
     organizationsById,
     scopedOrgIds,
-    currentOrgId,
     selectedPeriods,
     filters,
     projectId,
@@ -324,46 +321,24 @@ function DashboardVisualizationPanels(props: {
 
   const visualization = useMemo(
     () =>
-      ENABLE_VISUALIZATION_ENGINE_V2
-        ? buildVisualizationResultV2Compat({
-            records: facts,
-            dimensions: filters.disaggregationKeys,
-            indicators: selectedIndicators,
-            organizations,
-            scopedOrgIds,
-            selectedPeriods,
-            periodMode: filters.periodMode,
-            projectId,
-            comparisonMode: filters.comparisonMode,
-            drilldownFilters: interactionFilters,
-            chartMode: "auto",
-            currentOrgId,
-            scopeMode: filters.scopeMode,
-            parentOrgId: filters.parentOrgId || null,
-            selectedOrgIds: filters.selectedOrgIds,
-          })
-        : buildVisualizationResult({
-            records: facts,
-            dimensions: filters.disaggregationKeys,
-            indicators: selectedIndicators,
-            organizations,
-            scopedOrgIds,
-            selectedPeriods,
-            periodMode: filters.periodMode,
-            projectId,
-            comparisonMode: filters.comparisonMode,
-            drilldownFilters: interactionFilters,
-            chartMode: "auto",
-          }),
+      buildVisualizationResult({
+        records: facts,
+        dimensions: filters.disaggregationKeys,
+        indicators: selectedIndicators,
+        organizations,
+        scopedOrgIds,
+        selectedPeriods,
+        periodMode: filters.periodMode,
+        projectId,
+        comparisonMode: filters.comparisonMode,
+        drilldownFilters: interactionFilters,
+        chartMode: "auto",
+      }),
     [
-      currentOrgId,
       facts,
       filters.comparisonMode,
       filters.disaggregationKeys,
-      filters.parentOrgId,
       filters.periodMode,
-      filters.scopeMode,
-      filters.selectedOrgIds,
       interactionFilters,
       organizations,
       projectId,

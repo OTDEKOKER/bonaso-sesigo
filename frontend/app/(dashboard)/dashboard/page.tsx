@@ -105,7 +105,7 @@ const dashboardQuickLinks = [
   },
   {
     id: "reports",
-    href: "/reports",
+    href: "/analysis/reports",
     label: "Reports",
     description: "Open reporting views, exports, and summaries.",
     icon: FileText,
@@ -150,7 +150,7 @@ const heroActionDefinitions = [
   {
     id: "view-reports",
     label: "View Reports",
-    href: "/reports",
+    href: "/analysis/reports",
     readOnlyHidden: false,
   },
 ] as const;
@@ -2564,7 +2564,7 @@ function DashboardPageContent({
               </div>
             </Link>
             <Link
-              href="/reports"
+              href="/analysis/reports"
               className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
             >
               <FileText className="mb-2 h-5 w-5 text-primary" />

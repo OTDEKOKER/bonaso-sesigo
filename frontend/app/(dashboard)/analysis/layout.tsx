@@ -19,7 +19,7 @@ export default function AnalysisLayout({ children }: { children: React.ReactNode
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-foreground">Analysis</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Reports, dashboards, cross-tabs, and row-level data for program performance review.
+          Reports and dashboards for program performance review.
         </p>
       </div>
 
@@ -29,8 +29,7 @@ export default function AnalysisLayout({ children }: { children: React.ReactNode
           {TABS.map(({ href, label, icon: Icon }) => {
             const active =
               pathname === href ||
-              pathname.startsWith(href + "/") ||
-              (href === "/analysis/reports" && pathname === "/analysis/export");
+              pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
