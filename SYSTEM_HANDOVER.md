@@ -1,6 +1,11 @@
 # BONASOV1 System Handover Guide
 
-Last updated: 2026-04-24
+Last updated: 2026-06-03
+
+> Update note (2026-06-03): Sections 14 and 15 have been reconciled with the
+> live system after the audit-fixes + offline-first deployment. Most of the
+> originally-listed risks are now resolved; the remaining open items and the
+> features added since 2026-04-24 are documented in Sections 14, 15, and 19.
 
 ## 1) Purpose Of This Document
 
@@ -339,33 +344,65 @@ Daily ops:
 
 ## 14) Known Risks / Technical Debt
 
-1. `report-workbooks` API routes referenced in frontend are not present in backend URL config.
-- Frontend report-workbooks page contains local-preview fallback logic because backend endpoints are missing.
+Status legend: 🔴 open · 🟡 partially addressed · ✅ resolved
 
-2. Script/module naming drift exists.
-- Several scripts import `uploads.management.commands.import_reporting_workbook` but the backend command modules present are `import_reporting_workbook_live.py` and `import_reporting_workbook_overwrite.py`.
+1. ✅ `report-workbooks` dead module — RESOLVED (removed 2026-06-03).
+- The orphaned `/report-workbooks` route (+ training mirror), `lib/api/services/report-workbooks.ts`, and its `lib/api` exports were deleted. The backend never implemented `/report-workbooks/*`.
+- The working import path remains the separate `uploads` app (`POST /api/uploads/{id}/start_import/`).
 
-3. Project indicator quarter target schema mismatch risk.
-- Raw SQL references `q1_target..q4_target` columns in `projects_projectindicator`.
-- Django model/migrations for `ProjectIndicator` do not currently define these quarter fields.
-- This can break clean DB environments or cause hidden schema drift.
+2. ✅ Analysis pivot-tables & line-lists dead UI — RESOLVED (removed 2026-06-03).
+- Removed routes `analysis/{pivot-tables,line-lists,tables,lists}` (+ training mirrors), the `PivotTablesWorkspace`/`LineListsWorkspace` components, the `pivotTablesService`/`lineListsService` and their hooks/types, and the sidebar + analysis-tab entries.
+- The analysis router exposes only `reports`, `scheduled-reports`, `saved-queries`, `dashboard`, `coordinator-targets`, and `trends`. Dashboards is retained.
 
-4. Production security env vars are documented but not fully wired in `core/settings.py`.
-- Example vars like `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, etc. are listed in examples/deployment files, but settings currently do not apply most of them.
+3. ✅ Frontend↔backend path drift — RESOLVED (2026-06-03).
+- `coordinator-targets.ts` rewritten to call the single real endpoint `/analysis/coordinator-targets/`; the `localStorage` fabrication fallback and path-probing were removed, so failures now surface as errors.
+- `analytics.ts` `dashboardSettingsService` rewritten to target `/analysis/reports/` directly (saved dashboards are `Report(report_type='dashboard')`). The phantom `/analysis/dashboards/*` probes — which 404'd on every load — were removed; `getMeta`/`getBreakdowns` now return their client-side values without a doomed request. Behaviour is unchanged because those endpoints never existed.
+- Note: the singular `/analysis/dashboard/` (overview + message_analytics stats, used by the main dashboard page) is a separate, correctly-wired endpoint — there was never an actual singular/plural bug, just two similarly-named features.
+- Residual (cosmetic): the old fallback machinery in `analytics.ts` (`tryEndpointVariants`, session-cache helpers, `LEGACY_ANALYTICS_FEATURES`, `normalizeDashboard`/`normalizePaginatedDashboards`/`isDashboardLikeResponse`/`normalizeDashboardMeta`) is now unreferenced dead code, interleaved with still-used normalizers. Safe to delete in a dedicated cleanup; tree-shaken out of the client bundle regardless.
 
-5. Automated tests are minimal.
-- Current test files are limited to a couple of frontend visualization tests.
+4. ✅ Script/module naming drift — RESOLVED.
+- No script imports the bare `import_reporting_workbook` module anymore. Canonical commands are `import_reporting_workbook_live.py` and `import_reporting_workbook_overwrite.py` (a `.bak` backup file remains but is inert).
+
+5. ✅ ProjectIndicator quarter-target schema mismatch — RESOLVED.
+- `projects/models.py` defines `q1_target..q4_target` on both `ProjectIndicator` and `ProjectIndicatorOrganizationTarget`, with migration `0002_projectindicator_quarterly_targets`. Raw SQL and model/migrations now agree.
+
+6. ✅ Production security env vars not wired — RESOLVED.
+- `core/settings.py` now applies `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, HSTS, referrer policy, and `X_FRAME_OPTIONS` from env, and hard-fails at boot on open CORS or SQLite when `DEBUG=False`.
+
+7. 🟡 Automated tests still thin on critical paths.
+- ~46 backend tests across 5 files (projects, training separation, aggregates, offline bootstrap, users) + 2 frontend tests.
+- Uncovered: auth login/refresh, `uploads start_import` dry-run/live, aggregate approve→rollup, offline mutation replay, and all frontend↔backend contracts.
+
+8. ✅ Production error tracking / structured logging — RESOLVED (2026-06-03).
+- `core/settings.py` now defines a `LOGGING` config (stdout, `LOG_LEVEL`-configurable, optional rotating file via `LOG_DIR`, `django.request` ERROR with tracebacks) and optional Sentry that activates only when `SENTRY_DSN` is set and `sentry-sdk` is installed. See Section 19.7 and `.env.production.example`.
+
+9. 🟡 Mobile app is not offline-first as shipped.
+- `capacitor.config.ts` defaults to the remote wrapper (needs internet to launch). The true offline `CAP_LOCAL_BUNDLE` mode exists but is not the default and not released.
+
+10. 🟡 Dependencies unpinned + Django LTS clock.
+- `backend/requirements.txt` uses `>=` ranges (non-reproducible builds). Django is pinned `>=4.2,<5.0`; plan the 5.x migration ahead of 4.2 LTS EOL.
+
+11. 🟡 Backups are local-only.
+- Daily `pg_dump` output lives on the same host/disk as the DB; no off-site copy or tested restore procedure yet (see Section 19).
 
 ## 15) Recommended Immediate Stabilization Tasks
 
-1. Implement or remove dead `report-workbooks` API contracts to align frontend/backend.
-2. Standardize workbook import command naming and update all scripts to one canonical module path.
-3. Reconcile `ProjectIndicator` model + migrations with actual DB columns (`q1_target..q4_target`) or remove raw SQL dependency.
-4. Add explicit production security settings in Django settings from environment.
-5. Add smoke tests for:
+Completed 2026-06-03: dead UI removal (report-workbooks, pivot-tables, line-lists), the
+coordinator-targets fabrication fallback, and the error-tracking/`LOGGING` config — see
+Section 14 items 1–3, 8 and Section 19.7. Remaining priorities:
+
+1. ✅ Done — analysis/report-workbooks dead UI removed and the coordinator-targets fabrication fallback stripped (Section 14, items 1–3).
+2. ✅ Done — `/analysis/pivot-tables`, `/analysis/line-lists`, and `/report-workbooks` removed from navigation and routing (Section 14, items 1–2).
+3. ✅ Done — error tracking + `LOGGING` config added (Section 14, item 8; Section 19.7).
+4. ✅ Done — `dashboardSettingsService` now targets `/analysis/reports/` directly; phantom `/analysis/dashboards/*` probes removed (Section 14, item 3). There was no real route mismatch — `/analysis/dashboard/` is a separate, correctly-wired stats endpoint.
+5. 🟡 (Cleanup) Delete the now-dead `analytics.ts` fallback machinery (Section 14, item 3 residual).
+6. 🔴 Off-site backup replication + a written, tested restore procedure.
+7. 🟡 Pin dependencies for reproducible builds; schedule the Django 4.2→5.x migration.
+8. 🟡 Add smoke tests for:
    - auth login/refresh
    - aggregate review/approve lifecycle
    - upload `start_import` dry-run + live path
+   - offline mutation replay
 
 ## 16) Handover Day-1 Checklist
 
@@ -443,3 +480,41 @@ Wrapper behavior:
 Run every day at 01:30 (server time):
 
 1. `30 1 * * * cd /home/bonasoadmin/BONASOV1/backend && /bin/bash ./scripts/run_monthly_payload_parity_check.sh --snapshot-on-pass >> /home/bonasoadmin/BONASOV1/backend/reports/monthly_parity_checks/cron.log 2>&1`
+
+## 19) Changes Since 2026-04-24 (Current State)
+
+These were added/changed after the original handover and are now part of the live system.
+
+### 19.1 Repository / layout
+- The git repository now lives at the `BONASOV1/` root (frontend + backend + training together), re-initialised 2026-06-01. There is no remote — history is local only.
+
+### 19.2 New backend endpoints
+- `GET /api/system/status/` — system status (`core/status_views.py`); backs the frontend `/system-status` page and `lib/api/services/system.ts`.
+- `GET /api/offline/bootstrap/` — offline sync-down package for field capture (`core/offline_views.py`); org/user-scoped, includes assigned respondents (PII), projects, indicators, periods.
+
+### 19.3 Security hardening (live)
+- Production boot guards: refuses to start with `CORS_ALLOW_ALL_ORIGINS=True` or on SQLite when `DEBUG=False` (`core/settings.py`).
+- Security headers/cookies (SSL redirect, HSTS, secure + CSRF cookies, referrer policy, `X_FRAME_OPTIONS`) wired from env.
+- Scoped throttling: public event check-in is `AllowAny` + `event_checkin` throttle (default `30/minute`).
+- `no-store` cache-control on `/api/record` responses (respondent/interaction PII) via `core/middleware.ApiCacheControlMiddleware`.
+
+### 19.4 Offline-first field capture + mobile
+- Web PWA offline stack: `frontend/public/sw.js`, `lib/offline/mutation-queue.ts`, `lib/offline/offline-auth.ts`, `lib/offline/local-store.ts`. UI: download-for-offline control + offline-data status in the sync panel.
+- Capacitor supports a `CAP_LOCAL_BUNDLE=1` offline bundle mode (DHIS2 Tracker Capture style) in addition to the default remote wrapper. See `docs/OFFLINE_ANDROID.md`.
+
+### 19.5 Backups & data-integrity automation (cron)
+- Daily DB backup: `backend/scripts/backup_database.sh` → `backend/backups/database/*.dump` + `.json` + manifest. Cron `0 2 * * *`.
+- Monthly payload parity check: `backend/scripts/run_monthly_payload_parity_check.sh --snapshot-on-pass`. Cron `30 1 * * *`.
+- Nightly consistency check: `backend/scripts/nightly_consistency_check.sh` (+ `projects` management command `check_project_consistency`). Cron `15 2 * * *`.
+- All three write logs/reports under `backend/backups/` and `backend/reports/`. Note: backup output is local-only (see Section 14, item 11).
+
+### 19.6 Training stack separation
+- `training/compose.training.yaml` is a fully isolated, bridge-networked stack: its own `training-db` (Postgres 18), its own `TRAINING_SECRET_KEY`, `ALLOWED_HOSTS`, and locked CORS. Gunicorn binds `0.0.0.0` inside the bridge network (the live stack binds loopback for nginx). nginx configs: `training/nginx-training.*.conf`.
+
+### 19.7 Logging & error tracking (added 2026-06-03)
+- `core/settings.py` defines a `LOGGING` config: logs to stdout (captured by Docker/journald), level via `LOG_LEVEL` (default INFO), optional rotating file when `LOG_DIR` is set, and `django.request` at ERROR so unhandled 500s log a traceback. Skipped under the test runner.
+- Optional Sentry: activates only when `SENTRY_DSN` is set AND `sentry-sdk` is installed (commented in `requirements.txt`); otherwise a no-op. Env vars documented in `.env.production.example` (`LOG_LEVEL`, `LOG_DIR`, `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`).
+
+### 19.8 Dead-UI removal (2026-06-03)
+- Removed the orphaned `report-workbooks` module and the analysis `pivot-tables`/`line-lists` (and their `tables`/`lists` redirect aliases + training mirrors), including services, hooks, types, and nav entries — none had backend support. The `uploads` app remains the supported import path; Reports and Dashboards remain under Analysis.
+- `coordinator-targets.ts` now calls the single real endpoint `/analysis/coordinator-targets/` with no local fabrication; coordinator performance rows are still computed client-side in `components/targets/coordinator-targets-page.tsx`.

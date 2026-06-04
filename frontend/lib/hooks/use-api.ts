@@ -35,8 +35,6 @@ import {
   flagsService,
   dashboardChartsService,
   dashboardSettingsService,
-  pivotTablesService,
-  lineListsService,
   coordinatorTargetsService,
   type ProjectFilters,
   type TaskFilters,
@@ -60,8 +58,6 @@ import {
   type ReportFilters,
   type FlagFilters,
   type DashboardSettingsFilters,
-  type PivotTableFilters,
-  type LineListFilters,
   type CoordinatorTargetFilters,
   type DashboardOverviewFilters,
 } from '@/lib/api';
@@ -617,38 +613,6 @@ export function useDashboardBreakdowns(config?: SWRConfiguration) {
   );
 }
 
-export function usePivotTables(filters?: PivotTableFilters, config?: SWRConfiguration) {
-  return useSWR(
-    ['pivot-tables', filters],
-    () => pivotTablesService.list(filters),
-    { ...defaultConfig, ...config }
-  );
-}
-
-export function usePivotTable(id: number | null, config?: SWRConfiguration) {
-  return useSWR(
-    id ? ['pivot-table', id] : null,
-    () => pivotTablesService.get(id!),
-    { ...defaultConfig, ...config }
-  );
-}
-
-export function useLineLists(filters?: LineListFilters, config?: SWRConfiguration) {
-  return useSWR(
-    ['line-lists', filters],
-    () => lineListsService.list(filters),
-    { ...defaultConfig, ...config }
-  );
-}
-
-export function useLineList(id: number | null, config?: SWRConfiguration) {
-  return useSWR(
-    id ? ['line-list', id] : null,
-    () => lineListsService.get(id!),
-    { ...defaultConfig, ...config }
-  );
-}
-
 export function useCoordinatorTargets(filters?: CoordinatorTargetFilters, config?: SWRConfiguration) {
   return useSWR(
     ['coordinator-targets', filters],
@@ -672,14 +636,6 @@ export function useCoordinatorTarget(id: number | null, config?: SWRConfiguratio
   return useSWR(
     id ? ['coordinator-target', id] : null,
     () => coordinatorTargetsService.get(id!),
-    { ...defaultConfig, ...config },
-  );
-}
-
-export function useCoordinatorTargetPerformance(filters?: CoordinatorTargetFilters, config?: SWRConfiguration) {
-  return useSWR(
-    ['coordinator-target-performance', filters],
-    () => coordinatorTargetsService.getPerformance(filters),
     { ...defaultConfig, ...config },
   );
 }

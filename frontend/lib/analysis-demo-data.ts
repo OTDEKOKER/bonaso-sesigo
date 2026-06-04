@@ -1,7 +1,5 @@
 import type {
   DashboardSetting,
-  LineList,
-  PivotTable,
   Report,
 } from "@/lib/api";
 
@@ -33,10 +31,6 @@ export function buildDemoIndicatorTrendsBulk(
 export const demoDashboards: DashboardSetting[] = [];
 
 export const demoReports: Report[] = [];
-
-export const demoPivotTables: PivotTable[] = [];
-
-export const demoLineLists: LineList[] = [];
 
 const escapeCsv = (value: unknown) => {
   const text = value === null || value === undefined ? "" : String(value);

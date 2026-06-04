@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { BarChart3, FileSpreadsheet, LayoutDashboard, List } from "lucide-react";
+import { FileSpreadsheet, LayoutDashboard } from "lucide-react";
 
 const TABS = [
   { href: "/analysis/reports", label: "Reports", icon: FileSpreadsheet },
   { href: "/analysis/dashboards", label: "Dashboards", icon: LayoutDashboard },
-  { href: "/analysis/pivot-tables", label: "Pivot Tables", icon: BarChart3 },
-  { href: "/analysis/line-lists", label: "Line Lists", icon: List },
 ];
 
 export default function AnalysisLayout({ children }: { children: React.ReactNode }) {
@@ -32,7 +30,7 @@ export default function AnalysisLayout({ children }: { children: React.ReactNode
             const active =
               pathname === href ||
               pathname.startsWith(href + "/") ||
-              (href === "/analysis/reports" && (pathname === "/analysis/export" || pathname === "/analysis/lists" || pathname === "/analysis/tables"));
+              (href === "/analysis/reports" && pathname === "/analysis/export");
             return (
               <Link
                 key={href}

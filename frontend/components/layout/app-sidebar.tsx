@@ -280,8 +280,6 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
     children: [
       { title: "Reports", href: "/analysis/reports" },
       { title: "Dashboards", href: "/analysis/dashboards" },
-      { title: "Pivot Tables", href: "/analysis/pivot-tables" },
-      { title: "Line Lists", href: "/analysis/line-lists" },
     ],
   },
 ]

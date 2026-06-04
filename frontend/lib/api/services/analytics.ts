@@ -5,8 +5,6 @@
  * - ChartField
  * - IndicatorChartSetting
  * - DashboardSetting
- * - PivotTable
- * - LineList
  *
  * The current backend in some environments still stores dashboards as generic
  * analysis reports. This service prefers the legacy analytics endpoints and
@@ -123,55 +121,6 @@ export interface DashboardSetting {
   updated_at?: string;
 }
 
-export interface PivotTable {
-  id: number;
-  name?: string | null;
-  display_name?: string;
-  indicator: number;
-  indicator_name?: string;
-  indicator_detail?: { id: number; name?: string; code?: string; display_name?: string } | null;
-  project?: number | null;
-  project_name?: string;
-  project_detail?: { id: number; name?: string } | null;
-  organization?: number | null;
-  organization_name?: string;
-  organization_detail?: { id: number; name?: string } | null;
-  cascade_organization?: boolean;
-  params?: Array<ChartField | ChartFieldName | string>;
-  start?: string | null;
-  end?: string | null;
-  repeat_only?: boolean;
-  repeat_n?: number | null;
-  data?: Array<Array<string | number | null>>;
-  created_by?: number | null;
-  created_by_name?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface LineList {
-  id: number;
-  name?: string | null;
-  display_name?: string;
-  assessment?: number | null;
-  assessment_name?: string;
-  assessment_detail?: { id: number; name?: string; display_name?: string } | null;
-  project?: number | null;
-  project_name?: string;
-  project_detail?: { id: number; name?: string } | null;
-  organization?: number | null;
-  organization_name?: string;
-  organization_detail?: { id: number; name?: string } | null;
-  cascade_organization?: boolean;
-  start?: string | null;
-  end?: string | null;
-  data?: Array<Record<string, unknown>>;
-  created_by?: number | null;
-  created_by_name?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
 export interface RequestLog {
   id: number;
   path: string;
@@ -218,41 +167,6 @@ export interface DashboardChartRequest {
   average?: boolean;
   repeat_only?: boolean;
   repeat_n?: number | null;
-  start?: string | null;
-  end?: string | null;
-}
-
-export interface PivotTableFilters {
-  search?: string;
-  page?: string | number;
-  page_size?: string | number;
-}
-
-export interface PivotTableRequest {
-  name?: string | null;
-  indicator: number;
-  project?: number | null;
-  organization?: number | null;
-  cascade_organization?: boolean;
-  params?: Array<number | ChartFieldName>;
-  start?: string | null;
-  end?: string | null;
-  repeat_only?: boolean;
-  repeat_n?: number | null;
-}
-
-export interface LineListFilters {
-  search?: string;
-  page?: string | number;
-  page_size?: string | number;
-}
-
-export interface LineListRequest {
-  name?: string | null;
-  assessment?: number | null;
-  project?: number | null;
-  organization?: number | null;
-  cascade_organization?: boolean;
   start?: string | null;
   end?: string | null;
 }
@@ -348,8 +262,6 @@ const LEGACY_ANALYTICS_FEATURES = {
   dashboardMeta: ["/analysis/dashboards/meta"],
   dashboardBreakdowns: ["/analysis/dashboards/breakdowns"],
   dashboardSettings: ["/analysis/dashboards", "/analysis/reports"],
-  pivotTables: ["/analysis/tables", "/analysis/pivot-tables"],
-  lineLists: ["/analysis/lists", "/analysis/line-lists"],
 } as const;
 
 type LegacyAnalyticsFeatureKey = keyof typeof LEGACY_ANALYTICS_FEATURES;
@@ -492,60 +404,6 @@ async function tryEndpointVariants<T>(
   }
 
   throw lastError instanceof Error ? lastError : createUnavailableFeatureError(featureName);
-}
-
-function pivotTableCollectionEndpoints() {
-  return [
-    "/analysis/tables/",
-    "/analysis/tables",
-    "/analysis/pivot-tables/",
-    "/analysis/pivot-tables",
-  ];
-}
-
-function pivotTableDetailEndpoints(id: number) {
-  return [
-    `/analysis/tables/${id}/`,
-    `/analysis/tables/${id}`,
-    `/analysis/pivot-tables/${id}/`,
-    `/analysis/pivot-tables/${id}`,
-  ];
-}
-
-function pivotTableDownloadEndpoints(id: number) {
-  return [
-    `/analysis/tables/${id}/download/`,
-    `/analysis/tables/${id}/download`,
-    `/analysis/pivot-tables/${id}/download/`,
-    `/analysis/pivot-tables/${id}/download`,
-  ];
-}
-
-function lineListCollectionEndpoints() {
-  return [
-    "/analysis/lists/",
-    "/analysis/lists",
-    "/analysis/line-lists/",
-    "/analysis/line-lists",
-  ];
-}
-
-function lineListDetailEndpoints(id: number) {
-  return [
-    `/analysis/lists/${id}/`,
-    `/analysis/lists/${id}`,
-    `/analysis/line-lists/${id}/`,
-    `/analysis/line-lists/${id}`,
-  ];
-}
-
-function lineListDownloadEndpoints(id: number) {
-  return [
-    `/analysis/lists/${id}/download/`,
-    `/analysis/lists/${id}/download`,
-    `/analysis/line-lists/${id}/download/`,
-    `/analysis/line-lists/${id}/download`,
-  ];
 }
 
 function toNumberArray(value: unknown): number[] {
@@ -954,133 +812,6 @@ function normalizeMatrixRows(value: unknown): Array<Array<string | number | null
   return [explicitHeaders, ...normalizedNestedRows];
 }
 
-function normalizePivotTable(raw: unknown): PivotTable {
-  const source = (raw || {}) as Record<string, unknown>;
-  const indicatorDetail = normalizeNamedEntity(source.indicator ?? source.indicator_detail);
-  const projectDetail = normalizeNamedEntity(source.project ?? source.project_detail);
-  const organizationDetail = normalizeNamedEntity(source.organization ?? source.organization_detail);
-  const paramsSource = source.params ?? source.param_names;
-  const matrixData = normalizeMatrixRows(source.data ?? source.table_data ?? source.pivot_table ?? source.cached_data);
-
-  return {
-    id: toNumberOrNull(source.id) ?? 0,
-    name: typeof source.name === "string" ? source.name : null,
-    display_name: typeof source.display_name === "string" ? source.display_name : undefined,
-    indicator: toNumberOrNull(source.indicator ?? source.indicator_id) ?? indicatorDetail?.id ?? 0,
-    indicator_name:
-      typeof source.indicator_name === "string"
-        ? source.indicator_name
-        : indicatorDetail?.display_name || indicatorDetail?.name,
-    indicator_detail: indicatorDetail,
-    project: toNumberOrNull(source.project ?? source.project_id),
-    project_name: typeof source.project_name === "string" ? source.project_name : projectDetail?.display_name || projectDetail?.name,
-    project_detail: projectDetail,
-    organization: toNumberOrNull(source.organization ?? source.organization_id),
-    organization_name:
-      typeof source.organization_name === "string"
-        ? source.organization_name
-        : organizationDetail?.display_name || organizationDetail?.name,
-    organization_detail: organizationDetail,
-    cascade_organization: Boolean(source.cascade_organization),
-    params: Array.isArray(paramsSource)
-      ? paramsSource.map((entry) => {
-          if (typeof entry === "string") return entry;
-          if (typeof entry === "object" && entry !== null && "name" in entry) {
-            return String((entry as { name?: unknown }).name ?? "");
-          }
-          if (typeof entry === "object" && entry !== null && "value" in entry) {
-            return String((entry as { value?: unknown }).value ?? "");
-          }
-          return "";
-        }).filter(Boolean)
-      : [],
-    start: typeof source.start === "string" ? source.start : null,
-    end: typeof source.end === "string" ? source.end : null,
-    repeat_only: Boolean(source.repeat_only),
-    repeat_n: toNumberOrNull(source.repeat_n),
-    data: matrixData,
-    created_by: toNumberOrNull(source.created_by),
-    created_by_name: typeof source.created_by_name === "string" ? source.created_by_name : undefined,
-    created_at: typeof source.created_at === "string" ? source.created_at : undefined,
-    updated_at: typeof source.updated_at === "string" ? source.updated_at : undefined,
-  };
-}
-
-function normalizeLineList(raw: unknown): LineList {
-  const source = (raw || {}) as Record<string, unknown>;
-  const assessmentDetail = normalizeNamedEntity(source.assessment);
-  const projectDetail = normalizeNamedEntity(source.project);
-  const organizationDetail = normalizeNamedEntity(source.organization);
-
-  return {
-    id: toNumberOrNull(source.id) ?? 0,
-    name: typeof source.name === "string" ? source.name : null,
-    display_name: typeof source.display_name === "string" ? source.display_name : undefined,
-    assessment: toNumberOrNull(source.assessment),
-    assessment_name:
-      typeof source.assessment_name === "string"
-        ? source.assessment_name
-        : assessmentDetail?.display_name || assessmentDetail?.name,
-    assessment_detail: assessmentDetail,
-    project: toNumberOrNull(source.project),
-    project_name: typeof source.project_name === "string" ? source.project_name : projectDetail?.display_name || projectDetail?.name,
-    project_detail: projectDetail,
-    organization: toNumberOrNull(source.organization),
-    organization_name:
-      typeof source.organization_name === "string"
-        ? source.organization_name
-        : organizationDetail?.display_name || organizationDetail?.name,
-    organization_detail: organizationDetail,
-    cascade_organization: Boolean(source.cascade_organization),
-    start: typeof source.start === "string" ? source.start : null,
-    end: typeof source.end === "string" ? source.end : null,
-    data: Array.isArray(source.data) ? (source.data as Array<Record<string, unknown>>) : [],
-    created_by: toNumberOrNull(source.created_by),
-    created_by_name: typeof source.created_by_name === "string" ? source.created_by_name : undefined,
-    created_at: typeof source.created_at === "string" ? source.created_at : undefined,
-    updated_at: typeof source.updated_at === "string" ? source.updated_at : undefined,
-  };
-}
-
-function toPivotTablePayload(endpoint: string, request: PivotTableRequest | Partial<PivotTableRequest>) {
-  if (endpoint.includes("/analysis/tables")) {
-    return {
-      name: request.name ?? null,
-      indicator_id: toNumberOrNull(request.indicator) ?? null,
-      project_id: toNumberOrNull(request.project) ?? null,
-      organization_id: toNumberOrNull(request.organization) ?? null,
-      cascade_organization: request.cascade_organization ?? false,
-      param_names: Array.isArray(request.params)
-        ? request.params
-            .map((entry) => (typeof entry === "string" ? entry : ""))
-            .filter(Boolean)
-        : [],
-      start: request.start ?? null,
-      end: request.end ?? null,
-      repeat_only: request.repeat_only ?? false,
-      repeat_n: request.repeat_n ?? null,
-    };
-  }
-
-  return request;
-}
-
-function toLineListPayload(endpoint: string, request: LineListRequest | Partial<LineListRequest>) {
-  if (endpoint.includes("/analysis/lists")) {
-    return {
-      name: request.name ?? null,
-      assessment_id: toNumberOrNull(request.assessment) ?? null,
-      project_id: toNumberOrNull(request.project) ?? null,
-      organization_id: toNumberOrNull(request.organization) ?? null,
-      cascade_organization: request.cascade_organization ?? false,
-      start: request.start ?? null,
-      end: request.end ?? null,
-    };
-  }
-
-  return request;
-}
-
 function isDashboardLikeResponse(value: unknown): value is RawDashboardResponse {
   return (
     typeof value === "object" &&
@@ -1090,510 +821,147 @@ function isDashboardLikeResponse(value: unknown): value is RawDashboardResponse 
   );
 }
 
+// Saved dashboards are persisted as analysis Reports with report_type="dashboard".
+// There is no separate /analysis/dashboards/ route on the backend, so every method
+// targets /analysis/reports/ directly. (Chart metadata/breakdowns are client-side;
+// see getMeta/getBreakdowns.) The previous implementation probed phantom
+// /analysis/dashboards/* endpoints that always 404'd before falling back here.
 export const dashboardSettingsService = {
   async list(filters?: DashboardSettingsFilters): Promise<PaginatedResponse<DashboardSetting>> {
-    const params = filters as Record<string, string | number | boolean | null | undefined> | undefined;
-    const fallbackParams = {
+    const params = {
       ...(filters || {}),
       report_type: "dashboard",
     } as Record<string, string | number | boolean | null | undefined>;
-
-    return tryEndpointVariants(
-      [
-        {
-          endpoint: "/analysis/dashboards/",
-          request: async () => {
-            const { data } = await api.get<PaginatedResponse<RawDashboardResponse>>("/analysis/dashboards/", params);
-            return normalizePaginatedDashboards(data);
-          },
-        },
-        {
-          endpoint: "/analysis/reports/",
-          request: async () => {
-            const { data } = await api.get<PaginatedResponse<RawReportDashboard>>("/analysis/reports/", fallbackParams);
-            return {
-              ...data,
-              results: (data.results || []).map((dashboard) => normalizeFallbackDashboard(dashboard)),
-            };
-          },
-        },
-      ],
-      "Analytics dashboards",
-      "dashboardSettings",
-      { cacheUnavailableOnNotFound: true },
-    );
+    const { data } = await api.get<PaginatedResponse<RawReportDashboard>>("/analysis/reports/", params);
+    return {
+      ...data,
+      results: (data.results || []).map((dashboard) => normalizeFallbackDashboard(dashboard)),
+    };
   },
 
   async get(id: number): Promise<DashboardSetting> {
-    return tryEndpointVariants(
-      [
-        {
-          endpoint: `/analysis/dashboards/${id}/`,
-          request: async () => {
-            const { data } = await api.get<RawDashboardResponse>(`/analysis/dashboards/${id}/`);
-            return normalizeDashboard(data);
-          },
-        },
-        {
-          endpoint: `/analysis/reports/${id}/`,
-          request: async () => {
-            const { data } = await api.get<RawReportDashboard>(`/analysis/reports/${id}/`);
-            return normalizeFallbackDashboard(data);
-          },
-        },
-      ],
-      "Analytics dashboards",
-      "dashboardSettings",
-    );
+    const { data } = await api.get<RawReportDashboard>(`/analysis/reports/${id}/`);
+    return normalizeFallbackDashboard(data);
   },
 
   async create(request: DashboardSettingRequest): Promise<DashboardSetting> {
-    const payload = {
-      name: request.name,
-      description: request.description ?? "",
-      project_id: request.project_id ?? null,
-      organization_id: request.organization_id ?? null,
-      cascade_organization: request.cascade_organization ?? false,
-      charts: request.charts ?? [],
-    };
-
-    return tryEndpointVariants(
-      [
-        {
-          endpoint: "/analysis/dashboards/",
-          request: async () => {
-            const { data } = await api.post<RawDashboardResponse>("/analysis/dashboards/", payload);
-            return normalizeDashboard(data);
-          },
-        },
-        {
-          endpoint: "/analysis/reports/",
-          request: async () => {
-            const { data } = await api.post<RawReportDashboard>("/analysis/reports/", toFallbackDashboardPayload(request));
-            return normalizeFallbackDashboard(data);
-          },
-        },
-      ],
-      "Analytics dashboards",
-      "dashboardSettings",
-      { cacheUnavailableOnNotFound: true },
-    );
+    const { data } = await api.post<RawReportDashboard>("/analysis/reports/", toFallbackDashboardPayload(request));
+    return normalizeFallbackDashboard(data);
   },
 
   async update(id: number, request: Partial<DashboardSettingRequest>): Promise<DashboardSetting> {
-    return tryEndpointVariants(
-      [
-        {
-          endpoint: `/analysis/dashboards/${id}/`,
-          request: async () => {
-            const { data } = await api.patch<RawDashboardResponse>(`/analysis/dashboards/${id}/`, request);
-            return normalizeDashboard(data);
-          },
-        },
-        {
-          endpoint: `/analysis/reports/${id}/`,
-          request: async () => {
-            const { data } = await api.patch<RawReportDashboard>(`/analysis/reports/${id}/`, toFallbackDashboardPayload({
-              name: request.name || "Dashboard",
-              description: request.description ?? "",
-              project_id: request.project_id ?? null,
-              organization_id: request.organization_id ?? null,
-              cascade_organization: request.cascade_organization ?? false,
-              charts: request.charts ?? [],
-            }));
-            return normalizeFallbackDashboard(data);
-          },
-        },
-      ],
-      "Analytics dashboards",
-      "dashboardSettings",
+    const { data } = await api.patch<RawReportDashboard>(
+      `/analysis/reports/${id}/`,
+      toFallbackDashboardPayload({
+        name: request.name || "Dashboard",
+        description: request.description ?? "",
+        project_id: request.project_id ?? null,
+        organization_id: request.organization_id ?? null,
+        cascade_organization: request.cascade_organization ?? false,
+        charts: request.charts ?? [],
+      }),
     );
+    return normalizeFallbackDashboard(data);
   },
 
   async delete(id: number): Promise<void> {
-    await tryEndpointVariants(
-      [
-        {
-          endpoint: `/analysis/dashboards/${id}/`,
-          request: async () => {
-            await api.delete(`/analysis/dashboards/${id}/`);
-          },
-        },
-        {
-          endpoint: `/analysis/reports/${id}/`,
-          request: async () => {
-            await api.delete(`/analysis/reports/${id}/`);
-          },
-        },
-      ],
-      "Analytics dashboards",
-      "dashboardSettings",
-    );
+    await api.delete(`/analysis/reports/${id}/`);
   },
 
   async getMeta(): Promise<DashboardMeta> {
-    try {
-      const { data } = await tryEndpointVariants(
-        [
-          {
-            endpoint: "/analysis/dashboards/meta/",
-            request: () => api.get<Record<string, unknown>>("/analysis/dashboards/meta/"),
-          },
-        ],
-        "Dashboard metadata",
-        "dashboardMeta",
-        { cacheUnavailableOnNotFound: true },
-      );
-      return normalizeDashboardMeta(data);
-    } catch {
-      return {
-        chart_types: [
-          { value: "pie", label: "Pie Chart" },
-          { value: "line", label: "Line Chart" },
-          { value: "bar", label: "Bar Chart" },
-        ],
-        axes: [
-          { value: "month", label: "Month" },
-          { value: "quarter", label: "Quarter" },
-        ],
-        fields: LEGACY_CHART_FIELDS,
-      };
-    }
+    // Chart metadata is defined client-side; the backend has no meta endpoint.
+    return {
+      chart_types: [
+        { value: "pie", label: "Pie Chart" },
+        { value: "line", label: "Line Chart" },
+        { value: "bar", label: "Bar Chart" },
+      ],
+      axes: [
+        { value: "month", label: "Month" },
+        { value: "quarter", label: "Quarter" },
+      ],
+      fields: LEGACY_CHART_FIELDS,
+    };
   },
 
   async getBreakdowns(): Promise<Record<string, unknown>> {
-    try {
-      const { data } = await tryEndpointVariants(
-        [
-          {
-            endpoint: "/analysis/dashboards/breakdowns/",
-            request: () => api.get<Record<string, unknown>>("/analysis/dashboards/breakdowns/"),
-          },
-        ],
-        "Dashboard breakdowns",
-        "dashboardBreakdowns",
-        { cacheUnavailableOnNotFound: true },
-      );
-      return data;
-    } catch {
-      return {};
-    }
+    // No backend breakdowns endpoint; breakdowns are derived client-side.
+    return {};
   },
 
+  // Chart edits are persisted by reading the dashboard, mutating its charts, and
+  // writing the whole dashboard back via update() (i.e. the reports record).
   async updateChartFilters(
     dashboardId: number,
     chartId: number,
     filters: Record<string, string[]>,
   ): Promise<DashboardSetting> {
-    const persistViaDashboardUpdate = async () => {
-      const dashboard = await this.get(dashboardId);
-      const charts = [...(dashboard.charts || [])];
-      const chartIndex = charts.findIndex((chart) => chart.id === chartId);
-      if (chartIndex < 0) return dashboard;
+    const dashboard = await this.get(dashboardId);
+    const charts = [...(dashboard.charts || [])];
+    const chartIndex = charts.findIndex((chart) => chart.id === chartId);
+    if (chartIndex < 0) return dashboard;
 
-      charts[chartIndex] = {
-        ...charts[chartIndex],
-        filters: serializeChartFilters(filters),
-      };
-
-      return this.update(dashboardId, {
-        name: dashboard.name,
-        description: dashboard.description ?? "",
-        project_id: dashboard.project ?? null,
-        organization_id: dashboard.organization ?? null,
-        cascade_organization: dashboard.cascade_organization ?? false,
-        charts,
-      });
+    charts[chartIndex] = {
+      ...charts[chartIndex],
+      filters: serializeChartFilters(filters),
     };
 
-    if (getCachedFeatureVariant("dashboardSettings") === "/analysis/reports") {
-      return persistViaDashboardUpdate();
-    }
-
-    try {
-      const { data } = await api.patch<unknown>(`/analysis/dashboards/${dashboardId}/filters/${chartId}/`, { filters });
-      if (isDashboardLikeResponse(data)) {
-        return normalizeDashboard(data);
-      }
-      return this.get(dashboardId);
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-      return persistViaDashboardUpdate();
-    }
+    return this.update(dashboardId, {
+      name: dashboard.name,
+      description: dashboard.description ?? "",
+      project_id: dashboard.project ?? null,
+      organization_id: dashboard.organization ?? null,
+      cascade_organization: dashboard.cascade_organization ?? false,
+      charts,
+    });
   },
 
   async saveChart(dashboardId: number, request: DashboardChartRequest): Promise<DashboardSetting> {
-    if (getCachedFeatureVariant("dashboardSettings") === "/analysis/reports") {
-      const dashboard = await this.get(dashboardId);
-      const charts = [...(dashboard.charts || [])];
-      const index = charts.findIndex((chart) => chart.id === request.id);
-      const nextChart: IndicatorChartSetting = {
-        id: request.id ?? charts[index]?.id,
-        name: request.name ?? null,
-        indicators: request.indicators,
-        chart_type: request.chart_type,
-        tabular: Boolean(request.tabular),
-        axis: request.axis ?? null,
-        legend: request.legend ?? null,
-        stack: request.stack ?? null,
-        use_target: Boolean(request.use_target),
-        filters: request.filters ?? [],
-        average: Boolean(request.average),
-        repeat_only: Boolean(request.repeat_only),
-        repeat_n: request.repeat_n ?? null,
-        start: request.start ?? null,
-        end: request.end ?? null,
-      };
+    const dashboard = await this.get(dashboardId);
+    const charts = [...(dashboard.charts || [])];
+    const index = charts.findIndex((chart) => chart.id === request.id);
+    const nextChart: IndicatorChartSetting = {
+      id: request.id ?? charts[index]?.id,
+      name: request.name ?? null,
+      indicators: request.indicators,
+      chart_type: request.chart_type,
+      tabular: Boolean(request.tabular),
+      axis: request.axis ?? null,
+      legend: request.legend ?? null,
+      stack: request.stack ?? null,
+      use_target: Boolean(request.use_target),
+      filters: request.filters ?? [],
+      average: Boolean(request.average),
+      repeat_only: Boolean(request.repeat_only),
+      repeat_n: request.repeat_n ?? null,
+      start: request.start ?? null,
+      end: request.end ?? null,
+    };
 
-      if (index >= 0) charts[index] = nextChart;
-      else charts.push(nextChart);
+    if (index >= 0) charts[index] = nextChart;
+    else charts.push(nextChart);
 
-      return this.update(dashboardId, {
-        name: dashboard.name,
-        description: dashboard.description ?? "",
-        project_id: dashboard.project ?? null,
-        organization_id: dashboard.organization ?? null,
-        cascade_organization: dashboard.cascade_organization ?? false,
-        charts,
-      });
-    }
-
-    try {
-      const payload = {
-        chart_id: request.id ?? null,
-        ...request,
-      };
-      const { data } = await api.patch<unknown>(`/analysis/dashboards/${dashboardId}/charts/`, payload);
-      if (isDashboardLikeResponse(data)) {
-        return normalizeDashboard(data);
-      }
-      return this.get(dashboardId);
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-      const dashboard = await this.get(dashboardId);
-      const charts = [...(dashboard.charts || [])];
-      const index = charts.findIndex((chart) => chart.id === request.id);
-      const nextChart: IndicatorChartSetting = {
-        id: request.id ?? charts[index]?.id,
-        name: request.name ?? null,
-        indicators: request.indicators,
-        chart_type: request.chart_type,
-        tabular: Boolean(request.tabular),
-        axis: request.axis ?? null,
-        legend: request.legend ?? null,
-        stack: request.stack ?? null,
-        use_target: Boolean(request.use_target),
-        filters: request.filters ?? [],
-        average: Boolean(request.average),
-        repeat_only: Boolean(request.repeat_only),
-        repeat_n: request.repeat_n ?? null,
-        start: request.start ?? null,
-        end: request.end ?? null,
-      };
-
-      if (index >= 0) charts[index] = nextChart;
-      else charts.push(nextChart);
-
-      return this.update(dashboardId, {
-        name: dashboard.name,
-        description: dashboard.description ?? "",
-        project_id: dashboard.project ?? null,
-        organization_id: dashboard.organization ?? null,
-        cascade_organization: dashboard.cascade_organization ?? false,
-        charts,
-      });
-    }
+    return this.update(dashboardId, {
+      name: dashboard.name,
+      description: dashboard.description ?? "",
+      project_id: dashboard.project ?? null,
+      organization_id: dashboard.organization ?? null,
+      cascade_organization: dashboard.cascade_organization ?? false,
+      charts,
+    });
   },
 
   async removeChart(dashboardId: number, chartId: number): Promise<DashboardSetting> {
-    if (getCachedFeatureVariant("dashboardSettings") === "/analysis/reports") {
-      const dashboard = await this.get(dashboardId);
-      const charts = (dashboard.charts || []).filter((chart) => chart.id !== chartId);
-      return this.update(dashboardId, {
-        name: dashboard.name,
-        description: dashboard.description ?? "",
-        project_id: dashboard.project ?? null,
-        organization_id: dashboard.organization ?? null,
-        cascade_organization: dashboard.cascade_organization ?? false,
-        charts,
-      });
-    }
-
-    try {
-      const { data } = await api.delete<unknown>(`/analysis/dashboards/${dashboardId}/remove-chart/${chartId}/`);
-      if (isDashboardLikeResponse(data)) {
-        return normalizeDashboard(data as RawDashboardResponse);
-      }
-      return this.get(dashboardId);
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-      const dashboard = await this.get(dashboardId);
-      const charts = (dashboard.charts || []).filter((chart) => chart.id !== chartId);
-      return this.update(dashboardId, {
-        name: dashboard.name,
-        description: dashboard.description ?? "",
-        project_id: dashboard.project ?? null,
-        organization_id: dashboard.organization ?? null,
-        cascade_organization: dashboard.cascade_organization ?? false,
-        charts,
-      });
-    }
-  },
-};
-
-export const pivotTablesService = {
-  async list(filters?: PivotTableFilters): Promise<PaginatedResponse<PivotTable>> {
-    const params = filters as Record<string, string | number | boolean | null | undefined> | undefined;
-    const { data } = await tryEndpointVariants(
-      pivotTableCollectionEndpoints().map((endpoint) => ({
-        endpoint,
-        request: () => api.get<PaginatedResponse<unknown>>(endpoint, params),
-      })),
-      "Pivot tables",
-      "pivotTables",
-      { cacheUnavailableOnNotFound: true },
-    );
-    return {
-      ...data,
-      results: (data.results || []).map((table) => normalizePivotTable(table)),
-    };
-  },
-
-  async get(id: number): Promise<PivotTable> {
-    const { data } = await tryEndpointVariants(
-      pivotTableDetailEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => api.get<unknown>(endpoint),
-      })),
-      "Pivot tables",
-      "pivotTables",
-    );
-    return normalizePivotTable(data);
-  },
-
-  async create(request: PivotTableRequest): Promise<PivotTable> {
-    const { data } = await tryEndpointVariants(
-      pivotTableCollectionEndpoints().map((endpoint) => ({
-        endpoint,
-        request: () => api.post<unknown>(endpoint, toPivotTablePayload(endpoint, request)),
-      })),
-      "Pivot tables",
-      "pivotTables",
-      { cacheUnavailableOnNotFound: true },
-    );
-    return normalizePivotTable(data);
-  },
-
-  async update(id: number, request: Partial<PivotTableRequest>): Promise<PivotTable> {
-    const { data } = await tryEndpointVariants(
-      pivotTableDetailEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => api.patch<unknown>(endpoint, toPivotTablePayload(endpoint, request)),
-      })),
-      "Pivot tables",
-      "pivotTables",
-    );
-    return normalizePivotTable(data);
-  },
-
-  async delete(id: number): Promise<void> {
-    await tryEndpointVariants(
-      pivotTableDetailEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => api.delete(endpoint),
-      })),
-      "Pivot tables",
-      "pivotTables",
-    );
-  },
-
-  async download(id: number): Promise<Blob> {
-    return tryEndpointVariants(
-      pivotTableDownloadEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => downloadBlob(endpoint),
-      })),
-      "Pivot tables",
-      "pivotTables",
-    );
-  },
-};
-
-export const lineListsService = {
-  async list(filters?: LineListFilters): Promise<PaginatedResponse<LineList>> {
-    const params = filters as Record<string, string | number | boolean | null | undefined> | undefined;
-    const { data } = await tryEndpointVariants(
-      lineListCollectionEndpoints().map((endpoint) => ({
-        endpoint,
-        request: () => api.get<PaginatedResponse<unknown>>(endpoint, params),
-      })),
-      "Line lists",
-      "lineLists",
-      { cacheUnavailableOnNotFound: true },
-    );
-    return {
-      ...data,
-      results: (data.results || []).map((list) => normalizeLineList(list)),
-    };
-  },
-
-  async get(id: number): Promise<LineList> {
-    const { data } = await tryEndpointVariants(
-      lineListDetailEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => api.get<unknown>(endpoint),
-      })),
-      "Line lists",
-      "lineLists",
-    );
-    return normalizeLineList(data);
-  },
-
-  async create(request: LineListRequest): Promise<LineList> {
-    const { data } = await tryEndpointVariants(
-      lineListCollectionEndpoints().map((endpoint) => ({
-        endpoint,
-        request: () => api.post<unknown>(endpoint, toLineListPayload(endpoint, request)),
-      })),
-      "Line lists",
-      "lineLists",
-      { cacheUnavailableOnNotFound: true },
-    );
-    return normalizeLineList(data);
-  },
-
-  async update(id: number, request: Partial<LineListRequest>): Promise<LineList> {
-    const { data } = await tryEndpointVariants(
-      lineListDetailEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => api.patch<unknown>(endpoint, toLineListPayload(endpoint, request)),
-      })),
-      "Line lists",
-      "lineLists",
-    );
-    return normalizeLineList(data);
-  },
-
-  async delete(id: number): Promise<void> {
-    await tryEndpointVariants(
-      lineListDetailEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => api.delete(endpoint),
-      })),
-      "Line lists",
-      "lineLists",
-    );
-  },
-
-  async download(id: number): Promise<Blob> {
-    return tryEndpointVariants(
-      lineListDownloadEndpoints(id).map((endpoint) => ({
-        endpoint,
-        request: () => downloadBlob(endpoint),
-      })),
-      "Line lists",
-      "lineLists",
-    );
+    const dashboard = await this.get(dashboardId);
+    const charts = (dashboard.charts || []).filter((chart) => chart.id !== chartId);
+    return this.update(dashboardId, {
+      name: dashboard.name,
+      description: dashboard.description ?? "",
+      project_id: dashboard.project ?? null,
+      organization_id: dashboard.organization ?? null,
+      cascade_organization: dashboard.cascade_organization ?? false,
+      charts,
+    });
   },
 };
 
