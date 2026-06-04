@@ -161,6 +161,7 @@ class Question(models.Model):
     code = models.CharField(
         max_length=50,
         unique=True,
+        null=True,
         blank=True,
         help_text='Optional stable code used for seeding/import references',
     )
@@ -228,6 +229,13 @@ class Question(models.Model):
 
     class Meta:
         ordering = ['text']
+
+    def save(self, *args, **kwargs):
+        # Normalise blank codes to NULL so multiple code-less questions don't
+        # collide on the unique constraint.
+        if not self.code:
+            self.code = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.text

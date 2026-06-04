@@ -5,7 +5,7 @@ from .models import Indicator, IndicatorAlias, Assessment, AssessmentQuestion, Q
 class AssessmentQuestionInline(admin.TabularInline):
     model = AssessmentQuestion
     extra = 1
-    autocomplete_fields = ['question', 'depends_on']
+    raw_id_fields = ['question', 'depends_on']
     fields = ['question', 'order', 'is_required', 'depends_on', 'condition_value']
 
 
