@@ -50,7 +50,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PageHeader } from "@/components/shared/page-header";
 import { OrganizationSelect } from "@/components/shared/organization-select";
 import { OrganizationMultiSelect } from "@/components/shared/organization-multi-select";
 import { NcdMessageTypeChart } from "@/components/reports/ncd-message-type-chart";
@@ -107,6 +106,7 @@ import {
   indicatorNameMatchesAliases,
 } from "@/lib/reports/nahpa-report-transformers";
 import { ReportViewerDialog } from "@/components/shared/report-viewer";
+import { ReportBuilderDialog } from "@/components/reports/report-builder-dialog";
 import {
   useDashboardStats,
   useAllIndicators,
@@ -637,7 +637,7 @@ const getRecordDimensionValue = (
   return record.dimensions[normalized] || "All";
 };
 
-export default function ReportsPage() {
+export function ReportsHub() {
   const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
@@ -645,18 +645,11 @@ export default function ReportsPage() {
   const hasInitializedUrlStateRef = useRef(false);
   const [projectFilter, setProjectFilter] = useState("all");
   const [periodFilter, setPeriodFilter] = useState("2025");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
 
   const [reportName, setReportName] = useState("");
   const [reportType, setReportType] = useState<"indicator_summary" | "project_progress" | "respondent_demographics" | "custom">("indicator_summary");
-  const [reportProjectId, setReportProjectId] = useState("all");
-  const [reportIndicatorId, setReportIndicatorId] = useState("all");
-  const [reportDateFrom, setReportDateFrom] = useState("");
-  const [reportDateTo, setReportDateTo] = useState("");
-  const [reportFormat, setReportFormat] = useState<"pdf" | "excel" | "csv">("pdf");
   const [scheduleFrequency, setScheduleFrequency] = useState<"daily" | "weekly" | "monthly" | "quarterly">("monthly");
   const [scheduleRecipients, setScheduleRecipients] = useState("");
   const [activeIndicatorIndex, setActiveIndicatorIndex] = useState<number | null>(null);
@@ -1958,54 +1951,6 @@ export default function ReportsPage() {
     });
   }, [availablePeriodOptions]);
 
-  const handleCreateReport = async () => {
-    if (!reportName) {
-      toast({
-        title: "Missing report name",
-        description: "Please provide a name for the report.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const created = await reportsService.create({
-        name: reportName,
-        type: reportType,
-        parameters: {
-          project_id: reportProjectId !== "all" ? Number(reportProjectId) : undefined,
-          indicator_ids: reportIndicatorId !== "all" ? [Number(reportIndicatorId)] : undefined,
-          date_from: reportDateFrom || undefined,
-          date_to: reportDateTo || undefined,
-          format: reportFormat,
-        },
-      });
-      await reportsService.generate(created.id);
-      toast({
-        title: "Report started",
-        description: "Report data has been generated.",
-      });
-      setIsDialogOpen(false);
-      setReportName("");
-      setReportType("indicator_summary");
-      setReportProjectId("all");
-      setReportIndicatorId("all");
-      setReportDateFrom("");
-      setReportDateTo("");
-      setReportFormat("pdf");
-      mutateReports();
-    } catch (err) {
-      console.error("Failed to create report", err);
-      toast({
-        title: "Error",
-        description: "Failed to generate report.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleDownload = async (report: Report) => {
     try {
       const format = (report?.parameters?.format as "pdf" | "excel" | "csv") || "excel";
@@ -2071,13 +2016,7 @@ export default function ReportsPage() {
         report_type: reportType,
         frequency: scheduleFrequency,
         recipients,
-        parameters: {
-          project_id: reportProjectId !== "all" ? Number(reportProjectId) : undefined,
-          indicator_ids: reportIndicatorId !== "all" ? [Number(reportIndicatorId)] : undefined,
-          date_from: reportDateFrom || undefined,
-          date_to: reportDateTo || undefined,
-          format: reportFormat,
-        },
+        parameters: { format: "excel" },
       });
       toast({
         title: "Schedule saved",
@@ -2105,14 +2044,7 @@ export default function ReportsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Reports & Analysis"
-        description="Generate reports, analyze data, and export insights"
-        breadcrumbs={[
-          { label: "Dashboard", href: "/dashboard" },
-          { label: "Reports" },
-        ]}
-      >
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="mr-2 h-4 w-4" />
@@ -2191,123 +2123,17 @@ export default function ReportsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
+          <ReportBuilderDialog
+            onCreated={() => mutateReports()}
+            trigger={
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
                 Generate Report
               </Button>
-            </DialogTrigger>
-            <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Generate Report</DialogTitle>
-                <DialogDescription>
-                  Create a new report based on current data.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="report-name">Report Name</Label>
-                  <Input
-                    id="report-name"
-                    value={reportName}
-                    onChange={(e) => setReportName(e.target.value)}
-                    placeholder="Quarterly Summary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="report-type">Type</Label>
-                  <Select value={reportType} onValueChange={(value) => setReportType(value as typeof reportType)}>
-                    <SelectTrigger id="report-type">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="indicator_summary">Indicator Summary</SelectItem>
-                      <SelectItem value="project_progress">Project Progress</SelectItem>
-                      <SelectItem value="respondent_demographics">Respondent Demographics</SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="report-project">Project (optional)</Label>
-                  <Select value={reportProjectId} onValueChange={setReportProjectId}>
-                    <SelectTrigger id="report-project">
-                      <SelectValue placeholder="All projects" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All projects</SelectItem>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={String(project.id)}>
-                          {project.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="report-indicator">Indicator (optional)</Label>
-                  <Select value={reportIndicatorId} onValueChange={setReportIndicatorId}>
-                    <SelectTrigger id="report-indicator">
-                      <SelectValue placeholder="All indicators" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All indicators</SelectItem>
-                      {indicators.map((indicator) => (
-                        <SelectItem key={indicator.id} value={String(indicator.id)}>
-                          {indicator.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="report-from">From</Label>
-                    <Input
-                      id="report-from"
-                      type="date"
-                      value={reportDateFrom}
-                      onChange={(e) => setReportDateFrom(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="report-to">To</Label>
-                    <Input
-                      id="report-to"
-                      type="date"
-                      value={reportDateTo}
-                      onChange={(e) => setReportDateTo(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="report-format">Format</Label>
-                  <Select value={reportFormat} onValueChange={(value) => setReportFormat(value as typeof reportFormat)}>
-                    <SelectTrigger id="report-format">
-                      <SelectValue placeholder="Select format" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pdf">PDF</SelectItem>
-                      <SelectItem value="excel">Excel</SelectItem>
-                      <SelectItem value="csv">CSV</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreateReport} disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Generate
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            }
+          />
         </div>
-      </PageHeader>
+      </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Select value={projectFilter} onValueChange={setProjectFilter}>
