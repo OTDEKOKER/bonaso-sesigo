@@ -93,6 +93,10 @@ type CustomAnalysisBuilderProps = {
   organizations: Organization[];
   breakdownFields: BreakdownFieldOption[];
   parentOrganizations: Organization[];
+  /** Standalone (Data Visualizer) mode: no dashboard filter bar exists, so the
+   *  "Use dashboard filters" toggle is hidden and the scope/period controls are
+   *  always shown. */
+  standalone?: boolean;
 };
 
 const SHOW_AS_OPTIONS: Array<{ value: CustomAnalysisShowAs; label: string }> = [
@@ -471,6 +475,7 @@ export function CustomAnalysisBuilder(props: CustomAnalysisBuilderProps) {
     organizations,
     breakdownFields,
     parentOrganizations,
+    standalone = false,
   } = props;
 
   const breakdownOptions = useMemo<BreakdownFieldOption[]>(
@@ -562,18 +567,24 @@ export function CustomAnalysisBuilder(props: CustomAnalysisBuilderProps) {
         <section className="rounded-[1.5rem] border border-border bg-[#fbfdff] p-4 shadow-sm">
           <div className="mb-4">
             <h3 className="text-base font-semibold text-foreground">Scope and Filters</h3>
-            <p className="text-sm text-muted-foreground">Use dashboard filters or override them just for this analysis.</p>
+            <p className="text-sm text-muted-foreground">
+              {standalone
+                ? "Choose the project, period, and organisation scope for this analysis."
+                : "Use dashboard filters or override them just for this analysis."}
+            </p>
           </div>
 
-          <div className="flex flex-col gap-3 rounded-[1.2rem] border border-border bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-sm font-medium text-foreground">Use dashboard filters</div>
-              <div className="text-xs text-muted-foreground">Keep this analysis aligned with the dashboard-wide filter bar.</div>
+          {!standalone ? (
+            <div className="flex flex-col gap-3 rounded-[1.2rem] border border-border bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-medium text-foreground">Use dashboard filters</div>
+                <div className="text-xs text-muted-foreground">Keep this analysis aligned with the dashboard-wide filter bar.</div>
+              </div>
+              <Switch checked={value.useDashboardFilters} onCheckedChange={(checked) => onChange({ ...value, useDashboardFilters: checked })} />
             </div>
-            <Switch checked={value.useDashboardFilters} onCheckedChange={(checked) => onChange({ ...value, useDashboardFilters: checked })} />
-          </div>
+          ) : null}
 
-          {!value.useDashboardFilters ? (
+          {standalone || !value.useDashboardFilters ? (
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Project</Label>

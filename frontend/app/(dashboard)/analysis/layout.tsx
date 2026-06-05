@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { FileSpreadsheet, LayoutDashboard } from "lucide-react";
+import { BarChart3, FileSpreadsheet, LayoutDashboard, List } from "lucide-react";
 
 const TABS = [
   { href: "/analysis/reports", label: "Reports", icon: FileSpreadsheet },
   { href: "/analysis/dashboards", label: "Dashboards", icon: LayoutDashboard },
+  { href: "/analysis/visualizer", label: "Data Visualizer", icon: BarChart3 },
+  { href: "/analysis/line-lists", label: "Line Lists", icon: List },
 ];
 
 export default function AnalysisLayout({ children }: { children: React.ReactNode }) {
@@ -19,7 +21,7 @@ export default function AnalysisLayout({ children }: { children: React.ReactNode
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-foreground">Analysis</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Reports and dashboards for program performance review.
+          Reports, dashboards, ad-hoc visualizations, and row-level line lists for program performance review.
         </p>
       </div>
 
