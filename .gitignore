@@ -29,9 +29,17 @@ backend/backups/
 
 # ---- Runtime state / user content ----
 backend/media/
-backend/uploads/
 backend/staticfiles/
 training/state/
+
+# uploads/ mixes the Django app code with runtime import artifacts (JSON dumps
+# that may contain real programme data). The app code MUST stay tracked: it is
+# bind-mounted over the image at runtime, so if a checkout/worktree lacks it the
+# mount shadows the baked-in code and every API endpoint 500s (outage 2026-06-05).
+# Allowlist: ignore everything under uploads/, then re-include only Python code.
+backend/uploads/**
+!backend/uploads/**/
+!backend/uploads/**/*.py
 
 # ---- Data exports / audit artifacts (may contain real programme data) ----
 *.jsonl
