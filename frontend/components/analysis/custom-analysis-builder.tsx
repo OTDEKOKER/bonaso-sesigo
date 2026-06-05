@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 
 import { OrganizationMultiSelect } from "@/components/shared/organization-multi-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Command,
   CommandEmpty,
@@ -466,6 +468,28 @@ function MultiSelectField(props: {
   );
 }
 
+/**
+ * Wraps the advanced (Analysis Setup + Display) sections. In `simplified` mode
+ * (the standalone Data Visualizer) they collapse behind an "Advanced options"
+ * disclosure so the panel opens on just the essentials; otherwise they render
+ * inline exactly as before.
+ */
+function AdvancedOptions({ simplified, children }: { simplified: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  if (!simplified) return <>{children}</>;
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="space-y-4">
+      <CollapsibleTrigger asChild>
+        <Button variant="outline" className="w-full justify-between">
+          <span>Advanced options</span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-4">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export function CustomAnalysisBuilder(props: CustomAnalysisBuilderProps) {
   const {
     value,
@@ -512,22 +536,30 @@ export function CustomAnalysisBuilder(props: CustomAnalysisBuilderProps) {
         <section className="rounded-[1.5rem] border border-border bg-[#fbfdff] p-4 shadow-sm">
           <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-base font-semibold text-foreground">Basic Setup</h3>
-              <p className="text-sm text-muted-foreground">Start with the title, indicator, and how the analysis should appear.</p>
+              <h3 className="text-base font-semibold text-foreground">{standalone ? "Data & chart" : "Basic Setup"}</h3>
+              <p className="text-sm text-muted-foreground">
+                {standalone
+                  ? "Pick the indicators and how to display them."
+                  : "Start with the title, indicator, and how the analysis should appear."}
+              </p>
             </div>
-            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">Advanced</Badge>
+            {!standalone ? (
+              <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">Advanced</Badge>
+            ) : null}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2">
-              <Label htmlFor="custom-analysis-title">Title</Label>
-              <Input
-                id="custom-analysis-title"
-                value={value.title}
-                onChange={(event) => onChange({ ...value, title: event.target.value })}
-                placeholder="Quarterly NCD message breakdown"
-              />
-            </div>
+            {!standalone ? (
+              <div className="grid gap-2 md:col-span-2">
+                <Label htmlFor="custom-analysis-title">Title</Label>
+                <Input
+                  id="custom-analysis-title"
+                  value={value.title}
+                  onChange={(event) => onChange({ ...value, title: event.target.value })}
+                  placeholder="Quarterly NCD message breakdown"
+                />
+              </div>
+            ) : null}
             <div className="grid gap-2 md:col-span-2">
               <Label>Indicators</Label>
               <MultiSelectField
@@ -679,6 +711,7 @@ export function CustomAnalysisBuilder(props: CustomAnalysisBuilderProps) {
           )}
         </section>
 
+        <AdvancedOptions simplified={standalone}>
         <section className="rounded-[1.5rem] border border-border bg-[#fbfdff] p-4 shadow-sm">
           <div className="mb-4">
             <h3 className="text-base font-semibold text-foreground">Analysis Setup</h3>
@@ -778,6 +811,7 @@ export function CustomAnalysisBuilder(props: CustomAnalysisBuilderProps) {
             </div>
           </div>
         </section>
+        </AdvancedOptions>
     </div>
   );
 }
