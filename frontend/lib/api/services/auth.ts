@@ -146,11 +146,13 @@ export const authService = {
     const refresh = getRefreshToken();
     if (!refresh) throw new Error('No refresh token available');
     
-    const { data } = await api.post<{ access: string }>(
+    const { data } = await api.post<{ access: string; refresh?: string }>(
       `${USERS_BASE_PATH}/token/refresh/`,
       { refresh }
     );
-    setAuthTokens(data.access, refresh);
+    // Persist the rotated refresh token (ROTATE_REFRESH_TOKENS blacklists the
+    // old one); reusing the old token would 401 on the next refresh.
+    setAuthTokens(data.access, data.refresh || refresh);
     return data.access;
   },
 

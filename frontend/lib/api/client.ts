@@ -487,7 +487,12 @@ async function refreshAccessToken(): Promise<string | null> {
       return null;
     }
 
-    setAuthTokens(data.access, refresh);
+    // The backend rotates refresh tokens (ROTATE_REFRESH_TOKENS) and blacklists
+    // the old one (BLACKLIST_AFTER_ROTATION). Persist the rotated refresh token
+    // when present; reusing the old (now blacklisted) token would 401 on the
+    // next refresh and kick the user out.
+    const rotatedRefresh = typeof data.refresh === 'string' && data.refresh ? data.refresh : refresh;
+    setAuthTokens(data.access, rotatedRefresh);
     return data.access as string;
   } catch {
     clearAuthTokens();
