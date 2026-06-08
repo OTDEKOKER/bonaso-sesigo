@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     'profiles',
     'uploads',
     'messaging',
+    'idempotency',
 ]
 
 MIDDLEWARE = [
@@ -222,6 +223,24 @@ if not DEBUG and not TESTING:
 FILE_UPLOAD_MAX_MEMORY_SIZE = env_int('FILE_UPLOAD_MAX_MEMORY_SIZE', 5 * 1024 * 1024)
 DATA_UPLOAD_MAX_MEMORY_SIZE = env_int('DATA_UPLOAD_MAX_MEMORY_SIZE', 50 * 1024 * 1024)
 
+# Cache
+# ----------------------------------------------------------------------------
+# Throttle state (SEC-1) and the analytics response cache must be SHARED across
+# the gunicorn workers in the backend container; the default per-process
+# LocMemCache would let each worker keep its own counters, multiplying every
+# rate limit by the worker count. A filesystem cache lives on the container's
+# shared filesystem, so all workers in the one backend container agree on the
+# count without needing Redis or a DB cache table (no extra deploy step).
+# Override with CACHE_BACKEND/CACHE_LOCATION for a Redis/memcached deployment.
+CACHE_BACKEND = os.getenv('CACHE_BACKEND', 'django.core.cache.backends.filebased.FileBasedCache')
+CACHE_LOCATION = os.getenv('CACHE_LOCATION', '/tmp/bonaso_cache')
+CACHES = {
+    'default': {
+        'BACKEND': CACHE_BACKEND,
+        'LOCATION': CACHE_LOCATION,
+    }
+}
+
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -238,13 +257,25 @@ REST_FRAMEWORK = {
         'rest_framework.filters.OrderingFilter',
     ),
     # Throttling. Scoped rates protect the public/unauthenticated surface
-    # (event check-in) without rate-limiting normal authenticated traffic.
+    # (event check-in) and the authentication endpoints (SEC-1: brute-force /
+    # credential-stuffing protection) without rate-limiting normal
+    # authenticated traffic.
     'DEFAULT_THROTTLE_CLASSES': (
         'rest_framework.throttling.ScopedRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
         'event_checkin': os.getenv('THROTTLE_EVENT_CHECKIN', '30/minute'),
+        # SEC-1 auth hardening. Keyed by client IP for anonymous endpoints
+        # (login/refresh) and by user for authenticated ones (password reset).
+        'login': os.getenv('THROTTLE_LOGIN', '10/minute'),
+        'token_refresh': os.getenv('THROTTLE_TOKEN_REFRESH', '30/minute'),
+        'password_reset': os.getenv('THROTTLE_PASSWORD_RESET', '5/hour'),
     },
+    # The backend runs behind exactly one reverse proxy (nginx) on loopback, so
+    # REMOTE_ADDR is always 127.0.0.1. Tell DRF to read the real client IP from
+    # the proxy-appended X-Forwarded-For entry; otherwise every client would
+    # share a single throttle bucket (and a spoofed XFF could not bypass it).
+    'NUM_PROXIES': env_int('NUM_PROXIES', 1),
 }
 
 # Simple JWT settings

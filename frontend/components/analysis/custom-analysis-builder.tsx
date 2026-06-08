@@ -408,7 +408,7 @@ export function mapCustomAnalysisToDashboardChartRequest(state: CustomAnalysisSt
   };
 }
 
-function MultiSelectField(props: {
+export function MultiSelectField(props: {
   options: SelectOption[];
   values: string[];
   onChange: (nextValues: string[]) => void;

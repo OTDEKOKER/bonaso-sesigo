@@ -22,6 +22,7 @@ from io import BytesIO
 
 from .models import Report, SavedQuery, ScheduledReport, CoordinatorTarget
 from indicators.models import Indicator
+from indicators.canonical import canonical_id_map
 from projects.models import Project
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
 from projects.assignment_rules import count_project_indicators_for_organization_scope
@@ -62,6 +63,29 @@ def _extract_total(value) -> float:
         female = float(value.get('female') or 0)
         return male + female
     return 0.0
+
+
+def _canonical_indicator_resolver():
+    """Return ``(canon_id_for(indicator_id), meta_for(canon_id))`` helpers.
+
+    Rolls duplicate indicators (DI-1/AN-1) up to their canonical row so dashboard
+    and report totals reconcile to a single metric instead of being split across
+    ``AUTO_*`` / ``NAHPA*`` / ``SC_*`` duplicates. ``meta_for`` yields the
+    canonical code/name for labelling. One light query, cached per call.
+    """
+    id_map = canonical_id_map()
+    meta = {
+        ind_id: {'indicator_code': code, 'indicator_name': name}
+        for ind_id, code, name in Indicator.objects.values_list('id', 'code', 'name')
+    }
+
+    def canon_id_for(indicator_id):
+        return id_map.get(indicator_id, indicator_id)
+
+    def meta_for(canon_id):
+        return meta.get(canon_id, {'indicator_code': '', 'indicator_name': f'Indicator {canon_id}'})
+
+    return canon_id_for, meta_for
 
 
 def _next_run_for_frequency(frequency: str):
@@ -525,7 +549,20 @@ def indicator_trends_bulk(request):
     date_to = request.query_params.get('date_to')
 
     user = request.user
-    aggregates = Aggregate.objects.filter(indicator_id__in=indicator_ids, status='approved')
+    # AN-1: if a requested indicator is canonical, also pull aggregates stranded
+    # on its deprecated duplicates so the trend reflects the full metric. Data
+    # is attributed back to the requested (canonical) id; series shape unchanged.
+    requested_set = set(indicator_ids)
+    variant_ids = list(
+        Indicator.objects.filter(canonical_indicator_id__in=requested_set)
+        .values_list('id', flat=True)
+    )
+    variant_to_canonical = dict(
+        Indicator.objects.filter(canonical_indicator_id__in=requested_set)
+        .values_list('id', 'canonical_indicator_id')
+    )
+    source_ids = list(requested_set.union(variant_ids))
+    aggregates = Aggregate.objects.filter(indicator_id__in=source_ids, status='approved')
     # Isolate Sesigo Live System / Training Mode trend data.
     aggregates = apply_training_filter(aggregates, request, project_lookup='project')
     parsed_org_id = _safe_parse_int(org_id) if org_id not in (None, "") else None
@@ -581,7 +618,9 @@ def indicator_trends_bulk(request):
 
     for agg in aggregates.filter(period_start__gte=earliest):
         month_start = agg.period_start.replace(day=1)
-        indicator_totals = totals_by_indicator.get(agg.indicator_id)
+        # Attribute a deprecated variant's data to its canonical (requested) id.
+        target_id = variant_to_canonical.get(agg.indicator_id, agg.indicator_id)
+        indicator_totals = totals_by_indicator.get(target_id)
         if indicator_totals is not None and month_start in indicator_totals:
             indicator_totals[month_start] += _extract_total(agg.value)
 
@@ -856,15 +895,20 @@ class ReportViewSet(viewsets.ModelViewSet):
         aggregates = apply_training_filter(aggregates, request, project_lookup="project")
 
         cached_rows = []
+        canon_id_for, canon_meta_for = _canonical_indicator_resolver()
         if report.report_type == 'indicator':
             totals = {}
             for agg in aggregates.select_related('indicator'):
+                # AN-1: roll duplicate indicators up to their canonical row so a
+                # single metric is not split across AUTO_/NAHPA/SC duplicates.
+                canon_id = canon_id_for(agg.indicator_id)
+                meta = canon_meta_for(canon_id)
                 row = totals.setdefault(
-                    agg.indicator_id,
+                    canon_id,
                     {
-                        'indicator_id': agg.indicator_id,
-                        'indicator_code': agg.indicator.code,
-                        'indicator_name': agg.indicator.name,
+                        'indicator_id': canon_id,
+                        'indicator_code': meta['indicator_code'],
+                        'indicator_name': meta['indicator_name'],
                         'total_value': 0.0,
                         'entries': 0,
                     },
@@ -890,10 +934,12 @@ class ReportViewSet(viewsets.ModelViewSet):
         else:
             # Default "custom" report is a raw aggregate export based on parameters.
             for agg in aggregates.select_related('indicator', 'project', 'organization'):
+                canon_id = canon_id_for(agg.indicator_id)
+                meta = canon_meta_for(canon_id)
                 cached_rows.append({
-                    'indicator_id': agg.indicator_id,
-                    'indicator_code': agg.indicator.code,
-                    'indicator_name': agg.indicator.name,
+                    'indicator_id': canon_id,
+                    'indicator_code': meta['indicator_code'],
+                    'indicator_name': meta['indicator_name'],
                     'project_id': agg.project_id,
                     'project_name': agg.project.name,
                     'organization_id': agg.organization_id,

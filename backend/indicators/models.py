@@ -88,9 +88,20 @@ class Indicator(models.Model):
     
     class Meta:
         ordering = ['category', 'name']
-    
+
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+    @property
+    def canonical_id(self) -> int:
+        """The id analytics should group on: the canonical indicator if this row
+        is a deprecated duplicate, otherwise itself (DI-1/AN-1)."""
+        return self.canonical_indicator_id or self.id
+
+    @property
+    def canonical_or_self(self):
+        """The canonical Indicator instance (or self when not deprecated)."""
+        return self.canonical_indicator or self
 
 
 class IndicatorAlias(models.Model):

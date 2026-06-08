@@ -15,8 +15,27 @@ log() {
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
 }
 
+# Monitoring/alerting hook (audit C1). On any failure we notify via ONE of:
+#   BONASO_ALERT_WEBHOOK  - POST {"text": "..."} (Slack/Teams/generic webhook)
+#   BONASO_ALERT_COMMAND  - arbitrary command; the message is passed as $1
+# If neither is set the alert is only written to the log (cron captures it).
+alert() {
+  local message="$1"
+  log "ALERT: $message"
+  if [ -n "${BONASO_ALERT_WEBHOOK:-}" ] && command -v curl >/dev/null 2>&1; then
+    curl -fsS -m 15 -X POST -H 'Content-Type: application/json' \
+      --data "{\"text\": \"[BONASO backup] ${message}\"}" \
+      "$BONASO_ALERT_WEBHOOK" >/dev/null 2>&1 || log "WARNING: alert webhook failed."
+  fi
+  if [ -n "${BONASO_ALERT_COMMAND:-}" ]; then
+    # shellcheck disable=SC2086
+    $BONASO_ALERT_COMMAND "[BONASO backup] ${message}" >/dev/null 2>&1 || log "WARNING: alert command failed."
+  fi
+}
+
 fail() {
   log "ERROR: $*"
+  alert "FAILED: $*"
   exit 1
 }
 
@@ -99,9 +118,22 @@ log "Manifest: $MANIFEST_FILE"
 # ---------------------------------------------------------------------------
 OFFSITE_RCLONE_REMOTE="${BONASO_OFFSITE_RCLONE_REMOTE:-}"
 OFFSITE_SSH_DEST="${BONASO_OFFSITE_SSH_DEST:-}"
+OFFSITE_S3_URI="${BONASO_OFFSITE_S3_URI:-}"   # e.g. s3://bonaso-backups/db (needs aws cli)
 OFFSITE_STATUS="not_configured"
 
 push_offsite() {
+  # Native S3 (AWS S3, Backblaze B2 S3-compatible, etc.) via the aws CLI. Use
+  # BONASO_OFFSITE_S3_ENDPOINT for non-AWS S3-compatible providers.
+  if [ -n "$OFFSITE_S3_URI" ]; then
+    command -v aws >/dev/null 2>&1 || { log "ERROR: aws CLI not installed but BONASO_OFFSITE_S3_URI is set."; return 1; }
+    local endpoint_args=()
+    [ -n "${BONASO_OFFSITE_S3_ENDPOINT:-}" ] && endpoint_args=(--endpoint-url "$BONASO_OFFSITE_S3_ENDPOINT")
+    log "Off-site (s3) -> $OFFSITE_S3_URI"
+    aws s3 cp "${endpoint_args[@]}" "$BACKUP_FILE" "$OFFSITE_S3_URI/" \
+      && aws s3 cp "${endpoint_args[@]}" "$MANIFEST_FILE" "$OFFSITE_S3_URI/" || return 1
+    OFFSITE_STATUS="s3_ok"
+    return 0
+  fi
   if [ -n "$OFFSITE_RCLONE_REMOTE" ]; then
     command -v rclone >/dev/null 2>&1 || { log "ERROR: rclone not installed but BONASO_OFFSITE_RCLONE_REMOTE is set."; return 1; }
     log "Off-site (rclone) -> $OFFSITE_RCLONE_REMOTE"
@@ -125,9 +157,28 @@ if push_offsite; then
 else
   rc=$?
   if [ "$rc" -eq 2 ]; then
-    log "WARNING: no off-site backup target configured (set BONASO_OFFSITE_RCLONE_REMOTE or BONASO_OFFSITE_SSH_DEST). Backup is LOCAL-ONLY and will not survive host loss."
+    log "WARNING: no off-site backup target configured (set BONASO_OFFSITE_S3_URI, BONASO_OFFSITE_RCLONE_REMOTE or BONASO_OFFSITE_SSH_DEST). Backup is LOCAL-ONLY and will not survive host loss."
   else
-    log "ERROR: off-site replication FAILED. Local backup is intact at $BACKUP_FILE but is not replicated."
+    alert "off-site replication FAILED. Local backup intact at $BACKUP_FILE but NOT replicated."
     exit 1
   fi
 fi
+
+# Record off-site status into the manifest/latest for the health-check to read.
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$MANIFEST_FILE" "$LATEST_FILE" "$OFFSITE_STATUS" <<'PY' || true
+import json, sys
+manifest, latest, status = sys.argv[1], sys.argv[2], sys.argv[3]
+for path in (manifest, latest):
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+        data["offsite_status"] = status
+        with open(path, "w") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception:
+        pass
+PY
+fi
+
+log "Off-site status: $OFFSITE_STATUS"

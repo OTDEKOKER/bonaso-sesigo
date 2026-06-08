@@ -10,6 +10,10 @@ services:
       SECURE_SSL_REDIRECT: "True"
       USE_X_FORWARDED_PROTO: "True"
       BONASO_DJANGO_ROOT: "/app"
+      # Access logging w/ request duration (%(D)s, microseconds) so slow endpoints
+      # are visible before they hit the gunicorn --timeout and get SIGKILLed.
+      # Gunicorn reads GUNICORN_CMD_ARGS automatically; no entrypoint/image change.
+      GUNICORN_CMD_ARGS: "--access-logfile - --access-logformat '%(h)s %(m)s %(U)s?%(q)s -> %(s)s %(D)sus %(b)sb'"
     volumes:
       - ../backend/.env:/app/.env:ro
       - ../backend/uploads:/app/uploads

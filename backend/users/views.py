@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -58,9 +59,15 @@ class TrainingAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):
-    """Custom login view that logs user activity."""
+    """Custom login view that logs user activity.
+
+    SEC-1: rate limited per client IP (``login`` scope) to blunt brute-force and
+    credential-stuffing attacks. Successful logins are unaffected at normal use.
+    """
 
     serializer_class = TrainingAwareTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -82,8 +89,13 @@ class CookieTokenObtainPairView(TokenObtainPairView):
 
 
 class CookieTokenRefreshView(TokenRefreshView):
-    """Custom refresh token view."""
-    pass
+    """Custom refresh token view.
+
+    SEC-1: rate limited per client IP (``token_refresh`` scope) so a stolen or
+    brute-forced refresh token cannot be replayed at high volume.
+    """
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'token_refresh'
 
 
 # ---------------------------
@@ -141,8 +153,14 @@ class ApplyForNewUser(generics.CreateAPIView):
 
 
 class AdminResetPasswordView(APIView):
-    """Admin can reset a user's password."""
+    """Admin can reset a user's password.
+
+    SEC-1: rate limited (``password_reset`` scope) as defence-in-depth against
+    automated abuse of the password-reset surface.
+    """
     permission_classes = [IsPortalAdmin]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_reset'
 
     def post(self, request):
         serializer = AdminResetPasswordSerializer(data=request.data)

@@ -33,6 +33,7 @@ from projects.assignment_rules import (
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
 from respondents.models import Response as InteractionResponse
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from idempotency.mixins import IdempotentMutationMixin
 from organizations.models import Organization
 from respondents.rollups import sync_project_indicator_total
 from users.models import User
@@ -131,7 +132,7 @@ class AggregateFilterSet(django_filters.FilterSet):
         return queryset
 
 
-class AggregateViewSet(viewsets.ModelViewSet):
+class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     """ViewSet for managing aggregate data."""
     
     queryset = Aggregate.objects.all()

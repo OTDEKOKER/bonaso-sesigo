@@ -11,6 +11,7 @@ from django.db.models import Count, Max, Prefetch
 from django.http import HttpResponse
 import csv
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from idempotency.mixins import IdempotentMutationMixin
 from projects.assignment_rules import (
     is_indicator_assigned_to_organization,
     is_organization_in_project_scope,
@@ -26,7 +27,7 @@ from .serializers import (
 )
 
 
-class RespondentViewSet(viewsets.ModelViewSet):
+class RespondentViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     """ViewSet for managing respondents."""
     
     queryset = Respondent.objects.all()
@@ -123,7 +124,7 @@ class RespondentViewSet(viewsets.ModelViewSet):
         return response
 
 
-class InteractionViewSet(viewsets.ModelViewSet):
+class InteractionViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     """ViewSet for managing interactions."""
     
     queryset = Interaction.objects.all()
@@ -235,7 +236,7 @@ class InteractionViewSet(viewsets.ModelViewSet):
         return DRFResponse(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class ResponseViewSet(viewsets.ModelViewSet):
+class ResponseViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     """ViewSet for managing responses."""
     
     queryset = Response.objects.select_related('interaction', 'indicator')
@@ -260,6 +261,22 @@ class ResponseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         interaction = serializer.validated_data.get('interaction')
         indicator = serializer.validated_data.get('indicator')
+        # SEC-2: enforce organisation ownership of the target interaction before
+        # writing a response. Without this a non-admin could attach a response to
+        # another organisation's interaction by guessing a sequential id (write
+        # IDOR / cross-org data injection). Mirror InteractionViewSet scope rules.
+        if not is_organization_admin(self.request.user):
+            allowed_org_ids = set(get_user_organization_ids(self.request.user) or [])
+            interaction_org_id = (
+                interaction.respondent.organization_id if interaction and interaction.respondent_id else None
+            )
+            if interaction_org_id is None or interaction_org_id not in allowed_org_ids:
+                raise PermissionDenied(
+                    'You do not have permission to add responses to this interaction.'
+                )
+        # Enforce the Sesigo Training/Live boundary on response capture too.
+        if interaction is not None:
+            assert_project_write_allowed(self.request, interaction.project)
         if interaction and interaction.project_id and indicator:
             if not is_indicator_assigned_to_organization(
                 project=interaction.project,

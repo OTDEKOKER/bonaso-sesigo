@@ -1,0 +1,1552 @@
+{
+  "saved_at": "2026-06-02T13:18:10.983737",
+  "project": 3,
+  "hierarchy_overrides": {
+    "109": [
+      "145",
+      "147",
+      "139",
+      "146",
+      "149",
+      "9",
+      "144",
+      "142",
+      "140",
+      "148",
+      "138",
+      "141",
+      "143"
+    ]
+  },
+  "links": [
+    {
+      "id": 82,
+      "parent": 5,
+      "child": 94,
+      "is_active": false
+    },
+    {
+      "id": 90,
+      "parent": 5,
+      "child": 95,
+      "is_active": false
+    },
+    {
+      "id": 93,
+      "parent": 5,
+      "child": 96,
+      "is_active": false
+    },
+    {
+      "id": 92,
+      "parent": 5,
+      "child": 97,
+      "is_active": false
+    },
+    {
+      "id": 85,
+      "parent": 5,
+      "child": 98,
+      "is_active": false
+    },
+    {
+      "id": 95,
+      "parent": 5,
+      "child": 99,
+      "is_active": false
+    },
+    {
+      "id": 94,
+      "parent": 5,
+      "child": 100,
+      "is_active": false
+    },
+    {
+      "id": 83,
+      "parent": 5,
+      "child": 101,
+      "is_active": false
+    },
+    {
+      "id": 81,
+      "parent": 5,
+      "child": 102,
+      "is_active": false
+    },
+    {
+      "id": 96,
+      "parent": 5,
+      "child": 103,
+      "is_active": false
+    },
+    {
+      "id": 84,
+      "parent": 5,
+      "child": 104,
+      "is_active": false
+    },
+    {
+      "id": 91,
+      "parent": 5,
+      "child": 105,
+      "is_active": false
+    },
+    {
+      "id": 86,
+      "parent": 5,
+      "child": 106,
+      "is_active": false
+    },
+    {
+      "id": 15,
+      "parent": 5,
+      "child": 107,
+      "is_active": false
+    },
+    {
+      "id": 89,
+      "parent": 5,
+      "child": 110,
+      "is_active": false
+    },
+    {
+      "id": 88,
+      "parent": 5,
+      "child": 111,
+      "is_active": false
+    },
+    {
+      "id": 98,
+      "parent": 5,
+      "child": 192,
+      "is_active": false
+    },
+    {
+      "id": 6,
+      "parent": 109,
+      "child": 9,
+      "is_active": true
+    },
+    {
+      "id": 11,
+      "parent": 109,
+      "child": 138,
+      "is_active": true
+    },
+    {
+      "id": 3,
+      "parent": 109,
+      "child": 139,
+      "is_active": true
+    },
+    {
+      "id": 9,
+      "parent": 109,
+      "child": 140,
+      "is_active": true
+    },
+    {
+      "id": 12,
+      "parent": 109,
+      "child": 141,
+      "is_active": true
+    },
+    {
+      "id": 8,
+      "parent": 109,
+      "child": 142,
+      "is_active": true
+    },
+    {
+      "id": 13,
+      "parent": 109,
+      "child": 143,
+      "is_active": true
+    },
+    {
+      "id": 7,
+      "parent": 109,
+      "child": 144,
+      "is_active": true
+    },
+    {
+      "id": 1,
+      "parent": 109,
+      "child": 145,
+      "is_active": true
+    },
+    {
+      "id": 4,
+      "parent": 109,
+      "child": 146,
+      "is_active": true
+    },
+    {
+      "id": 2,
+      "parent": 109,
+      "child": 147,
+      "is_active": true
+    },
+    {
+      "id": 10,
+      "parent": 109,
+      "child": 148,
+      "is_active": true
+    },
+    {
+      "id": 5,
+      "parent": 109,
+      "child": 149,
+      "is_active": true
+    },
+    {
+      "id": 30,
+      "parent": 109,
+      "child": 191,
+      "is_active": false
+    },
+    {
+      "id": 48,
+      "parent": 112,
+      "child": 113,
+      "is_active": false
+    },
+    {
+      "id": 49,
+      "parent": 112,
+      "child": 114,
+      "is_active": false
+    },
+    {
+      "id": 50,
+      "parent": 112,
+      "child": 115,
+      "is_active": false
+    },
+    {
+      "id": 51,
+      "parent": 112,
+      "child": 116,
+      "is_active": false
+    },
+    {
+      "id": 52,
+      "parent": 112,
+      "child": 117,
+      "is_active": false
+    },
+    {
+      "id": 53,
+      "parent": 112,
+      "child": 118,
+      "is_active": false
+    },
+    {
+      "id": 54,
+      "parent": 112,
+      "child": 119,
+      "is_active": false
+    },
+    {
+      "id": 55,
+      "parent": 112,
+      "child": 120,
+      "is_active": false
+    },
+    {
+      "id": 56,
+      "parent": 112,
+      "child": 121,
+      "is_active": false
+    },
+    {
+      "id": 99,
+      "parent": 112,
+      "child": 122,
+      "is_active": false
+    },
+    {
+      "id": 57,
+      "parent": 112,
+      "child": 123,
+      "is_active": false
+    },
+    {
+      "id": 58,
+      "parent": 112,
+      "child": 124,
+      "is_active": false
+    },
+    {
+      "id": 59,
+      "parent": 112,
+      "child": 125,
+      "is_active": false
+    },
+    {
+      "id": 47,
+      "parent": 112,
+      "child": 126,
+      "is_active": false
+    },
+    {
+      "id": 61,
+      "parent": 112,
+      "child": 127,
+      "is_active": false
+    },
+    {
+      "id": 62,
+      "parent": 112,
+      "child": 128,
+      "is_active": false
+    },
+    {
+      "id": 63,
+      "parent": 112,
+      "child": 129,
+      "is_active": false
+    },
+    {
+      "id": 64,
+      "parent": 112,
+      "child": 130,
+      "is_active": false
+    },
+    {
+      "id": 65,
+      "parent": 112,
+      "child": 131,
+      "is_active": false
+    },
+    {
+      "id": 66,
+      "parent": 112,
+      "child": 132,
+      "is_active": false
+    },
+    {
+      "id": 67,
+      "parent": 112,
+      "child": 133,
+      "is_active": false
+    },
+    {
+      "id": 68,
+      "parent": 112,
+      "child": 134,
+      "is_active": false
+    },
+    {
+      "id": 69,
+      "parent": 112,
+      "child": 135,
+      "is_active": false
+    },
+    {
+      "id": 70,
+      "parent": 112,
+      "child": 136,
+      "is_active": false
+    },
+    {
+      "id": 73,
+      "parent": 112,
+      "child": 169,
+      "is_active": false
+    },
+    {
+      "id": 60,
+      "parent": 112,
+      "child": 175,
+      "is_active": false
+    },
+    {
+      "id": 72,
+      "parent": 112,
+      "child": 176,
+      "is_active": false
+    },
+    {
+      "id": 74,
+      "parent": 112,
+      "child": 178,
+      "is_active": false
+    },
+    {
+      "id": 75,
+      "parent": 112,
+      "child": 179,
+      "is_active": false
+    },
+    {
+      "id": 71,
+      "parent": 112,
+      "child": 180,
+      "is_active": false
+    },
+    {
+      "id": 32,
+      "parent": 159,
+      "child": 150,
+      "is_active": false
+    },
+    {
+      "id": 33,
+      "parent": 159,
+      "child": 151,
+      "is_active": false
+    },
+    {
+      "id": 34,
+      "parent": 159,
+      "child": 152,
+      "is_active": false
+    },
+    {
+      "id": 35,
+      "parent": 159,
+      "child": 153,
+      "is_active": false
+    },
+    {
+      "id": 97,
+      "parent": 159,
+      "child": 154,
+      "is_active": false
+    },
+    {
+      "id": 36,
+      "parent": 159,
+      "child": 155,
+      "is_active": false
+    },
+    {
+      "id": 37,
+      "parent": 159,
+      "child": 156,
+      "is_active": false
+    },
+    {
+      "id": 38,
+      "parent": 159,
+      "child": 157,
+      "is_active": false
+    },
+    {
+      "id": 39,
+      "parent": 159,
+      "child": 158,
+      "is_active": false
+    },
+    {
+      "id": 40,
+      "parent": 159,
+      "child": 160,
+      "is_active": false
+    },
+    {
+      "id": 41,
+      "parent": 159,
+      "child": 161,
+      "is_active": false
+    },
+    {
+      "id": 43,
+      "parent": 159,
+      "child": 162,
+      "is_active": false
+    },
+    {
+      "id": 44,
+      "parent": 159,
+      "child": 163,
+      "is_active": false
+    },
+    {
+      "id": 45,
+      "parent": 159,
+      "child": 164,
+      "is_active": false
+    },
+    {
+      "id": 78,
+      "parent": 166,
+      "child": 167,
+      "is_active": false
+    },
+    {
+      "id": 77,
+      "parent": 166,
+      "child": 168,
+      "is_active": false
+    },
+    {
+      "id": 42,
+      "parent": 166,
+      "child": 170,
+      "is_active": false
+    },
+    {
+      "id": 16,
+      "parent": 174,
+      "child": 1,
+      "is_active": false
+    },
+    {
+      "id": 79,
+      "parent": 174,
+      "child": 5,
+      "is_active": false
+    },
+    {
+      "id": 17,
+      "parent": 174,
+      "child": 109,
+      "is_active": false
+    },
+    {
+      "id": 46,
+      "parent": 174,
+      "child": 112,
+      "is_active": false
+    },
+    {
+      "id": 31,
+      "parent": 174,
+      "child": 159,
+      "is_active": false
+    },
+    {
+      "id": 76,
+      "parent": 174,
+      "child": 166,
+      "is_active": false
+    }
+  ],
+  "parent_assignment": [
+    {
+      "po_id": 97,
+      "org_id": 1,
+      "org": "TEBELOPELE",
+      "role": "coordinator",
+      "is_coordinator": true,
+      "is_sub_grantee": false,
+      "parent_po_id": 173,
+      "parent_org_id": 174,
+      "parent_org": "BONASO"
+    },
+    {
+      "po_id": 98,
+      "org_id": 5,
+      "org": "MAKGABANENG",
+      "role": "coordinator",
+      "is_coordinator": true,
+      "is_sub_grantee": false,
+      "parent_po_id": 173,
+      "parent_org_id": 174,
+      "parent_org": "BONASO"
+    },
+    {
+      "po_id": 99,
+      "org_id": 9,
+      "org": "CAPTIVE EYE ORG.",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 100,
+      "org_id": 14,
+      "org": "Ovajhu",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 101,
+      "org_id": 25,
+      "org": "Social Dialogue",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 102,
+      "org_id": 94,
+      "org": "Journey of Hope",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 103,
+      "org_id": 95,
+      "org": "Keitsholofetse",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 104,
+      "org_id": 96,
+      "org": "Just Hope Foundation",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 105,
+      "org_id": 97,
+      "org": "Home of Hope",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 106,
+      "org_id": 98,
+      "org": "NCONGO",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 107,
+      "org_id": 99,
+      "org": "BOSASNet",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 108,
+      "org_id": 100,
+      "org": "BONMEH",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 2,
+      "org_id": 101,
+      "org": "APSA",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 109,
+      "org_id": 102,
+      "org": "BONA NALEDI",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 110,
+      "org_id": 103,
+      "org": "Masego Mental Health",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 111,
+      "org_id": 104,
+      "org": "Chobe Arts",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 112,
+      "org_id": 105,
+      "org": "Valour Mental Health",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 113,
+      "org_id": 106,
+      "org": "SSSG",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 114,
+      "org_id": 107,
+      "org": "The Fighters Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 115,
+      "org_id": 108,
+      "org": "MAATA",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 116,
+      "org_id": 109,
+      "org": "HPP",
+      "role": "coordinator",
+      "is_coordinator": true,
+      "is_sub_grantee": false,
+      "parent_po_id": 173,
+      "parent_org_id": 174,
+      "parent_org": "BONASO"
+    },
+    {
+      "po_id": 3,
+      "org_id": 110,
+      "org": "ATN",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 117,
+      "org_id": 111,
+      "org": "Ultimate Youth",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    },
+    {
+      "po_id": 118,
+      "org_id": 112,
+      "org": "BONEPWA",
+      "role": "coordinator",
+      "is_coordinator": true,
+      "is_sub_grantee": false,
+      "parent_po_id": 173,
+      "parent_org_id": 174,
+      "parent_org": "BONASO"
+    },
+    {
+      "po_id": 119,
+      "org_id": 113,
+      "org": "Healing Hearts",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 120,
+      "org_id": 114,
+      "org": "Sunshine",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 121,
+      "org_id": 115,
+      "org": "CEYOHO",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 122,
+      "org_id": 116,
+      "org": "Thusang Bana",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 123,
+      "org_id": 117,
+      "org": "Tlhabologo Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 124,
+      "org_id": 118,
+      "org": "Mathogonolo Charitable Society",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 125,
+      "org_id": 119,
+      "org": "Kebotlhekwa",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 126,
+      "org_id": 120,
+      "org": "Marang",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 127,
+      "org_id": 121,
+      "org": "Kasane",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 128,
+      "org_id": 122,
+      "org": "Tutume AIDS Fighters",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 129,
+      "org_id": 123,
+      "org": "Lapologang",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 130,
+      "org_id": 124,
+      "org": "Leitho la Sechaba",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 131,
+      "org_id": 125,
+      "org": "Tozwimilidzha Muti Amuchile Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 132,
+      "org_id": 126,
+      "org": "Motheo Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 7,
+      "org_id": 127,
+      "org": "Baikamogedi Support Group/POT",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 133,
+      "org_id": 128,
+      "org": "Ditshegwane Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 134,
+      "org_id": 129,
+      "org": "Omaweneno Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 1,
+      "org_id": 130,
+      "org": "A HE EME",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 135,
+      "org_id": 131,
+      "org": "Ghantsi Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 136,
+      "org_id": 132,
+      "org": "Jwaneng Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 137,
+      "org_id": 133,
+      "org": "Incredible Minds",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 138,
+      "org_id": 134,
+      "org": "Guardian Angel Orphans Society",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 139,
+      "org_id": 135,
+      "org": "Old Naledi Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 140,
+      "org_id": 136,
+      "org": "BORNUS",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 141,
+      "org_id": 137,
+      "org": "BONELA",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 142,
+      "org_id": 138,
+      "org": "Nkaikela Youth Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 143,
+      "org_id": 139,
+      "org": "Botswana Association for the Deaf",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 144,
+      "org_id": 140,
+      "org": "Men for Health and Gender Justice Org.",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 145,
+      "org_id": 141,
+      "org": "Silence Kills Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 146,
+      "org_id": 142,
+      "org": "Madikwe Community Trust",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 147,
+      "org_id": 143,
+      "org": "Sisonke",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 148,
+      "org_id": 144,
+      "org": "LEGABIBO",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 5,
+      "org_id": 145,
+      "org": "BCD",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 149,
+      "org_id": 146,
+      "org": "Botswana Society for the Disabled",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 150,
+      "org_id": 147,
+      "org": "Botswana Association for the Blind and Partially Sighted",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 151,
+      "org_id": 148,
+      "org": "Mwatumwaya Rehabilitation Centre",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 152,
+      "org_id": 149,
+      "org": "Botswana Trans Initiative",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 153,
+      "org_id": 150,
+      "org": "Sentebale",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 154,
+      "org_id": 151,
+      "org": "BOFWA",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 155,
+      "org_id": 152,
+      "org": "Stepping Stone International",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 6,
+      "org_id": 153,
+      "org": "Bobonong Home Based Care",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 156,
+      "org_id": 154,
+      "org": "Mabogo aa Thebana Association South",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 157,
+      "org_id": 155,
+      "org": "Ovajua",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 158,
+      "org_id": 156,
+      "org": "Gumare Advisory",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 159,
+      "org_id": 157,
+      "org": "Positive Moments",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 160,
+      "org_id": 158,
+      "org": "Mind Power",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 161,
+      "org_id": 159,
+      "org": "Mopipi International Trust",
+      "role": "coordinator",
+      "is_coordinator": true,
+      "is_sub_grantee": false,
+      "parent_po_id": 173,
+      "parent_org_id": 174,
+      "parent_org": "BONASO"
+    },
+    {
+      "po_id": 162,
+      "org_id": 160,
+      "org": "House of Angels",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 163,
+      "org_id": 161,
+      "org": "Inpired Horizons",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 164,
+      "org_id": 162,
+      "org": "Hope Worldwide",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 165,
+      "org_id": 163,
+      "org": "Rena le Seabe",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 166,
+      "org_id": 164,
+      "org": "INERELA",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 161,
+      "parent_org_id": 159,
+      "parent_org": "Mopipi International Trust"
+    },
+    {
+      "po_id": 167,
+      "org_id": 165,
+      "org": "Tebelopele testing centres",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 168,
+      "org_id": 166,
+      "org": "MBGE",
+      "role": "coordinator",
+      "is_coordinator": true,
+      "is_sub_grantee": false,
+      "parent_po_id": 173,
+      "parent_org_id": 174,
+      "parent_org": "BONASO"
+    },
+    {
+      "po_id": 169,
+      "org_id": 167,
+      "org": "BOCHAIP",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 168,
+      "parent_org_id": 166,
+      "parent_org": "MBGE"
+    },
+    {
+      "po_id": 170,
+      "org_id": 168,
+      "org": "BOFABONETHA",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 168,
+      "parent_org_id": 166,
+      "parent_org": "MBGE"
+    },
+    {
+      "po_id": 171,
+      "org_id": 169,
+      "org": "Gender Fountain",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 172,
+      "org_id": 170,
+      "org": "Brothers Arise",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 168,
+      "parent_org_id": 166,
+      "parent_org": "MBGE"
+    },
+    {
+      "po_id": 173,
+      "org_id": 174,
+      "org": "BONASO",
+      "role": "lead",
+      "is_coordinator": false,
+      "is_sub_grantee": false,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 4,
+      "org_id": 175,
+      "org": "BCNS",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 174,
+      "org_id": 176,
+      "org": "Cynthia's Child Care Trust",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 175,
+      "org_id": 177,
+      "org": "Botswana Bailor Childrens",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 176,
+      "org_id": 178,
+      "org": "Center for TB",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 177,
+      "org_id": 179,
+      "org": "Diphalana",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 178,
+      "org_id": 180,
+      "org": "Mafolofolo Support Group",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 118,
+      "parent_org_id": 112,
+      "parent_org": "BONEPWA"
+    },
+    {
+      "po_id": 179,
+      "org_id": 181,
+      "org": "Tsabong Support Groups",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 180,
+      "org_id": 182,
+      "org": "Palapye",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": null,
+      "parent_org_id": null,
+      "parent_org": null
+    },
+    {
+      "po_id": 183,
+      "org_id": 191,
+      "org": "Success Capital",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 116,
+      "parent_org_id": 109,
+      "parent_org": "HPP"
+    },
+    {
+      "po_id": 184,
+      "org_id": 192,
+      "org": "Mabogo aa Thebana Association North",
+      "role": "sub_grantee",
+      "is_coordinator": false,
+      "is_sub_grantee": true,
+      "parent_po_id": 98,
+      "parent_org_id": 5,
+      "parent_org": "MAKGABANENG"
+    }
+  ]
+}
