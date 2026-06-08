@@ -10,6 +10,7 @@
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "lint": "eslint app components hooks lib",
     "start": "next start -p ${PORT:-13000}",
+    "build:mobile-shell": "node scripts/build-mobile-shell.mjs",
     "mobile:doctor": "npx cap doctor",
     "mobile:sync": "npx cap sync android",
     "mobile:copy": "npx cap copy android",

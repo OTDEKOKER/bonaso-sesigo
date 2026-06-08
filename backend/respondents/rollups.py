@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from aggregates.models import Aggregate
-from indicators.models import AssessmentIndicator
+from indicators.models import Question
 from projects.models import ProjectIndicator
 from projects.project_indicator_links import ensure_project_indicator_link
 
@@ -93,15 +93,6 @@ def _extract_aggregate_total(value):
     return Decimal('0')
 
 
-def _get_question_config(assessment_id, indicator_id):
-    if not assessment_id or not indicator_id:
-        return None
-    return AssessmentIndicator.objects.filter(
-        assessment_id=assessment_id,
-        indicator_id=indicator_id,
-    ).first()
-
-
 def _calculate_rollup_value(question, value):
     if question is None:
         return Decimal('0')
@@ -125,7 +116,9 @@ def _calculate_rollup_value(question, value):
             _normalize_token(item) for item in (question.aggregate_match_values or [])
             if _normalize_token(item)
         }
-        response_type = question.response_type or question.indicator.type
+        response_type = question.response_type or (
+            question.indicator.type if question.indicator_id else ''
+        )
 
         if not match_values and response_type == 'yes_no':
             match_values = {'yes', 'true', '1'}
@@ -148,31 +141,18 @@ def sync_rollup_bucket(indicator_id, project_id, organization_id, period_date):
     responses = Response.objects.select_related(
         'interaction',
         'interaction__respondent',
+        'question',
+        'question__indicator',
     ).filter(
         indicator_id=indicator_id,
         interaction__project_id=project_id,
         interaction__respondent__organization_id=organization_id,
         interaction__date=period_date,
-        interaction__assessment_id__isnull=False,
     )
-
-    assessment_ids = {
-        response.interaction.assessment_id
-        for response in responses
-        if response.interaction.assessment_id
-    }
-    question_map = {
-        question.assessment_id: question
-        for question in AssessmentIndicator.objects.select_related('indicator').filter(
-            assessment_id__in=assessment_ids,
-            indicator_id=indicator_id,
-        )
-    }
 
     total = Decimal('0')
     for response in responses:
-        question = question_map.get(response.interaction.assessment_id)
-        total += _calculate_rollup_value(question, response.value)
+        total += _calculate_rollup_value(response.question, response.value)
 
     aggregate = Aggregate.objects.filter(
         indicator_id=indicator_id,
@@ -272,13 +252,23 @@ def sync_interaction_rollups(interaction, previous_contexts=None):
         )
 
 
-def sync_assessment_question_rollups(assessment_id, indicator_id):
+def sync_question_rollups(question_id):
+    """Re-sync rollup buckets for every response to a given bank question.
+
+    Used when a question's placement or aggregate config changes. No-op for
+    questions with no linked indicator (nothing rolls up).
+    """
+    if not question_id:
+        return
+    question = Question.objects.filter(id=question_id).first()
+    if question is None or question.indicator_id is None:
+        return
+
     contexts = Response.objects.select_related(
         'interaction',
         'interaction__respondent',
     ).filter(
-        interaction__assessment_id=assessment_id,
-        indicator_id=indicator_id,
+        question_id=question_id,
     ).values_list(
         'interaction__project_id',
         'interaction__respondent__organization_id',
@@ -287,7 +277,7 @@ def sync_assessment_question_rollups(assessment_id, indicator_id):
 
     for project_id, organization_id, period_date in contexts:
         sync_rollup_bucket(
-            indicator_id=indicator_id,
+            indicator_id=question.indicator_id,
             project_id=project_id,
             organization_id=organization_id,
             period_date=period_date,

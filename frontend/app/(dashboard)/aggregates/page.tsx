@@ -60,6 +60,7 @@ import { AggregateChartDialog } from "@/components/aggregates/AggregateChartDial
 import { AggregateMatrixTable } from "@/components/aggregates/AggregateMatrixTable";
 import { AggregateReviewQueue } from "@/components/aggregates/AggregateReviewQueue";
 import type { AggregateIndicatorGroup } from "@/lib/aggregates/aggregate-helpers";
+import { isPlatformAdmin } from "@/lib/permissions";
 import type { Indicator, Project } from "@/lib/types";
 import {
   type AggregateEntryDraft,
@@ -372,7 +373,21 @@ function AggregatesPageContent() {
     if (urlSearchParam && urlSearchParam.trim()) {
       setSearchQuery(urlSearchParam.trim());
     }
-
+// Auto-scope non-admin users to their own organization by default
+    if (
+     !isPlatformAdmin(user) &&
+     urlOrganizationIds.length === 0 &&
+     !urlCoordinatorParam &&
+     userOrganizationId
+) {
+  const ownOrgId = String(userOrganizationId);
+  const isVisible = visibleOrganizations.some(
+    (org) => String(org.id) === ownOrgId,
+  );
+  if (isVisible) {
+    setSelectedOrganizationIdsList([ownOrgId]);
+  }
+}
     appliedUrlBaseFiltersRef.current = true;
     setUrlBaseFiltersApplied(true);
   }, [

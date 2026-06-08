@@ -85,6 +85,7 @@ export interface Organization {
   address?: string
   description?: string
   is_active?: boolean
+  dashboard_config?: Record<string, unknown>
   createdAt: string
 }
 

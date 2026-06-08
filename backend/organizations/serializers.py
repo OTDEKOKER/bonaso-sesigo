@@ -14,7 +14,8 @@ class OrganizationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'code', 'type', 'parent', 'parent_name',
             'description', 'address', 'phone', 'email', 'is_active',
-            'children_count', 'users_count', 'created_at', 'updated_at'
+            'dashboard_config', 'children_count', 'users_count',
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

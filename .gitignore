@@ -48,7 +48,7 @@ backend/uploads/**
 *.xlsm
 *.pptx
 *.docx
-imports/
+/imports/
 downloads/
 
 # ---- Logs / OS ----
@@ -58,6 +58,9 @@ downloads/
 # ---- Data output / fixture dirs (real programme data — never commit) ----
 backend/data/
 backend/reports/
+backend/uploads/*.json
+backend/uploads/import-backups/
+backend/uploads/**/*.bak-*
 frontend/reports/
 frontend/scripts/reports/
 

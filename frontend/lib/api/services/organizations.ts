@@ -51,6 +51,7 @@ type RawOrganization = {
   address?: string | null;
   description?: string | null;
   is_active?: boolean | null;
+  dashboard_config?: Record<string, unknown> | null;
   created_at?: string;
   createdAt?: string;
   code?: string;
@@ -76,6 +77,7 @@ function mapOrganization(org: RawOrganization): Organization {
     address: org.address ?? undefined,
     description: org.description ?? undefined,
     is_active: org.is_active ?? undefined,
+    dashboard_config: org.dashboard_config ?? undefined,
     createdAt: org.created_at ?? org.createdAt ?? '',
     // Preserve code if present for internal use.
     code: org.code,
@@ -185,6 +187,14 @@ export const organizationsService = {
     delete payload.contactPhone;
     const { data } = await api.patch<RawOrganization>(`/organizations/${id}/`, payload);
     return mapOrganization(data);
+  },
+
+  /**
+   * Save dashboard config as the org-level default.
+   * Django endpoint: PATCH /api/organizations/:id/
+   */
+  async saveDashboardConfig(id: number, config: Record<string, unknown>): Promise<void> {
+    await api.patch(`/organizations/${id}/`, { dashboard_config: config });
   },
 
   /**

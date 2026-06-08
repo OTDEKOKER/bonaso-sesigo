@@ -2,10 +2,12 @@
 Seed the BONELA Individual Outreach Form (Key Populations) as an Assessment.
 
 This digitises the paper "Individual Outreach Form - KP" (BONELA / NAHPA) into
-the generic Assessment -> AssessmentIndicator -> Indicator model so it can be
-captured per-respondent from the Interactions screen.
+the question-bank model: each form item becomes a reusable ``Question`` and is
+placed on the ``Assessment`` via ``AssessmentQuestion``. No indicators are
+created — questions are separate from indicators and only link to one when you
+explicitly want roll-up.
 
-The command is idempotent: it matches indicators by ``code`` and the assessment
+The command is idempotent: it matches questions by ``code`` and the assessment
 by ``name``, so re-running updates question text/options/order in place rather
 than duplicating. Use ``--dry-run`` to preview without writing.
 
@@ -15,32 +17,30 @@ than duplicating. Use ``--dry-run`` to preview without writing.
 
 Organization scoping
 --------------------
-Each question is an AssessmentIndicator pointing at one Indicator, and the org
-link lives on that Indicator (``Indicator.organizations``). In this system an
-indicator/assessment with **no** linked organization is *cross-cutting* —
-visible to every organization; linking specific orgs limits it to those orgs
+The org link lives on each ``Question`` (``Question.organizations``). In this
+system a question/assessment with **no** linked organization is *cross-cutting*
+— visible to every organization; linking specific orgs limits it to those orgs
 (plus admins). So:
 
 * By default the form is left fully **cross-cutting** (no org links), so it is
   not restricted to BONELA and every organization can use it.
 * ``--org-codes`` links the assessment to a specific set of organizations.
-* ``--indicator-org-codes`` sets the default org link applied to every
-  question's indicator.
-* A question may carry an ``"orgs"`` list to link *its* indicator to specific
+* ``--indicator-org-codes`` sets the default org link applied to every question.
+* A question may carry an ``"orgs"`` list to link *itself* to specific
   organizations (overriding the CLI default), while other questions stay
   cross-cutting. This lets one shared form mix cross-cutting and
   organization-specific questions.
 
-Aggregate roll-up is intentionally left as ``none`` for every question so that
-seeding the form does not alter any project/indicator totals. Wiring specific
-questions (commodities, referrals, screenings) to programme indicators can be
-done later as a deliberate, reviewed step.
+Roll-up is intentionally off (``aggregate_mode='none'``, no linked indicator)
+for every question, so seeding the form does not alter any project/indicator
+totals. Linking specific questions (commodities, referrals, screenings) to
+programme indicators can be done later as a deliberate, reviewed step.
 """
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from indicators.models import Assessment, AssessmentIndicator, Indicator
+from indicators.models import Assessment, AssessmentQuestion, Question
 from organizations.models import Organization
 
 ASSESSMENT_NAME = "BONELA Individual Outreach Form (Key Populations)"
@@ -52,13 +52,13 @@ ASSESSMENT_DESCRIPTION = (
 )
 
 # Each entry:
-#   code          unique Indicator.code (<= 50 chars)
-#   question      prompt shown to the data collector
-#   type          one of Indicator.TYPE_CHOICES
+#   code          unique Question.code (<= 50 chars)
+#   question      prompt shown to the data collector (Question.text)
+#   type          one of Indicator.TYPE_CHOICES (Question.response_type)
 #   category      one of Indicator.CATEGORY_CHOICES
-#   options       list of {value,label} for select/multiselect (optional)
-#   required      AssessmentIndicator.is_required (default True)
-#   help          AssessmentIndicator.help_text (optional)
+#   options       list of labels for select/multiselect (optional)
+#   required      AssessmentQuestion.is_required (default True)
+#   help          Question.help_text (optional)
 #   depends_on    code of a prior question this one follows from (optional)
 QUESTIONS = [
     # --- Section A: Session information -----------------------------------
@@ -548,7 +548,7 @@ class Command(BaseCommand):
             raise ValueError("Duplicate indicator codes in QUESTIONS definition.")
 
         with transaction.atomic():
-            indicators_by_code = {}
+            questions_by_code = {}
             created_i = updated_i = 0
 
             for q in QUESTIONS:
@@ -556,12 +556,13 @@ class Command(BaseCommand):
                     _options_payload(q["options"]) if q.get("options") else []
                 )
                 defaults = {
-                    "name": q["question"],
-                    "description": "",
-                    "type": q["type"],
-                    "category": q.get("category", "hiv_prevention"),
+                    "text": q["question"],
+                    "help_text": q.get("help", ""),
+                    "response_type": q["type"],
                     "options": options_payload,
-                    "aggregation_method": "count",
+                    "category": q.get("category", "hiv_prevention"),
+                    # Cross-cutting bank questions; no indicator roll-up by default.
+                    "aggregate_mode": "none",
                     "is_active": True,
                 }
                 # Resolve this question's org link: explicit per-question "orgs"
@@ -578,20 +579,20 @@ class Command(BaseCommand):
                 else:
                     q_orgs = default_indicator_orgs
 
-                indicator = Indicator.objects.filter(code=q["code"]).first()
-                if indicator is None:
+                question = Question.objects.filter(code=q["code"]).first()
+                if question is None:
                     if not dry_run:
-                        indicator = Indicator.objects.create(code=q["code"], **defaults)
-                        indicator.organizations.set(q_orgs)
+                        question = Question.objects.create(code=q["code"], **defaults)
+                        question.organizations.set(q_orgs)
                     created_i += 1
                 else:
                     if not dry_run:
                         for field, value in defaults.items():
-                            setattr(indicator, field, value)
-                        indicator.save()
-                        indicator.organizations.set(q_orgs)
+                            setattr(question, field, value)
+                        question.save()
+                        question.organizations.set(q_orgs)
                     updated_i += 1
-                indicators_by_code[q["code"]] = indicator
+                questions_by_code[q["code"]] = question
 
             # Assessment
             assessment = Assessment.objects.filter(name=ASSESSMENT_NAME).first()
@@ -612,30 +613,22 @@ class Command(BaseCommand):
                     assessment.organizations.set(assessment_orgs)
                 self.stdout.write(self.style.SUCCESS(f"Assessment updated: {ASSESSMENT_NAME}"))
 
-            # Question links (first pass: create/update without depends_on)
+            # Question placements (first pass: create/update without depends_on)
             created_q = updated_q = 0
             link_by_code = {}
             for order, q in enumerate(QUESTIONS, start=1):
-                indicator = indicators_by_code[q["code"]]
-                options_payload = (
-                    _options_payload(q["options"]) if q.get("options") else []
-                )
-                ai_defaults = {
-                    "question_text": q["question"],
-                    "help_text": q.get("help", ""),
-                    "response_type": q["type"],
-                    "response_options": options_payload,
-                    "aggregate_mode": "none",
+                question = questions_by_code[q["code"]]
+                aq_defaults = {
                     "order": order,
                     "is_required": q.get("required", True),
                 }
-                if dry_run or assessment is None or indicator is None:
-                    # In dry-run the assessment/indicator may be unsaved.
+                if dry_run or assessment is None or question is None:
+                    # In dry-run the assessment/question may be unsaved.
                     continue
-                link, was_created = AssessmentIndicator.objects.update_or_create(
+                link, was_created = AssessmentQuestion.objects.update_or_create(
                     assessment=assessment,
-                    indicator=indicator,
-                    defaults=ai_defaults,
+                    question=question,
+                    defaults=aq_defaults,
                 )
                 link_by_code[q["code"]] = link
                 if was_created:
@@ -660,7 +653,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(
                         f"[DRY RUN] Would seed {len(QUESTIONS)} questions: "
-                        f"{created_i} new indicators, {updated_i} existing. "
+                        f"{created_i} new bank questions, {updated_i} existing. "
                         "No changes written."
                     )
                 )
@@ -668,8 +661,8 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"Done. Indicators: {created_i} created, {updated_i} updated. "
-                        f"Questions: {created_q} created, {updated_q} updated. "
+                        f"Done. Bank questions: {created_i} created, {updated_i} updated. "
+                        f"Form placements: {created_q} created, {updated_q} updated. "
                         f"Total questions on form: {len(QUESTIONS)}."
                     )
                 )

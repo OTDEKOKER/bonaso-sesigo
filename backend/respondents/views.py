@@ -59,7 +59,7 @@ class RespondentViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                     ).prefetch_related(
                         Prefetch(
                             'responses',
-                            queryset=Response.objects.select_related('indicator'),
+                            queryset=Response.objects.select_related('indicator', 'question'),
                         )
                     ),
                 )
@@ -185,14 +185,32 @@ class InteractionViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         if project and respondent and not is_organization_in_project_scope(project, respondent.organization_id):
             raise PermissionDenied('Respondent organization is not in the selected project scope.')
         if project and respondent:
+            # Resolve each response's reporting indicator (via its question, if
+            # any) and enforce that it is assigned to the respondent's org for
+            # the project. Questions with no linked indicator skip this check.
+            from indicators.models import Question
+            question_ids = [
+                r.get('question') for r in responses if r.get('question') not in (None, '')
+            ]
+            indicator_by_question = dict(
+                Question.objects.filter(id__in=question_ids)
+                .exclude(indicator__isnull=True)
+                .values_list('id', 'indicator_id')
+            )
             for response in responses:
-                indicator_id = response.get('indicator')
-                if indicator_id in (None, ''):
+                question_id = response.get('question')
+                if question_id not in (None, ''):
+                    parsed_indicator_id = indicator_by_question.get(int(question_id))
+                else:
+                    indicator_id = response.get('indicator')
+                    if indicator_id in (None, ''):
+                        continue
+                    try:
+                        parsed_indicator_id = int(indicator_id)
+                    except (TypeError, ValueError):
+                        raise PermissionDenied('Indicator id in responses must be a valid integer.')
+                if parsed_indicator_id is None:
                     continue
-                try:
-                    parsed_indicator_id = int(indicator_id)
-                except (TypeError, ValueError):
-                    raise PermissionDenied('Indicator id in responses must be a valid integer.')
                 if not is_indicator_assigned_to_organization(
                     project=project,
                     indicator_id=parsed_indicator_id,
@@ -205,18 +223,27 @@ class InteractionViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def add_response(self, request, pk=None):
-        """Add a response to an interaction."""
+        """Add a response (answer to a question) to an interaction."""
         interaction = self.get_object()
-        indicator_id = request.data.get('indicator')
+        from indicators.models import Question
+
+        question_id = request.data.get('question')
         parsed_indicator_id = None
-        if indicator_id not in (None, ''):
-            try:
-                parsed_indicator_id = int(indicator_id)
-            except (TypeError, ValueError):
-                return DRFResponse(
-                    {'detail': 'indicator must be a valid integer id.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        if question_id not in (None, ''):
+            question = Question.objects.filter(id=question_id).first()
+            if question is None:
+                return DRFResponse({'detail': 'Question not found.'}, status=status.HTTP_404_NOT_FOUND)
+            parsed_indicator_id = question.indicator_id
+        else:
+            indicator_id = request.data.get('indicator')
+            if indicator_id not in (None, ''):
+                try:
+                    parsed_indicator_id = int(indicator_id)
+                except (TypeError, ValueError):
+                    return DRFResponse(
+                        {'detail': 'indicator must be a valid integer id.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
         if (
             interaction.project_id
             and parsed_indicator_id is not None
@@ -239,16 +266,16 @@ class InteractionViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 class ResponseViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     """ViewSet for managing responses."""
     
-    queryset = Response.objects.select_related('interaction', 'indicator')
+    queryset = Response.objects.select_related('interaction', 'indicator', 'question')
     serializer_class = ResponseSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['interaction', 'indicator']
+    filterset_fields = ['interaction', 'indicator', 'question']
 
     def get_queryset(self):
         user = self.request.user
         queryset = Response.objects.select_related(
-            'interaction', 'indicator', 'interaction__respondent'
+            'interaction', 'indicator', 'question', 'interaction__respondent'
         )
         if not is_organization_admin(user):
             org_ids = get_user_organization_ids(user)
@@ -260,7 +287,8 @@ class ResponseViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         interaction = serializer.validated_data.get('interaction')
-        indicator = serializer.validated_data.get('indicator')
+        question = serializer.validated_data.get('question')
+        indicator_id = question.indicator_id if question else None
         # SEC-2: enforce organisation ownership of the target interaction before
         # writing a response. Without this a non-admin could attach a response to
         # another organisation's interaction by guessing a sequential id (write
@@ -277,10 +305,10 @@ class ResponseViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         # Enforce the Sesigo Training/Live boundary on response capture too.
         if interaction is not None:
             assert_project_write_allowed(self.request, interaction.project)
-        if interaction and interaction.project_id and indicator:
+        if interaction and interaction.project_id and indicator_id:
             if not is_indicator_assigned_to_organization(
                 project=interaction.project,
-                indicator_id=indicator.id,
+                indicator_id=indicator_id,
                 organization_id=interaction.respondent.organization_id,
             ):
                 raise PermissionDenied('This indicator is not assigned to the respondent organization for the interaction project.')
