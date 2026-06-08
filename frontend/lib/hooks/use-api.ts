@@ -597,6 +597,17 @@ export function useDashboardSetting(id: number | null, config?: SWRConfiguration
   );
 }
 
+export function useHomeDashboard(
+  organizationId?: number | string | null,
+  config?: SWRConfiguration,
+) {
+  return useSWR(
+    ['home-dashboard', organizationId ?? null],
+    () => dashboardSettingsService.getHome(organizationId),
+    { ...defaultConfig, ...config }
+  );
+}
+
 export function useDashboardMeta(config?: SWRConfiguration) {
   return useSWR(
     'dashboard-meta',

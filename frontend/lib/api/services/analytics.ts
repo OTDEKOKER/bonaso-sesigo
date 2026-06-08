@@ -844,6 +844,17 @@ export const dashboardSettingsService = {
     return normalizeFallbackDashboard(data);
   },
 
+  // The per-organization "home" dashboard. Get-or-created server-side; charts
+  // shared from the Analysis Visualizer land here and render on /dashboard.
+  async getHome(organizationId?: number | string | null): Promise<DashboardSetting> {
+    const params: Record<string, string | number> = {};
+    if (organizationId !== undefined && organizationId !== null && `${organizationId}`.trim()) {
+      params.organization = organizationId;
+    }
+    const { data } = await api.get<RawReportDashboard>("/analysis/reports/home/", params);
+    return normalizeFallbackDashboard(data);
+  },
+
   async create(request: DashboardSettingRequest): Promise<DashboardSetting> {
     const { data } = await api.post<RawReportDashboard>("/analysis/reports/", toFallbackDashboardPayload(request));
     return normalizeFallbackDashboard(data);

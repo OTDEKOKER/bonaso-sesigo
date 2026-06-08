@@ -865,7 +865,51 @@ class ReportViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
-    
+
+    @action(detail=False, methods=['get', 'post'], url_path='home')
+    def home(self, request):
+        """Get-or-create the per-organization "home" dashboard.
+
+        The home dashboard is a normal Report marked with parameters.is_home=True
+        and shared (is_public) within its organization, so any member of that org
+        sees the same charts and can edit them (add/remove charts via the existing
+        saveChart/removeChart -> update path). Charts built in the Analysis
+        Visualizer are shared to the home page by saving onto this Report.
+        """
+        org_id = request.query_params.get('organization') or request.data.get('organization')
+        if not org_id:
+            user_org_ids = list(get_user_organization_ids(request.user) or [])
+            org_id = user_org_ids[0] if user_org_ids else None
+        if not org_id:
+            return Response(
+                {'detail': 'No organization in scope for a home dashboard.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Restrict to organizations the requester can actually see, mirroring
+        # get_queryset scoping (admins see all).
+        if not is_organization_admin(request.user):
+            allowed = set(get_user_organization_ids(request.user) or [])
+            if int(org_id) not in allowed:
+                raise PermissionDenied('You do not have access to this organization.')
+
+        report = (
+            Report.objects.filter(organization_id=org_id, parameters__is_home=True)
+            .order_by('id')
+            .first()
+        )
+        if report is None:
+            org = Organization.objects.filter(id=org_id).first()
+            report = Report.objects.create(
+                name=f"{org.name} Home Dashboard" if org else "Home Dashboard",
+                report_type='dashboard',
+                organization_id=org_id,
+                is_public=True,
+                parameters={'is_home': True, 'charts': []},
+                created_by=request.user,
+            )
+        return Response(ReportSerializer(report).data)
+
     @action(detail=True, methods=['post'])
     def generate(self, request, pk=None):
         """Generate/refresh report data."""

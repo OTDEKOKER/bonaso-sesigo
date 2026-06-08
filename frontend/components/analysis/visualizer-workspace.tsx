@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Loader2, Save } from "lucide-react";
+import { Download, Home, Loader2, Save } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 
 import {
@@ -71,6 +71,7 @@ export function VisualizerWorkspace() {
   const [saveName, setSaveName] = useState("");
   const [saveDashboardId, setSaveDashboardId] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [savingHome, setSavingHome] = useState(false);
 
   const { data: indicatorsData } = useAllIndicators();
   const { data: projectsData } = useAllProjects();
@@ -272,6 +273,36 @@ export function VisualizerWorkspace() {
     }
   };
 
+  // DHIS2-style "Add to dashboard": pin the current chart straight to the
+  // organization's home dashboard (get-or-created server-side) so it appears on
+  // /dashboard for everyone in the org.
+  const handleAddToHomeDashboard = async () => {
+    setSavingHome(true);
+    try {
+      const home = await dashboardSettingsService.getHome(user?.organizationId ?? undefined);
+      const chartService = dashboardSettingsService as unknown as {
+        saveChart: (dashboardId: number, request: Record<string, unknown>) => Promise<unknown>;
+      };
+      await chartService.saveChart(
+        Number(home.id),
+        customAnalysisToDashboardChartPayload(state, saveName || state.title),
+      );
+      toast({
+        title: "Added to home dashboard",
+        description: "This chart now shows on the home dashboard for your organization.",
+      });
+    } catch (error) {
+      console.error("Failed to add to home dashboard", error);
+      toast({
+        title: "Couldn’t add to home dashboard",
+        description: "Unable to share this chart. Confirm your organization scope and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingHome(false);
+    }
+  };
+
   const renderPreview = () => {
     if (!hasIndicators) {
       return (
@@ -345,6 +376,15 @@ export function VisualizerWorkspace() {
             <Button variant="outline" size="sm" onClick={handleDownloadExcel} disabled={!hasData}>
               <Download className="mr-2 h-4 w-4" />
               Excel
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleAddToHomeDashboard}
+              disabled={!hasIndicators || savingHome}
+            >
+              {savingHome ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Home className="mr-2 h-4 w-4" />}
+              Add to home dashboard
             </Button>
             <Button size="sm" onClick={() => setSaveOpen(true)} disabled={!hasIndicators}>
               <Save className="mr-2 h-4 w-4" />

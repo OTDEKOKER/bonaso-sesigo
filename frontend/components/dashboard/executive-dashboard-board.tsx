@@ -1215,11 +1215,6 @@ export function DashboardExecutiveBoard({
       hivPreventionMessageTypeSeries.length > 0,
     [hivPreventionMessageTypeRows.length, hivPreventionMessageTypeSeries.length],
   );
-  const showHivMessageTypePanel =
-    effectiveMessageAnalyticsLoading ||
-    effectiveMessageAnalyticsHasError ||
-    hasHivMessageTypeData;
-  const showHivMessagesByCsoPanel = false;
   const indicatorMetricsById = useMemo(
     () => new Map(indicatorMetrics.map((metric) => [metric.indicatorId, metric])),
     [indicatorMetrics],
@@ -1324,87 +1319,12 @@ export function DashboardExecutiveBoard({
 
               {showUpdatesBoard ? (
                 <>
-                  {showHivMessageTypePanel ? (
-                    <MessageAnalyticsDashboard
-                      hasError={effectiveMessageAnalyticsHasError}
-                      isLoading={effectiveMessageAnalyticsLoading}
-                      rows={hivPreventionMessageTypeRows as Array<Record<string, unknown>>}
-                      series={hivPreventionMessageTypeSeries as Array<Record<string, unknown>>}
-                      onEditData={() => openAggregatesEditor("hiv messages")}
-                    />
-                  ) : (
-                    <DashboardPanel
-                      eyebrow="HIV Prevention Messages"
-                      title="Messaging insights"
-                    >
-                      <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-                        No message-type breakdown is available for the current dashboard filters.
-                      </div>
-                    </DashboardPanel>
-                  )}
-
-                  <NcdMessagesDisaggregatePanel
-                    hasError={screeningInsightsHasError}
-                    isLoading={screeningInsightsIsLoading}
-                    items={ncdMessageDisaggregates}
-                    onEditData={() => openAggregatesEditor("ncd messages")}
-                  />
-
-                  <div
-                    className={cn(
-                      "grid min-w-0 w-full max-w-full grid-cols-1 items-start gap-4",
-                      showHivMessagesByCsoPanel ? "xl:grid-cols-2" : "xl:grid-cols-1",
-                    )}
-                  >
-                    {showHivMessagesByCsoPanel ? (
-                      <HivPreventionMessagesByCsoPanel
-                        hasError={screeningInsightsHasError}
-                        isLoading={screeningInsightsIsLoading}
-                        items={hivPreventionMessagesByCso}
-                        onEditData={(csoLabel) =>
-                          openAggregatesEditor([csoLabel, "hiv messages"].filter(Boolean).join(" "))
-                        }
-                      />
-                    ) : null}
-
-                    <DashboardPanel
-                      actions={
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="border-border bg-background text-foreground hover:bg-muted"
-                          onClick={() => openAggregatesEditor("hiv tested hiv positive")}
-                        >
-                          Edit Data
-                        </Button>
-                      }
-                      eyebrow="HIV Testing"
-                      title="HIV testing progress to target"
-                    >
-                      {screeningInsightsIsLoading ? (
-                        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-                          Loading HIV testing comparison totals.
-                        </div>
-                      ) : screeningInsightsHasError ? (
-                        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-                          HIV testing comparison is temporarily unavailable.
-                        </div>
-                      ) : !hasHivTestingComparisonData ? (
-                        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-                          HIV testing actual and target bars will appear once matching indicator data is available.
-                        </div>
-                      ) : (
-                        <HivTestingComparisonPiePanel items={hivTestingComparison} />
-                      )}
-                    </DashboardPanel>
-                  </div>
-
-                  <ServicePathwayCardsPanel
-                    hasError={screeningInsightsHasError}
-                    isLoading={screeningInsightsIsLoading}
-                    items={servicePathways}
-                  />
-
+                  {/*
+                    Hardcoded HIV/NCD themed cards were removed here. The home
+                    dashboard now surfaces only generic panels (below) plus the
+                    org "home" dashboard charts shared from the Analysis
+                    Visualizer (rendered by the dashboard page, not this board).
+                  */}
                   <div className="grid min-w-0 w-full max-w-full grid-cols-1 items-start gap-4 xl:grid-cols-2">
                     {resolvedCustomWidgets.map((widget) => {
                       const subtitle = getCustomWidgetSubtitle(widget);

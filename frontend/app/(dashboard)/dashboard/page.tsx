@@ -56,7 +56,9 @@ import {
   useDashboardMessageAnalytics,
   useDashboardStats,
   useDeadlines,
+  useHomeDashboard,
 } from "@/lib/hooks/use-api";
+import { DashboardAnalyticsSurface } from "@/components/analysis/dashboard-analytics-surface";
 import { useAggregateVisibilityScope } from "@/app/(dashboard)/aggregates/hooks";
 import { getAggregateTotal } from "@/lib/aggregates/aggregate-helpers";
 import { getQuarterBucket } from "@/lib/aggregates/quarter-buckets";
@@ -773,6 +775,13 @@ function DashboardPageContent({
     dateTo: dashboardFilters.dateTo || undefined,
   });
   const { data: organizationsData } = useAllOrganizations();
+  // Org "home" dashboard: charts shared from the Analysis Visualizer. Resolve the
+  // org from the dashboard filter, falling back to the user's own organization.
+  const homeDashboardOrgId =
+    selectedOrganizationNumericId ??
+    (user?.organizationId ? Number(user.organizationId) : undefined);
+  const { data: homeDashboard } = useHomeDashboard(homeDashboardOrgId);
+  const homeDashboardCharts = homeDashboard?.charts ?? [];
   const {
     data: projectsData,
     isLoading: projectsLoading,
@@ -2606,6 +2615,37 @@ function DashboardPageContent({
         visibleSummaryCards={visibleSummaryCards}
         onActiveUpdatesTabChange={setActiveUpdatesTab}
       />}
+
+      {isInitialDashboardLoad ? null : (
+        <section className="mt-4 min-w-0">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Shared charts
+              </p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
+                Home dashboard
+              </h2>
+            </div>
+            <Link href="/analysis/visualizer">
+              <Button type="button" variant="outline">
+                Add chart from Analysis
+              </Button>
+            </Link>
+          </div>
+          {homeDashboard && homeDashboardCharts.length > 0 ? (
+            <DashboardAnalyticsSurface dashboard={homeDashboard} />
+          ) : (
+            <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground">
+              No shared charts yet. Build a chart under{" "}
+              <Link href="/analysis/visualizer" className="font-medium text-foreground underline underline-offset-4">
+                Analysis → Visualizer
+              </Link>{" "}
+              and use “Add to home dashboard” to pin it here for your organization.
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
