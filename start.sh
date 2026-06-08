@@ -26,15 +26,31 @@ echo "  ║       Local Dev Environment          ║"
 echo "  ╚══════════════════════════════════════╝"
 echo -e "${NC}"
 
+# ─── Detect python command (Windows uses "python", Linux/Mac "python3") ───
+if command -v python3 &>/dev/null && python3 --version &>/dev/null 2>&1; then
+  PYTHON=python3
+elif command -v python &>/dev/null && python --version &>/dev/null 2>&1; then
+  PYTHON=python
+else
+  PYTHON=""
+fi
+
+# Venv bin dir differs on Windows (Scripts/) vs Unix (bin/)
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+  VENV_BIN="venv/Scripts"
+else
+  VENV_BIN="venv/bin"
+fi
+
 # ─── 1. CHECK REQUIRED TOOLS ───────────────────
 
 echo -e "${YELLOW}[1/5] Checking required tools...${NC}"
 
-if ! command -v python3 &>/dev/null; then
-  echo -e "${RED}✗ Python3 not found. Install it and re-run.${NC}"
+if [ -z "$PYTHON" ]; then
+  echo -e "${RED}✗ Python not found. Install it and re-run.${NC}"
   exit 1
 fi
-echo -e "${GREEN}✓ Python3 found: $(python3 --version)${NC}"
+echo -e "${GREEN}✓ Python found: $($PYTHON --version)${NC}"
 
 if ! command -v node &>/dev/null; then
   echo -e "${RED}✗ Node.js not found. Install it and re-run.${NC}"
@@ -88,18 +104,18 @@ cd "$BACKEND_DIR"
 
 if [ ! -d "venv" ]; then
   echo "  Creating virtual environment..."
-  python3 -m venv venv
+  $PYTHON -m venv venv
   echo -e "${GREEN}✓ Virtual environment created${NC}"
 else
   echo -e "${GREEN}✓ Virtual environment already exists${NC}"
 fi
 
 echo "  Installing backend dependencies..."
-./venv/bin/pip install -r requirements.txt -q
+./$VENV_BIN/pip install -r requirements.txt -q
 echo -e "${GREEN}✓ Backend dependencies installed${NC}"
 
 echo "  Running migrations..."
-./venv/bin/python manage.py migrate --run-syncdb 2>&1
+./$VENV_BIN/python manage.py migrate --run-syncdb 2>&1
 echo -e "${GREEN}✓ Migrations done${NC}"
 
 # ─── 4. FRONTEND SETUP ────────────────────────
@@ -133,7 +149,7 @@ trap 'echo -e "\n${RED}Shutting down servers...${NC}"; kill 0' SIGINT
 
 # Start backend
 cd "$BACKEND_DIR"
-./venv/bin/python manage.py runserver 0.0.0.0:8000 &
+./$VENV_BIN/python manage.py runserver 0.0.0.0:8000 &
 BACKEND_PID=$!
 
 # Small delay so backend starts first

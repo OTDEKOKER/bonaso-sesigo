@@ -12,6 +12,9 @@ class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model."""
 
     organization_name = serializers.CharField(source='organization.name', read_only=True)
+    organization_dashboard_config = serializers.JSONField(
+        source='organization.dashboard_config', read_only=True, default=dict
+    )
     full_name = serializers.CharField(read_only=True)
     permissions = serializers.SerializerMethodField()
     groups = serializers.SerializerMethodField()
@@ -20,9 +23,11 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
-            'role', 'organization', 'organization_name', 'phone', 'avatar',
-            'is_active', 'last_activity', 'date_joined', 'created_at', 'updated_at',
-            'permissions', 'groups', 'home_dashboard_preferences',
+            'role', 'organization', 'organization_name',
+            'organization_dashboard_config', 'phone', 'avatar',
+            'is_active', 'last_activity', 'date_joined',
+            'created_at', 'updated_at', 'permissions', 'groups',
+            'home_dashboard_preferences',
         ]
         read_only_fields = ['id', 'date_joined', 'created_at', 'updated_at', 'last_activity']
 
