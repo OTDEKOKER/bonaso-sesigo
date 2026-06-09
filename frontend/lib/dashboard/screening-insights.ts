@@ -106,6 +106,16 @@ const hivPreventionMessageTypePalette = [
   "#255E91",
   "#9E480E",
 ] as const;
+// Fallback stage colors for configured pathway stages that don't specify one.
+const PATHWAY_STAGE_FALLBACK_COLORS = [
+  "#22C55E",
+  "#0EA5E9",
+  "#F59E0B",
+  "#A855F7",
+  "#EF4444",
+  "#14B8A6",
+  "#64748B",
+] as const;
 const ncdMessageTypeDefinitions = [
   {
     label: "Alcohol Reduction Messages",
@@ -247,6 +257,21 @@ const pathwayCardDefinitions: PathwayCardDefinition[] = [
   },
 ];
 
+// User-configured service pathways (per org, stored in Organization.dashboard_config.servicePathways).
+// When present, these REPLACE the hardcoded heuristic pathways: each pathway is a funnel of stages, and
+// each stage lists the indicator ids the org chose to include in it.
+export type ConfiguredPathwayStage = {
+  id: string;
+  label: string;
+  color?: string;
+  indicatorIds: Array<string | number>;
+};
+export type ConfiguredPathway = {
+  id: string;
+  label: string;
+  stages: ConfiguredPathwayStage[];
+};
+
 type BuildHomeDashboardScreeningInsightsInput = {
   aggregatesData?: Aggregate[] | null;
   indicatorsData?: Indicator[] | null;
@@ -256,6 +281,7 @@ type BuildHomeDashboardScreeningInsightsInput = {
   rollupLevel?: "organization" | "coordinator";
   selectedQuarter?: 1 | 2 | 3 | 4 | null;
   includeHivPreventionMessageTypeByCso?: boolean;
+  servicePathwayConfig?: ConfiguredPathway[] | null;
   isLoading: boolean;
   hasError: boolean;
 };
@@ -783,6 +809,7 @@ export function buildHomeDashboardScreeningInsights({
   rollupLevel = "organization",
   selectedQuarter = null,
   includeHivPreventionMessageTypeByCso = true,
+  servicePathwayConfig = null,
   isLoading,
   hasError,
 }: BuildHomeDashboardScreeningInsightsInput): ScreeningDashboardInsights {
@@ -970,6 +997,37 @@ export function buildHomeDashboardScreeningInsights({
       }
     >
   >(pathwayCardDefinitions.map((card) => [card.id, new Map()]));
+  // Config-driven service pathways: when the org configured pathways, accumulate
+  // stage totals by the explicitly chosen indicator ids (parallel to the heuristic
+  // accumulation above). configuredPathways is non-empty only when valid config exists.
+  const configuredPathways = (servicePathwayConfig ?? []).filter(
+    (pathway) => pathway && Array.isArray(pathway.stages) && pathway.stages.length > 0,
+  );
+  const hasConfiguredPathways = configuredPathways.length > 0;
+  // indicatorId -> [{ cardId, stageId, stageLabel, color }]
+  const configStageByIndicatorId = new Map<
+    string,
+    Array<{ cardId: string; stageId: string; stageLabel: string; color?: string }>
+  >();
+  const configPathwayTotals = new Map<string, Map<string, number>>();
+  const configPathwayDetails = new Map<
+    string,
+    Map<string, { stageId: string; stageLabel: string; code: string; name: string; value: number }>
+  >();
+  if (hasConfiguredPathways) {
+    for (const pathway of configuredPathways) {
+      configPathwayTotals.set(pathway.id, new Map(pathway.stages.map((stage) => [stage.id, 0])));
+      configPathwayDetails.set(pathway.id, new Map());
+      for (const stage of pathway.stages) {
+        for (const indicatorId of stage.indicatorIds || []) {
+          const key = String(indicatorId);
+          const matches = configStageByIndicatorId.get(key) ?? [];
+          matches.push({ cardId: pathway.id, stageId: stage.id, stageLabel: stage.label, color: stage.color });
+          configStageByIndicatorId.set(key, matches);
+        }
+      }
+    }
+  }
   const hivTestingTotals = new Map<string, { actual: number; label: string; target: number }>(
     hivTestingComparisonDefinitions.map((definition) => [
       definition.id,
@@ -1162,6 +1220,31 @@ export function buildHomeDashboardScreeningInsights({
     }
     // canonicalPathwayMatches === [] means the canonical is known but has no
     // pathway card — skip both paths to prevent misclassification.
+
+    // Config-driven pathways: accumulate by the org's explicitly chosen indicator
+    // ids, independent of the heuristics above.
+    if (hasConfiguredPathways) {
+      const configMatches = configStageByIndicatorId.get(aggregateIndicatorId);
+      if (configMatches) {
+        for (const match of configMatches) {
+          const totals = configPathwayTotals.get(match.cardId);
+          if (totals) totals.set(match.stageId, (totals.get(match.stageId) || 0) + total);
+          const details = configPathwayDetails.get(match.cardId);
+          if (details) {
+            const detailKey = `${match.stageId}:${aggregateIndicatorId}`;
+            const current = details.get(detailKey) ?? {
+              stageId: match.stageId,
+              stageLabel: match.stageLabel,
+              code: indicatorCode,
+              name: indicatorName,
+              value: 0,
+            };
+            current.value += total;
+            details.set(detailKey, current);
+          }
+        }
+      }
+    }
 
     // Messaging panels are driven directly from aggregate rows and should not
     // depend on screening stage heuristics.
@@ -1538,22 +1621,39 @@ export function buildHomeDashboardScreeningInsights({
       label: stage.label,
       value: stageTotals.get(stage.id) || 0,
     })),
-    servicePathways: pathwayCardDefinitions.map((card) => {
-      const stageValues = servicePathwayTotals.get(card.id);
-      const stages = card.stages.map((stage) => ({
-        id: stage.id,
-        color: stage.color,
-        label: stage.label,
-        value: stageValues?.get(stage.id) || 0,
-      }));
-      return {
-        id: card.id,
-        title: card.label,
-        stages,
-        total: stages.reduce((sum, stage) => sum + stage.value, 0),
-        indicatorDetails: Array.from(servicePathwayDetails.get(card.id)?.values() || []),
-      };
-    }),
+    servicePathways: hasConfiguredPathways
+      ? configuredPathways.map((pathway, pathwayIndex) => {
+          const stageValues = configPathwayTotals.get(pathway.id);
+          const stages = pathway.stages.map((stage, stageIndex) => ({
+            id: stage.id,
+            color: stage.color || PATHWAY_STAGE_FALLBACK_COLORS[stageIndex % PATHWAY_STAGE_FALLBACK_COLORS.length],
+            label: stage.label,
+            value: stageValues?.get(stage.id) || 0,
+          }));
+          return {
+            id: pathway.id || `pathway-${pathwayIndex}`,
+            title: pathway.label,
+            stages,
+            total: stages.reduce((sum, stage) => sum + stage.value, 0),
+            indicatorDetails: Array.from(configPathwayDetails.get(pathway.id)?.values() || []),
+          };
+        })
+      : pathwayCardDefinitions.map((card) => {
+          const stageValues = servicePathwayTotals.get(card.id);
+          const stages = card.stages.map((stage) => ({
+            id: stage.id,
+            color: stage.color,
+            label: stage.label,
+            value: stageValues?.get(stage.id) || 0,
+          }));
+          return {
+            id: card.id,
+            title: card.label,
+            stages,
+            total: stages.reduce((sum, stage) => sum + stage.value, 0),
+            indicatorDetails: Array.from(servicePathwayDetails.get(card.id)?.values() || []),
+          };
+        }),
     hivTestingComparison: hivTestingComparisonDefinitions.map((definition) => {
       const entry = hivTestingTotals.get(definition.id);
       return {

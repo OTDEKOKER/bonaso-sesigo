@@ -46,7 +46,8 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { useAuth } from "@/lib/contexts/auth-context";
 import { useSessionMode } from "@/lib/contexts/session-mode-context";
-import { usersService } from "@/lib/api";
+import { organizationsService, usersService } from "@/lib/api";
+import { ServicePathwayConfigDialog } from "@/components/dashboard/service-pathway-config-dialog";
 import {
   useAllIndicators,
   useAllAggregates,
@@ -66,6 +67,7 @@ import { getAggregateValueDisaggregateRows } from "@/lib/aggregates/disaggregate
 import { buildOrganizationDescendantMap } from "@/lib/analytics/org-scope";
 import {
   buildHomeDashboardScreeningInsights,
+  type ConfiguredPathway,
   type ScreeningDashboardInsights,
 } from "@/lib/dashboard/screening-insights";
 import {
@@ -774,7 +776,7 @@ function DashboardPageContent({
     dateFrom: dashboardFilters.dateFrom || undefined,
     dateTo: dashboardFilters.dateTo || undefined,
   });
-  const { data: organizationsData } = useAllOrganizations();
+  const { data: organizationsData, mutate: mutateOrganizations } = useAllOrganizations();
   // Org "home" dashboard: charts shared from the Analysis Visualizer. Resolve the
   // org from the dashboard filter, falling back to the user's own organization.
   const homeDashboardOrgId =
@@ -900,6 +902,54 @@ function DashboardPageContent({
   }, []);
 
   const organizations = useMemo(() => organizationsData?.results || [], [organizationsData]);
+  // Per-org configured service pathways (Organization.dashboard_config.servicePathways).
+  const servicePathwayConfig = useMemo<ConfiguredPathway[] | null>(() => {
+    const org = organizations.find((item) => String(item.id) === String(homeDashboardOrgId));
+    const cfg = (org?.dashboard_config as { servicePathways?: unknown } | undefined)?.servicePathways;
+    return Array.isArray(cfg) ? (cfg as ConfiguredPathway[]) : null;
+  }, [organizations, homeDashboardOrgId]);
+  const [pathwayConfigOpen, setPathwayConfigOpen] = useState(false);
+  const [savingPathways, setSavingPathways] = useState(false);
+  const pathwayIndicatorOptions = useMemo(
+    () =>
+      (indicatorsData ?? []).map((indicator) => ({
+        id: String(indicator.id),
+        name: indicator.name,
+        code: indicator.code,
+      })),
+    [indicatorsData],
+  );
+  const handleSavePathways = async (next: ConfiguredPathway[]) => {
+    if (!homeDashboardOrgId) {
+      toast({
+        title: "No organization in scope",
+        description: "Select an organization in the dashboard filter to configure its pathways.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSavingPathways(true);
+    try {
+      const org = organizations.find((item) => String(item.id) === String(homeDashboardOrgId));
+      const existing = (org?.dashboard_config as Record<string, unknown>) ?? {};
+      await organizationsService.saveDashboardConfig(Number(homeDashboardOrgId), {
+        ...existing,
+        servicePathways: next,
+      });
+      await mutateOrganizations?.();
+      toast({ title: "Service pathways saved", description: "The home dashboard now reflects your configuration." });
+      setPathwayConfigOpen(false);
+    } catch (error) {
+      console.error("Failed to save service pathways", error);
+      toast({
+        title: "Save failed",
+        description: "Unable to save service pathways. Confirm you have permission for this organization.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPathways(false);
+    }
+  };
   const allProjects = useMemo(() => {
     const raw = projectsData?.results || [];
     return isTrainingMode ? raw.filter((p) => p.is_training) : raw.filter((p) => !p.is_training);
@@ -1067,6 +1117,7 @@ function DashboardPageContent({
         scopedOrganizationIds,
         selectedQuarter,
         includeHivPreventionMessageTypeByCso: false,
+        servicePathwayConfig,
         isLoading: aggregatesLoading || indicatorsLoading,
         hasError: Boolean(aggregatesError),
       });
@@ -1082,6 +1133,7 @@ function DashboardPageContent({
       indicatorsLoading,
       organizations,
       scopedOrganizationIds,
+      servicePathwayConfig,
     ],
   );
   const aggregateReviewSnapshot = useMemo<DashboardAggregateReviewSnapshot>(() => {
@@ -2601,6 +2653,7 @@ function DashboardPageContent({
         onDeleteCustomWidget={removeCustomWidget}
         onEditCustomWidget={editCustomWidget}
         onOpenCustomizeDashboard={() => setWidgetDialogOpen(true)}
+        onConfigureServicePathways={() => setPathwayConfigOpen(true)}
         recentActivity={recentActivity}
         screeningInsights={screeningInsights}
         messageAnalyticsRows={dashboardMessageAnalytics?.rows || []}
@@ -2646,6 +2699,15 @@ function DashboardPageContent({
           )}
         </section>
       )}
+
+      <ServicePathwayConfigDialog
+        open={pathwayConfigOpen}
+        onOpenChange={setPathwayConfigOpen}
+        indicators={pathwayIndicatorOptions}
+        value={servicePathwayConfig}
+        saving={savingPathways}
+        onSave={handleSavePathways}
+      />
     </div>
   );
 }

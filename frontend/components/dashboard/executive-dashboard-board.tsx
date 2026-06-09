@@ -99,6 +99,7 @@ interface DashboardExecutiveBoardProps {
   onDeleteCustomWidget: (widgetId: string) => void;
   onEditCustomWidget: (widgetId: string) => void;
   onOpenCustomizeDashboard: () => void;
+  onConfigureServicePathways?: () => void;
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -218,10 +219,12 @@ function ServicePathwayCardsPanel({
   hasError,
   isLoading,
   items,
+  onEditData,
 }: {
   hasError: boolean;
   isLoading: boolean;
   items: ScreeningDashboardInsights["servicePathways"];
+  onEditData?: () => void;
 }) {
   const [activePathwayId, setActivePathwayId] = useState<string | null>(null);
   const [selectedStageByPathway, setSelectedStageByPathway] = useState<Record<string, string>>({});
@@ -280,7 +283,22 @@ function ServicePathwayCardsPanel({
 
   return (
     <>
-      <DashboardPanel eyebrow="Pathways" title="Service pathway cards">
+      <DashboardPanel
+        eyebrow="Pathways"
+        title="Service pathway cards"
+        actions={
+          onEditData ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-border bg-background text-foreground hover:bg-muted"
+              onClick={onEditData}
+            >
+              Configure
+            </Button>
+          ) : undefined
+        }
+      >
         {isLoading ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
             Loading service pathway cards.
@@ -291,7 +309,8 @@ function ServicePathwayCardsPanel({
           </div>
         ) : normalizedItems.every((item) => item.total === 0) ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-            Service pathway cards will appear once matching indicator data is available.
+            No service pathways configured yet. Use <span className="font-medium text-foreground">Configure</span>{" "}
+            to choose the indicators for each pathway stage.
           </div>
         ) : (
           <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-4 lg:grid-cols-2">
@@ -978,6 +997,7 @@ export function DashboardExecutiveBoard({
   onDeleteCustomWidget,
   onEditCustomWidget,
   onOpenCustomizeDashboard,
+  onConfigureServicePathways,
   recentActivity,
   screeningInsights,
   showFavoritesPanel,
@@ -1320,11 +1340,20 @@ export function DashboardExecutiveBoard({
               {showUpdatesBoard ? (
                 <>
                   {/*
-                    Hardcoded HIV/NCD themed cards were removed here. The home
-                    dashboard now surfaces only generic panels (below) plus the
-                    org "home" dashboard charts shared from the Analysis
-                    Visualizer (rendered by the dashboard page, not this board).
+                    Hardcoded HIV/NCD message + HIV testing themed cards were
+                    removed here; the home dashboard surfaces org "home" dashboard
+                    charts shared from the Analysis Visualizer instead (rendered by
+                    the dashboard page). Service pathway cards are kept, but only
+                    shown when the current filter actually has data so an org that
+                    doesn't do them never sees an empty placeholder.
                   */}
+                  <ServicePathwayCardsPanel
+                    hasError={screeningInsightsHasError}
+                    isLoading={screeningInsightsIsLoading}
+                    items={servicePathways}
+                    onEditData={onConfigureServicePathways}
+                  />
+
                   <div className="grid min-w-0 w-full max-w-full grid-cols-1 items-start gap-4 xl:grid-cols-2">
                     {resolvedCustomWidgets.map((widget) => {
                       const subtitle = getCustomWidgetSubtitle(widget);
