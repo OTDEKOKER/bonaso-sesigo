@@ -817,6 +817,7 @@ function DashboardPageContent({
     date_from: dashboardFilters.dateFrom || undefined,
     date_to: dashboardFilters.dateTo || undefined,
     status: "approved",
+    light: "1",
   });
   const aggregateReviewScopeFilters = useMemo(
     () => ({
@@ -857,6 +858,7 @@ function DashboardPageContent({
             include_org_descendants: (!isTrainingMode && selectedOrganizationId) ? "true" : undefined,
             include_training: isTrainingMode ? "true" : undefined,
             status: "approved",
+            light: "1",
           }
         : null,
     [isTrainingMode, trainingProjectId, selectedCoordinatorId, selectedOrganizationId, selectedProjectId, widgetDialogOpen],

@@ -573,6 +573,9 @@ export function DashboardAnalyticsSurface(props: DashboardAnalyticsSurfaceProps)
       date_from: filters.dateFrom || undefined,
       date_to: filters.dateTo || undefined,
       status: "approved",
+      // Charts read disaggregates from `value` only; drop notes/review/audit
+      // fields to shrink the bulk fetch. See AggregateLightSerializer.
+      light: "1",
     }),
     [dashboard.project, filters.dateFrom, filters.dateTo, filters.projectId],
   );
