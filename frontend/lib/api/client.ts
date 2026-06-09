@@ -462,8 +462,29 @@ export const clearAuthToken = clearAuthTokens;
 
 /**
  * Refresh the access token using the refresh token (no recursion into apiRequest).
+ *
+ * Concurrent callers share a single in-flight refresh. The dashboard (and other
+ * screens) fire many requests in parallel; when the access token expires they all
+ * hit 401 at once. Because the backend rotates refresh tokens and blacklists the
+ * old one (ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION), letting each 401
+ * trigger its own refresh means the first call rotates the token and every other
+ * call then sends the now-blacklisted token -> those refreshes fail, their
+ * requests stay 401, and the user can be spuriously logged out. Single-flighting
+ * the refresh guarantees exactly one rotation per expiry.
  */
-async function refreshAccessToken(): Promise<string | null> {
+let inFlightRefresh: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+  if (inFlightRefresh) {
+    return inFlightRefresh;
+  }
+  inFlightRefresh = performTokenRefresh().finally(() => {
+    inFlightRefresh = null;
+  });
+  return inFlightRefresh;
+}
+
+async function performTokenRefresh(): Promise<string | null> {
   const refresh = getRefreshToken();
   if (!refresh) return null;
 
