@@ -30,3 +30,28 @@ class AggregateSerializer(serializers.ModelSerializer):
             'updated_at',
             'created_by',
         ]
+
+
+class AggregateLightSerializer(serializers.ModelSerializer):
+    """Lightweight read-only projection for bulk dashboard/analytics fetches.
+
+    Drops notes + review/audit fields (notes, reviewed_*, copy_paste_verified,
+    created_*) that those screens never read, cutting the per-record payload of
+    the all-pages aggregate fetch. Opt-in via ?light=1 on the list endpoint.
+    Keep this in sync with the fields the dashboard actually consumes
+    (lib/dashboard/screening-insights.ts + the home dashboard page).
+    """
+
+    indicator_name = serializers.CharField(source='indicator.name', read_only=True)
+    indicator_code = serializers.CharField(source='indicator.code', read_only=True)
+    project_name = serializers.CharField(source='project.name', read_only=True)
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+
+    class Meta:
+        model = Aggregate
+        fields = [
+            'id', 'indicator', 'indicator_name', 'indicator_code',
+            'project', 'project_name', 'organization', 'organization_name',
+            'period_start', 'period_end', 'value', 'status', 'updated_at',
+        ]
+        read_only_fields = fields

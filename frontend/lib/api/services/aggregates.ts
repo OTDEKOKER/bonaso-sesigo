@@ -32,6 +32,10 @@ export interface AggregateFilters {
   status?: string;
   page?: string;
   page_size?: string;
+  // Opt-in lightweight projection: drops notes + review/audit fields the
+  // dashboard never reads, shrinking the bulk fetch payload. Do not use on
+  // screens that show notes/review metadata (e.g. the Aggregates review page).
+  light?: string;
 }
 
 export interface CreateAggregateRequest {

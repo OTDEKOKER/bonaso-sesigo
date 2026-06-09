@@ -45,3 +45,30 @@ export function clearTrainingMode(): void {
     /* storage unavailable; ignore */
   }
 }
+
+/**
+ * Routes that are NOT training-scoped. These modules (orgs, users, indicators,
+ * settings, etc.) hold global/shared data with no training mirror under
+ * /training/*. In Training Mode the sidebar links to them on their live path,
+ * and the dashboard training-session guard must NOT rewrite them to /training/*
+ * (doing so 404s — there is no /training/clients page). This list is the single
+ * source of truth shared by the sidebar (toTrainingHref) and the layout guard.
+ */
+export const SHARED_ROUTE_PREFIXES = [
+  "/organizations",
+  "/users",
+  "/indicators",
+  "/settings",
+  "/system-status",
+  "/clients",
+  "/social",
+  "/messages",
+  "/announcements",
+  "/search",
+  "/training",
+] as const;
+
+/** True when `path` is (or is under) a shared, non-training-scoped route. */
+export function isSharedLiveRoute(path: string): boolean {
+  return SHARED_ROUTE_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+}

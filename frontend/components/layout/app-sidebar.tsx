@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { useOrganizationTree } from "@/lib/hooks/use-api"
 import { useAuth } from "@/lib/contexts/auth-context"
 import { useSessionMode } from "@/lib/contexts/session-mode-context"
+import { isSharedLiveRoute } from "@/lib/training-mode"
 import {
   LayoutDashboard,
   Building2,
@@ -178,26 +179,12 @@ function NavItem({ title, href, icon, badge, isActive, subItems }: NavItemProps)
   )
 }
 
-const SHARED_ROUTE_PREFIXES = [
-  "/organizations",
-  "/users",
-  "/indicators",
-  "/settings",
-  "/system-status",
-  "/clients",
-  "/social",
-  "/messages",
-  "/announcements",
-  "/search",
-  "/training",
-]
-
 function toTrainingHref(href: string, isTrainingMode: boolean): string {
   if (!isTrainingMode) return href
   const qIdx = href.indexOf("?")
   const path = qIdx >= 0 ? href.slice(0, qIdx) : href
   const query = qIdx >= 0 ? href.slice(qIdx) : ""
-  if (SHARED_ROUTE_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))) return href
+  if (isSharedLiveRoute(path)) return href
   return `/training${path}${query}`
 }
 

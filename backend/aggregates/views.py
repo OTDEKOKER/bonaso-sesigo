@@ -21,7 +21,7 @@ from io import BytesIO
 
 from .models import Aggregate
 from .pagination import AggregatePagination
-from .serializers import AggregateSerializer
+from .serializers import AggregateSerializer, AggregateLightSerializer
 from indicators.models import Indicator
 from flags.models import Flag
 from projects.models import Project
@@ -143,6 +143,18 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     filterset_class = AggregateFilterSet
     ordering_fields = ['period_start', 'period_end', 'created_at']
     ordering = ['-period_start']
+
+    def _wants_light_projection(self) -> bool:
+        """True when the caller opted into the lightweight list projection
+        (?light=1). Used by bulk dashboard/analytics fetches that never read
+        notes or review/audit fields."""
+        raw = str(self.request.query_params.get('light') or '').strip().lower()
+        return raw in ('1', 'true', 'yes', 'on')
+
+    def get_serializer_class(self):
+        if self.action == 'list' and self._wants_light_projection():
+            return AggregateLightSerializer
+        return super().get_serializer_class()
 
     def _notification_context(self, aggregate: Aggregate) -> AggregateNotificationContext:
         indicator_label = (

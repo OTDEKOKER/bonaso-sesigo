@@ -17,7 +17,7 @@ import {
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { SessionModeProvider, useSessionMode } from "@/lib/contexts/session-mode-context"
-import { isTrainingMode } from "@/lib/training-mode"
+import { isTrainingMode, isSharedLiveRoute } from "@/lib/training-mode"
 
 function TrainingModeBanner() {
   const { isTrainingMode } = useSessionMode()
@@ -208,7 +208,9 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated) return
     const isTrainingSession = isTrainingMode()
     const path = pathname || ""
-    if (isTrainingSession && !path.startsWith("/training")) {
+    // Shared/global modules (orgs, users, indicators, clients, settings, …) have
+    // no /training mirror; redirecting them would 404. Keep them on the live path.
+    if (isTrainingSession && !path.startsWith("/training") && !isSharedLiveRoute(path)) {
       setTrainingRedirectPending(true)
       router.replace(`/training${path}`)
     } else {
