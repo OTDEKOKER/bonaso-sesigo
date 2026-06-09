@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, Plus, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -14,16 +22,62 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ConfiguredPathway } from "@/lib/dashboard/screening-insights";
 
 export type PathwayIndicatorOption = { id: string; name: string; code?: string };
+
+// Searchable single-add indicator picker (the indicator list can be hundreds long).
+function StageIndicatorPicker({
+  available,
+  onAdd,
+}: {
+  available: PathwayIndicatorOption[];
+  onAdd: (indicatorId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/30"
+        >
+          <span>Add an indicator to this stage…</span>
+          <ChevronsUpDown className="h-4 w-4 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="z-[70] w-[var(--radix-popover-trigger-width)] p-0"
+      >
+        <Command>
+          <CommandInput placeholder="Search indicators by name or code…" />
+          <CommandList>
+            <CommandEmpty>No indicators found.</CommandEmpty>
+            <CommandGroup>
+              {available.map((indicator) => (
+                <CommandItem
+                  key={indicator.id}
+                  value={`${indicator.code ?? ""} ${indicator.name}`}
+                  onSelect={() => {
+                    onAdd(String(indicator.id));
+                    setOpen(false);
+                  }}
+                >
+                  <span className="truncate">
+                    {indicator.code ? `${indicator.code} — ` : ""}
+                    {indicator.name}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 type Props = {
   open: boolean;
@@ -234,26 +288,16 @@ export function ServicePathwayConfigDialog({
                         )}
                       </div>
 
-                      <Select
-                        value=""
-                        onValueChange={(indicatorId) => addIndicatorToStage(pathway.id, stage.id, indicatorId)}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Add an indicator to this stage…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {available.length === 0 ? (
-                            <div className="px-2 py-1.5 text-xs text-muted-foreground">All indicators added.</div>
-                          ) : (
-                            available.map((indicator) => (
-                              <SelectItem key={indicator.id} value={String(indicator.id)}>
-                                {indicator.code ? `${indicator.code} — ` : ""}
-                                {indicator.name}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
+                      {available.length === 0 ? (
+                        <div className="rounded-md border border-input bg-background px-3 py-2 text-xs text-muted-foreground">
+                          All indicators added.
+                        </div>
+                      ) : (
+                        <StageIndicatorPicker
+                          available={available}
+                          onAdd={(indicatorId) => addIndicatorToStage(pathway.id, stage.id, indicatorId)}
+                        />
+                      )}
                     </div>
                   );
                 })}
