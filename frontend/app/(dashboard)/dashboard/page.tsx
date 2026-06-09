@@ -677,6 +677,38 @@ function DashboardPageContent({
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [preferencesSourceReady, setPreferencesSourceReady] = useState(false);
   const lastServerSavedPreferences = useRef<string | null>(null);
+  // Defer the heavy all-aggregates fetch (the dashboard analytics payload) off
+  // the critical render path. The summary cards/deadlines/activity come from the
+  // lightweight dashboardStats endpoint and paint immediately; the ~MB aggregate
+  // pull only starts once the user shows intent to view the analytics (first
+  // scroll) or shortly after first paint (idle fallback). On slow links this lets
+  // the small critical requests win the connection first.
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  useEffect(() => {
+    if (analyticsEnabled) return;
+    let done = false;
+    const enable = () => {
+      if (done) return;
+      done = true;
+      setAnalyticsEnabled(true);
+    };
+    window.addEventListener("scroll", enable, { passive: true });
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const idleId = idleWindow.requestIdleCallback
+      ? idleWindow.requestIdleCallback(enable, { timeout: 2500 })
+      : window.setTimeout(enable, 1500);
+    return () => {
+      window.removeEventListener("scroll", enable);
+      if (idleWindow.cancelIdleCallback && idleWindow.requestIdleCallback) {
+        idleWindow.cancelIdleCallback(idleId);
+      } else {
+        window.clearTimeout(idleId);
+      }
+    };
+  }, [analyticsEnabled]);
 
   useEffect(() => {
     let isActive = true;
@@ -803,22 +835,38 @@ function DashboardPageContent({
     date_from: dashboardFilters.dateFrom || undefined,
     date_to: dashboardFilters.dateTo || undefined,
   });
+  const aggregatesFilters = useMemo(
+    () =>
+      analyticsEnabled
+        ? {
+            project: isTrainingMode ? (trainingProjectId ?? undefined) : selectedProjectId,
+            coordinator: isTrainingMode ? undefined : selectedCoordinatorId,
+            organization: isTrainingMode ? undefined : selectedOrganizationId,
+            include_org_descendants: (!isTrainingMode && selectedOrganizationId) ? "true" : undefined,
+            include_training: isTrainingMode ? "true" : undefined,
+            date_from: dashboardFilters.dateFrom || undefined,
+            date_to: dashboardFilters.dateTo || undefined,
+            status: "approved",
+            light: "1",
+          }
+        : null,
+    [
+      analyticsEnabled,
+      dashboardFilters.dateFrom,
+      dashboardFilters.dateTo,
+      isTrainingMode,
+      trainingProjectId,
+      selectedCoordinatorId,
+      selectedOrganizationId,
+      selectedProjectId,
+    ],
+  );
   const {
     data: aggregatesData,
     isLoading: aggregatesLoading,
     error: aggregatesError,
     mutate: mutateAggregates,
-  } = useAllAggregates({
-    project: isTrainingMode ? (trainingProjectId ?? undefined) : selectedProjectId,
-    coordinator: isTrainingMode ? undefined : selectedCoordinatorId,
-    organization: isTrainingMode ? undefined : selectedOrganizationId,
-    include_org_descendants: (!isTrainingMode && selectedOrganizationId) ? "true" : undefined,
-    include_training: isTrainingMode ? "true" : undefined,
-    date_from: dashboardFilters.dateFrom || undefined,
-    date_to: dashboardFilters.dateTo || undefined,
-    status: "approved",
-    light: "1",
-  });
+  } = useAllAggregates(aggregatesFilters);
   const aggregateReviewScopeFilters = useMemo(
     () => ({
       project: isTrainingMode ? (trainingProjectId ?? undefined) : selectedProjectId,
@@ -1120,7 +1168,7 @@ function DashboardPageContent({
         selectedQuarter,
         includeHivPreventionMessageTypeByCso: false,
         servicePathwayConfig,
-        isLoading: aggregatesLoading || indicatorsLoading,
+        isLoading: aggregatesLoading || indicatorsLoading || !analyticsEnabled,
         hasError: Boolean(aggregatesError),
       });
     },
@@ -1129,6 +1177,7 @@ function DashboardPageContent({
       aggregatesData,
       aggregatesError,
       aggregatesLoading,
+      analyticsEnabled,
       dashboardFilters.dateFrom,
       dashboardFilters.dateTo,
       indicatorsData,
@@ -1790,7 +1839,11 @@ function DashboardPageContent({
     !isInitialDashboardLoad &&
     !statsError &&
     !hasAnyDashboardData &&
-    dashboardFiltersAreDefault;
+    dashboardFiltersAreDefault &&
+    // Don't conclude "no data" until the deferred aggregate fetch has resolved,
+    // otherwise an aggregate-only portal would briefly flash the welcome state.
+    analyticsEnabled &&
+    !aggregatesLoading;
 
   return (
     <div className="mx-auto w-full max-w-[1440px] min-w-0 space-y-6 overflow-x-hidden px-3 pb-8 sm:px-4 lg:px-6">
