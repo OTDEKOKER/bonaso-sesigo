@@ -42,6 +42,37 @@ class User(AbstractUser):
         return f"{self.first_name} {self.last_name}".strip() or self.username
 
 
+class UserModulePermission(models.Model):
+    """Admin-assigned, per-user override of module/action access.
+
+    Extends the role system: when a row exists for a (user, module) it overrides
+    that module's role default (a disabled row denies the module entirely). When
+    no row exists the user falls back to their role default. See
+    ``users.module_permissions`` for the resolution logic and catalog.
+    """
+
+    user = models.ForeignKey(
+        'users.User',
+        on_delete=models.CASCADE,
+        related_name='module_permissions',
+    )
+    module = models.CharField(max_length=100)
+    actions = models.JSONField(default=list)
+    scope = models.JSONField(default=dict, blank=True)
+    is_enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['user_id', 'module']
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'module'], name='unique_user_module_permission'),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id}:{self.module}={self.actions}'
+
+
 class UserActivity(models.Model):
     """Track user activity for audit purposes."""
     

@@ -17,6 +17,15 @@ export interface User {
   avatar?: string
   createdAt: string
   lastLogin?: string
+  // Project-assignment scope (snake_case: returned as-is by /api/users/me/).
+  // The user's current/default project for the dashboard, and the set of
+  // projects they are assigned to (empty/undefined = no restriction yet).
+  default_project_id?: number | null
+  assigned_projects?: number[]
+  // Effective module permissions resolved by the backend (/api/users/me/):
+  // { module: [actions] }. Backend remains the source of truth; this drives
+  // sidebar visibility, route guards and in-module action gating.
+  module_permissions?: Record<string, string[]>
 }
 
 export interface Profile extends User {

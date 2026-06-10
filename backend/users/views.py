@@ -15,12 +15,21 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids
 
-from .models import UserActivity
+from django.db import transaction
+
+from .models import UserActivity, UserModulePermission
+from .module_permissions import (
+    MODULE_ACTIONS,
+    MODULES,
+    get_role_defaults,
+    resolve_user_module_permissions,
+)
 from .serializers import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     PasswordChangeSerializer, AdminResetPasswordSerializer, UserActivitySerializer,
     CurrentUserDashboardPreferencesSerializer,
 )
+from audit.recording import record_audit_event
 
 User = get_user_model()
 
@@ -114,8 +123,24 @@ def current_user(request):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
+    from projects.scope import get_default_project_id
+    from organizations.access import is_training_only_request
+
+    from users.module_permissions import resolve_user_module_permissions
+
     response_serializer = UserSerializer(request.user)
-    return Response(response_serializer.data)
+    data = dict(response_serializer.data)
+    # The dashboard always needs a selected project; expose the user's current /
+    # default project so the frontend can preselect it on load.
+    data['default_project_id'] = get_default_project_id(
+        request.user,
+        include_training=is_training_only_request(request),
+    )
+    # Effective module permissions so the frontend can gate the sidebar, routes
+    # and in-module actions. Backend remains the source of truth — this payload
+    # only mirrors what the server already enforces.
+    data['module_permissions'] = resolve_user_module_permissions(request.user)
+    return Response(data)
 
 
 @api_view(['POST'])
@@ -209,7 +234,10 @@ class UserViewSet(viewsets.ModelViewSet):
         return is_organization_admin(self.request.user)
 
     def get_permissions(self):
-        if self.action in {'create', 'destroy', 'deactivate', 'activate', 'permissions'}:
+        if self.action in {
+            'create', 'destroy', 'deactivate', 'activate', 'permissions',
+            'module_permissions', 'module_permission_defaults', 'module_catalog',
+        }:
             return [IsPortalAdmin()]
         return [permission() for permission in self.permission_classes]
 
@@ -274,6 +302,92 @@ class UserViewSet(viewsets.ModelViewSet):
         activities = UserActivity.objects.filter(user=user).order_by('-timestamp')[:50]
         serializer = UserActivitySerializer(activities, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='module-catalog')
+    def module_catalog(self, request):
+        """The controlled module/action catalog used by the permission editor."""
+        return Response({'modules': MODULE_ACTIONS})
+
+    @action(detail=False, methods=['get'], url_path='module-permission-defaults')
+    def module_permission_defaults(self, request):
+        """Role default module permissions (?role=manager). Used to pre-load the
+        permission editor when an admin picks a role."""
+        role = (request.query_params.get('role') or '').strip()
+        return Response({'role': role, 'defaults': get_role_defaults(role)})
+
+    @action(detail=True, methods=['get', 'put'], url_path='module-permissions')
+    def module_permissions(self, request, pk=None):
+        """Get or replace a user's module permissions (admin only).
+
+        GET  -> { effective, custom, role, modules }
+        PUT  -> body { "permissions": [ {module, actions, scope?, is_enabled?}, ... ] }
+                replaces all custom rows for the user.
+        """
+        user = self.get_object()
+
+        if request.method == 'GET':
+            custom = [
+                {
+                    'module': row.module,
+                    'actions': row.actions,
+                    'scope': row.scope,
+                    'is_enabled': row.is_enabled,
+                }
+                for row in user.module_permissions.all()
+            ]
+            return Response({
+                'user_id': user.id,
+                'role': user.role,
+                'modules': MODULE_ACTIONS,
+                'role_defaults': get_role_defaults(user.role),
+                'custom': custom,
+                'effective': resolve_user_module_permissions(user),
+            })
+
+        # PUT — replace all custom rows.
+        raw = request.data.get('permissions', [])
+        if isinstance(raw, dict):
+            raw = [{'module': module, 'actions': actions} for module, actions in raw.items()]
+        if not isinstance(raw, list):
+            return Response({'detail': 'permissions must be a list or object.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        cleaned = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            module = str(item.get('module') or '').strip()
+            if module not in MODULES:
+                return Response({'detail': f'Unknown module: {module}'}, status=status.HTTP_400_BAD_REQUEST)
+            allowed = set(MODULE_ACTIONS.get(module, []))
+            actions = [a for a in (item.get('actions') or []) if a in allowed]
+            scope = item.get('scope') if isinstance(item.get('scope'), dict) else {}
+            is_enabled = bool(item.get('is_enabled', True))
+            cleaned.append({'module': module, 'actions': actions, 'scope': scope, 'is_enabled': is_enabled})
+
+        with transaction.atomic():
+            user.module_permissions.all().delete()
+            UserModulePermission.objects.bulk_create([
+                UserModulePermission(
+                    user=user, module=row['module'], actions=row['actions'],
+                    scope=row['scope'], is_enabled=row['is_enabled'],
+                )
+                for row in cleaned
+            ])
+
+        record_audit_event(
+            action='manage',
+            request=request,
+            object_type='user_module_permissions',
+            object_id=user.id,
+            organization=getattr(user, 'organization', None),
+            description=f'Module permissions updated for user {user.username} ({len(cleaned)} modules).',
+            metadata={'modules': [row['module'] for row in cleaned]},
+        )
+
+        return Response({
+            'user_id': user.id,
+            'effective': resolve_user_module_permissions(user),
+        })
 
     @action(detail=False, methods=['get', 'post', 'delete'])
     def group_catalog(self, request):
