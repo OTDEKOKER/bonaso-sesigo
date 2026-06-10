@@ -50,6 +50,9 @@ type CoordinatorTargetFormDialogProps = {
   projects: NamedOption[];
   coordinators: NamedOption[];
   indicators: NamedOption[];
+  /** Project from the page context; pre-fills a new target so it can't be
+   * created under a different project than the one the user is working in. */
+  defaultProjectId?: string;
   onSubmit: (value: CoordinatorTargetFormValue) => Promise<void> | void;
 };
 
@@ -75,8 +78,8 @@ const DEFAULT_FORM: FormState = {
   isActive: true,
 };
 
-function toFormState(existing?: CoordinatorTarget | null): FormState {
-  if (!existing) return DEFAULT_FORM;
+function toFormState(existing?: CoordinatorTarget | null, defaultProjectId?: string): FormState {
+  if (!existing) return { ...DEFAULT_FORM, projectId: defaultProjectId || "" };
   return {
     projectId: String(existing.project_id),
     coordinatorId: String(existing.coordinator_id),
@@ -90,8 +93,8 @@ function toFormState(existing?: CoordinatorTarget | null): FormState {
 }
 
 export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogProps) {
-  const { open, onOpenChange, submitting = false, existing, projects, coordinators, indicators, onSubmit } = props;
-  const [form, setForm] = useState<FormState>(() => toFormState(existing));
+  const { open, onOpenChange, submitting = false, existing, projects, coordinators, indicators, defaultProjectId, onSubmit } = props;
+  const [form, setForm] = useState<FormState>(() => toFormState(existing, defaultProjectId));
   const [errorMessage, setErrorMessage] = useState("");
   const [indicatorSearchOpen, setIndicatorSearchOpen] = useState(false);
   const [indicatorSearch, setIndicatorSearch] = useState("");

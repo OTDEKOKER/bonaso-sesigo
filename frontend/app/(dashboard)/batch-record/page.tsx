@@ -1,7 +1,7 @@
 "use client"
 
-import { useRef, useState } from "react"
-import { FileSpreadsheet, Download, Upload, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { FileSpreadsheet, Download, Upload, Loader2, CheckCircle2, AlertCircle, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -9,11 +9,15 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { PageHeader } from "@/components/shared/page-header"
+import { NoProjectEmptyState } from "@/components/shared/no-project-empty-state"
 import { Badge } from "@/components/ui/badge"
-import { useProjects, useAllOrganizations } from "@/lib/hooks/use-api"
+import { useAllProjects, useAllOrganizations } from "@/lib/hooks/use-api"
+import { useDefaultProject } from "@/lib/hooks/use-default-project"
 import { uploadsService } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/contexts/auth-context"
+import { useSessionMode } from "@/lib/contexts/session-mode-context"
+import { canSubmitData, isPlatformAdmin } from "@/lib/permissions"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "https://sesigo.org.bw/api"
 
@@ -27,14 +31,48 @@ export default function BatchRecordPage() {
   const { user } = useAuth()
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const { data: projectsData } = useProjects()
+  const { isTrainingMode, trainingProjectId } = useSessionMode()
+  const { data: projectsData } = useAllProjects()
   const { data: orgsData } = useAllOrganizations()
 
   const projects = projectsData?.results || []
-  const organizations = orgsData?.results || []
+  const allOrganizations = orgsData?.results || []
+
+  // Permission scoping (org-layer, mirrors aggregates): admins may import for any
+  // organization; everyone else is limited to their own organization. The server
+  // is still the authority — this is least-privilege in the UI.
+  const canImport = canSubmitData(user)
+  const ownOrgId = (() => {
+    const org = (user as { organization?: unknown } | null)?.organization
+    if (org && typeof org === "object") return String((org as { id?: unknown }).id ?? "")
+    return org != null ? String(org) : ""
+  })()
+  const organizations = isPlatformAdmin(user)
+    ? allOrganizations
+    : allOrganizations.filter((o) => String(o.id) === ownOrgId)
+
+  // Default-project workflow (risk R7), consistent with aggregates / targets.
+  const userDefaultProjectId =
+    (user as { default_project_id?: number | string | null } | null)?.default_project_id ?? null
+  const { selectableProjects, defaultProjectId, isSingleProject, isMultiProject, hasProjects } =
+    useDefaultProject(projects, {
+      isTrainingMode,
+      trainingProjectId,
+      preferredProjectId: userDefaultProjectId,
+    })
 
   const [selectedProject, setSelectedProject] = useState("")
   const [selectedOrg, setSelectedOrg] = useState("")
+
+  // Auto-select the resolved default once (single / backend-default / training);
+  // preserves any later manual choice.
+  const projectAutoAppliedRef = useRef(false)
+  useEffect(() => {
+    if (projectAutoAppliedRef.current) return
+    if (!defaultProjectId) return
+    projectAutoAppliedRef.current = true
+    setSelectedProject((current) => current || defaultProjectId)
+  }, [defaultProjectId])
   const [isDownloading, setIsDownloading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<{ status: "success" | "error"; message: string } | null>(null)
@@ -107,6 +145,31 @@ export default function BatchRecordPage() {
     }
   }
 
+  if (!canImport) {
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+        <PageHeader
+          title="Batch Data Entry"
+          description="Download pre-filled Excel templates and upload completed workbooks"
+          breadcrumbs={[
+            { label: "Dashboard", href: "/dashboard" },
+            { label: "Batch Record" },
+          ]}
+        />
+        <Card>
+          <CardContent className="flex items-start gap-3 p-6 text-sm text-muted-foreground">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <p>
+              You don&apos;t have permission to import batch data. This workflow is available to
+              data collectors, M&amp;E officers, managers, and administrators. Contact an
+              administrator if you need access.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <PageHeader
@@ -124,34 +187,63 @@ export default function BatchRecordPage() {
           <CardTitle className="text-base">1. Select Scope</CardTitle>
           <CardDescription>Choose the project (and optionally organization) for the template.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Project *</Label>
-            <Select value={selectedProject} onValueChange={setSelectedProject}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select project…" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Organization <span className="text-muted-foreground text-xs">(optional)</span></Label>
-            <Select value={selectedOrg || "all"} onValueChange={(v) => setSelectedOrg(v === "all" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All organizations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All organizations</SelectItem>
-                {organizations.map((o) => (
-                  <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <CardContent className="space-y-4">
+          {!hasProjects ? (
+            <NoProjectEmptyState
+              title="No active project available"
+              description="You are not assigned to any active project yet. Ask an administrator to assign you to a project before entering batch data."
+            />
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Project *</Label>
+                  <Select value={selectedProject} onValueChange={setSelectedProject}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select project…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectableProjects.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Organization <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Select value={selectedOrg || "all"} onValueChange={(v) => setSelectedOrg(v === "all" ? "" : v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All organizations" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All organizations</SelectItem>
+                      {organizations.map((o) => (
+                        <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Current-project context / guidance (risk R7) */}
+              {selectedProject ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm">
+                  <span className="font-medium text-foreground">Current project:</span>
+                  <span className="text-muted-foreground">
+                    {projects.find((p) => String(p.id) === selectedProject)?.name || "Selected project"}
+                  </span>
+                  {isSingleProject ? (
+                    <Badge variant="secondary" className="rounded-full text-[10px]">your only project</Badge>
+                  ) : null}
+                </div>
+              ) : isMultiProject ? (
+                <div className="flex items-center gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-950/30 dark:text-amber-200">
+                  <Filter className="h-4 w-4 shrink-0" />
+                  <span>Multiple projects are available. Select a project before continuing.</span>
+                </div>
+              ) : null}
+            </>
+          )}
         </CardContent>
       </Card>
 

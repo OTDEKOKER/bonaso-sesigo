@@ -12,9 +12,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { OrganizationMultiSelect } from "@/components/shared/organization-multi-select"
+import { NoProjectEmptyState } from "@/components/shared/no-project-empty-state"
 import { useToast } from "@/hooks/use-toast"
 import { projectsService } from "@/lib/api"
+import { useAuth } from "@/lib/contexts/auth-context"
+import { useSessionMode } from "@/lib/contexts/session-mode-context"
 import { useAllOrganizations, useAllProjects } from "@/lib/hooks/use-api"
+import { useDefaultProject } from "@/lib/hooks/use-default-project"
 import type { ProjectIndicatorTarget } from "@/lib/types"
 
 type QuarterlyTargetsSectionProps = {
@@ -127,6 +131,8 @@ export function QuarterlyTargetsSection({
   onUpdated,
 }: QuarterlyTargetsSectionProps) {
   const { toast } = useToast()
+  const { user } = useAuth()
+  const { isTrainingMode, trainingProjectId } = useSessionMode()
   const { data: projectsData } = useAllProjects()
   const { data: organizationsData } = useAllOrganizations()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -147,9 +153,28 @@ export function QuarterlyTargetsSection({
     [projectTargets],
   )
 
+  // Default-project workflow (risk R7), shared with aggregates / coordinator
+  // targets. `selectableProjects` is mode-filtered, so Training Mode only ever
+  // offers training projects (and live never offers a training project) — fixing
+  // the prior gap where this picker listed every project regardless of mode.
+  // activeOnly is false here because targets are often set while a project is
+  // still being set up (draft), and the hook still auto-selects a lone project.
+  const userDefaultProjectId =
+    (user as { default_project_id?: number | string | null } | null)?.default_project_id ?? null
+  const { selectableProjects, defaultProjectId, isSingleProject, isMultiProject, hasProjects } =
+    useDefaultProject(projects, {
+      isTrainingMode,
+      trainingProjectId,
+      preferredProjectId: userDefaultProjectId,
+      activeOnly: false,
+    })
+
   const availableProjects = useMemo(
-    () => [...projects].sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""))),
-    [projects],
+    () =>
+      [...selectableProjects].sort((left, right) =>
+        String(left.name || "").localeCompare(String(right.name || "")),
+      ),
+    [selectableProjects],
   )
 
   const selectedProject = useMemo(
@@ -223,7 +248,9 @@ export function QuarterlyTargetsSection({
 
   const openCreateDialog = () => {
     setEditingTarget(null)
-    setForm(emptyForm)
+    // Pre-select when a single / backend-default / training project applies, so
+    // single-project users never have to pick the only project they have.
+    setForm(defaultProjectId ? { ...emptyForm, projectId: defaultProjectId } : emptyForm)
     setIsDialogOpen(true)
   }
 
@@ -347,7 +374,11 @@ export function QuarterlyTargetsSection({
           </CardDescription>
         </div>
         {editable ? (
-          <Button onClick={openCreateDialog}>
+          <Button
+            onClick={openCreateDialog}
+            disabled={!hasProjects}
+            title={!hasProjects ? "No active project available" : undefined}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add Organization Target
           </Button>
@@ -458,6 +489,31 @@ export function QuarterlyTargetsSection({
                   ))}
                 </SelectContent>
               </Select>
+
+              {/* Current-project context / guidance (risk R7) */}
+              {!hasProjects ? (
+                <NoProjectEmptyState
+                  className="py-6"
+                  title="No active project available"
+                  description="Ask an administrator to assign you to a project before setting targets."
+                />
+              ) : form.projectId ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs">
+                  <span className="font-medium text-foreground">Current project:</span>
+                  <span className="text-muted-foreground">
+                    {selectedProject?.name || "Selected project"}
+                  </span>
+                  {isSingleProject ? (
+                    <Badge variant="secondary" className="rounded-full text-[10px]">
+                      your only project
+                    </Badge>
+                  ) : null}
+                </div>
+              ) : isMultiProject ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Multiple projects are available. Select a project before continuing.
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">

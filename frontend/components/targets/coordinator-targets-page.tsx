@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, Layers3, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Filter, Layers3, Loader2, Plus } from "lucide-react";
 
 import {
   coordinatorTargetsService,
@@ -16,6 +16,7 @@ import { getAggregateTotal } from "@/lib/aggregates/aggregate-helpers";
 import { buildOrganizationDescendantMap } from "@/lib/analytics/org-scope";
 import { resolveIndicatorIdString } from "@/lib/indicators/id-aliases";
 import { useAuth } from "@/lib/contexts/auth-context";
+import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import {
   useAllAggregates,
   useAllIndicators,
@@ -23,6 +24,8 @@ import {
   useAllProjects,
   useCoordinatorTargets,
 } from "@/lib/hooks/use-api";
+import { useDefaultProject } from "@/lib/hooks/use-default-project";
+import { NoProjectEmptyState } from "@/components/shared/no-project-empty-state";
 import { isBonasoOrganizationName } from "@/lib/organization-hierarchy";
 import { canManageCoordinatorTargets } from "@/lib/permissions";
 import { PageHeader } from "@/components/shared/page-header";
@@ -401,6 +404,30 @@ export function CoordinatorTargetsPage() {
     [filters.projectId, projects],
   );
 
+  // Default-project workflow (risk R7), shared with the aggregates surface.
+  const { isTrainingMode, trainingProjectId } = useSessionMode();
+  const userDefaultProjectId =
+    (user as { default_project_id?: number | string | null } | null)?.default_project_id ?? null;
+  const { defaultProjectId, isSingleProject, isMultiProject, hasProjects } = useDefaultProject(
+    projects,
+    { isTrainingMode, trainingProjectId, preferredProjectId: userDefaultProjectId },
+  );
+
+  // Auto-select the resolved default once (single / backend-default / training),
+  // while preserving any later manual choice (including switching back to "all").
+  const projectAutoAppliedRef = useRef(false);
+  useEffect(() => {
+    if (projectAutoAppliedRef.current) return;
+    if (!defaultProjectId) return;
+    projectAutoAppliedRef.current = true;
+    setFilters((current) =>
+      current.projectId === "all" ? { ...current, projectId: defaultProjectId } : current,
+    );
+  }, [defaultProjectId]);
+
+  // Assignment/target actions require an explicit project context.
+  const projectContextMissing = !hasProjects || filters.projectId === "all";
+
   const coordinatorOptions = useMemo<NamedOption[]>(() => {
     const seen = new Map<string, string>();
     for (const target of optionTargets) {
@@ -610,11 +637,20 @@ export function CoordinatorTargetsPage() {
           <div className="flex flex-wrap gap-2">
             {canEditTargets ? (
               <>
-                <Button variant="outline" onClick={() => setBulkAssignOpen(true)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setBulkAssignOpen(true)}
+                  disabled={projectContextMissing}
+                  title={projectContextMissing ? "Select a project first" : undefined}
+                >
                   <Layers3 className="mr-2 h-4 w-4" />
                   Bulk Assign
                 </Button>
-                <Button onClick={() => setCreateOpen(true)}>
+                <Button
+                  onClick={() => setCreateOpen(true)}
+                  disabled={projectContextMissing}
+                  title={projectContextMissing ? "Select a project first" : undefined}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   New Target
                 </Button>
@@ -644,6 +680,31 @@ export function CoordinatorTargetsPage() {
             years={fiscalYears}
             pending={coordinatorTargetsLoading}
           />
+
+          {/* Current-project context / guidance (risk R7) */}
+          {!hasProjects ? (
+            <NoProjectEmptyState
+              title="No active project available"
+              description="You are not assigned to any active project yet. Ask an administrator to assign you to a project before setting coordinator targets."
+            />
+          ) : filters.projectId !== "all" ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm">
+              <span className="font-medium text-foreground">Current project:</span>
+              <span className="text-muted-foreground">
+                {selectedProject?.name || "Selected project"}
+              </span>
+              {isSingleProject ? (
+                <Badge variant="secondary" className="rounded-full text-[10px]">
+                  your only project
+                </Badge>
+              ) : null}
+            </div>
+          ) : isMultiProject ? (
+            <div className="flex items-center gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-950/30 dark:text-amber-200">
+              <Filter className="h-4 w-4 shrink-0" />
+              <span>Select a project before setting targets — assignment actions are disabled until you choose one.</span>
+            </div>
+          ) : null}
 
           {aggregateWarning ? (
             <Card className="border-amber-500/30 bg-amber-500/5">
@@ -706,6 +767,7 @@ export function CoordinatorTargetsPage() {
           projects={projectOptions}
           coordinators={coordinatorOptions}
           indicators={indicatorOptions}
+          defaultProjectId={filters.projectId !== "all" ? filters.projectId : undefined}
           onSubmit={handleSaveTarget}
         />
       ) : null}
@@ -734,6 +796,7 @@ export function CoordinatorTargetsPage() {
           coordinators={coordinatorOptions}
           indicators={indicatorOptions}
           preselectedIndicatorId={filters.indicatorId !== "all" ? filters.indicatorId : null}
+          defaultProjectId={filters.projectId !== "all" ? filters.projectId : undefined}
           onSubmit={handleBulkAssign}
         />
       ) : null}

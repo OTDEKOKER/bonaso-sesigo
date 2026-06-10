@@ -17,6 +17,23 @@ export function isReadOnlyClient(user?: UserLike | null): boolean {
   return Boolean(user && user.role === "client")
 }
 
+/**
+ * Who may create/import data entries (aggregates, batch imports). Mirrors the
+ * backend `can_submit_aggregates` gate: admins, M&E Managers, M&E Officers and
+ * Data Collectors may submit; Clients and unknown/None roles may not. The UI
+ * gate is defence-in-depth — the server is still the authority.
+ */
+export function canSubmitData(user?: UserLike | null): boolean {
+  if (!user) return false
+  if (isPlatformAdmin(user)) return true
+  const normalizedRole = String(user.role || "").toLowerCase()
+  return (
+    normalizedRole === "manager" ||
+    normalizedRole === "officer" ||
+    normalizedRole === "collector"
+  )
+}
+
 export function canManageOrganizations(user?: UserLike | null): boolean {
   return isPlatformAdmin(user)
 }

@@ -32,6 +32,9 @@ type CoordinatorTargetBulkAssignDialogProps = {
   coordinators: NamedOption[];
   indicators: NamedOption[];
   preselectedIndicatorId?: string | null;
+  /** Project from the page context; pre-fills the bulk allocation so targets
+   * can't be assigned under a different project than the user is working in. */
+  defaultProjectId?: string;
   onSubmit: (request: CoordinatorTargetBulkAssignRequest) => Promise<void> | void;
 };
 
@@ -74,10 +77,12 @@ export function CoordinatorTargetBulkAssignDialog(props: CoordinatorTargetBulkAs
     coordinators,
     indicators,
     preselectedIndicatorId,
+    defaultProjectId,
     onSubmit,
   } = props;
   const [form, setForm] = useState<FormState>(() => ({
     ...DEFAULT_FORM,
+    projectId: defaultProjectId || "",
     indicatorIds: preselectedIndicatorId ? [preselectedIndicatorId] : [],
   }));
   const [errorMessage, setErrorMessage] = useState("");
