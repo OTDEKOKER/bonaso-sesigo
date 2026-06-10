@@ -2,31 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, Filter, Layers3, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Download, Filter, Layers3, Loader2, Plus } from "lucide-react";
 
 import {
   coordinatorTargetsService,
-  type AggregateFilters,
   type CoordinatorTarget,
   type CoordinatorTargetBulkAssignRequest,
   type CoordinatorTargetFilters,
 } from "@/lib/api";
-import type { Aggregate, Indicator, Organization, Project } from "@/lib/types";
-import { getAggregateTotal } from "@/lib/aggregates/aggregate-helpers";
-import { buildOrganizationDescendantMap } from "@/lib/analytics/org-scope";
-import { resolveIndicatorIdString } from "@/lib/indicators/id-aliases";
+import type { Project } from "@/lib/types";
 import { useAuth } from "@/lib/contexts/auth-context";
 import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import {
-  useAllAggregates,
-  useAllIndicators,
-  useAllOrganizations,
   useAllProjects,
   useCoordinatorTargets,
 } from "@/lib/hooks/use-api";
 import { useDefaultProject } from "@/lib/hooks/use-default-project";
 import { NoProjectEmptyState } from "@/components/shared/no-project-empty-state";
-import { isBonasoOrganizationName } from "@/lib/organization-hierarchy";
 import { canManageCoordinatorTargets } from "@/lib/permissions";
 import { PageHeader } from "@/components/shared/page-header";
 import {
@@ -59,10 +51,7 @@ import type {
 } from "@/components/targets/coordinator-targets-types";
 import {
   buildFiscalYearOptions,
-  calculatePerformanceStatus,
   getCurrentFiscalYear,
-  getFiscalQuarterDateRange,
-  isIsoRangeOverlapping,
 } from "@/components/targets/coordinator-targets-utils";
 
 const EMPTY_ITEMS: never[] = [];
@@ -99,230 +88,35 @@ function isBackendUnavailable(error: unknown): boolean {
   );
 }
 
-function getFiscalYearDateRange(year: number) {
-  return {
-    start: `${year}-04-01`,
-    end: `${year + 1}-03-31`,
-  };
-}
-
 function coerceId(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function toIdArray(values: unknown): string[] {
-  if (!Array.isArray(values)) return [];
-  const deduped = new Set<string>();
-  values.forEach((value) => {
-    const nested =
-      typeof value === "object" && value !== null
-        ? coerceId((value as { id?: unknown; value?: unknown; pk?: unknown }).id ?? (value as { value?: unknown }).value ?? (value as { pk?: unknown }).pk)
-        : coerceId(value);
-    if (!nested) return;
-    deduped.add(nested);
-  });
-  return Array.from(deduped);
-}
-
-function normalizeHierarchyOverrides(value: unknown): Record<string, string[]> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const normalized: Record<string, string[]> = {};
-
-  Object.entries(value as Record<string, unknown>).forEach(([rawParentId, rawChildren]) => {
-    const parentId = coerceId(rawParentId);
-    if (!parentId || !Array.isArray(rawChildren)) return;
-
-    const childIds = Array.from(
-      new Set(
-        rawChildren
-          .map((rawChildId) => coerceId(rawChildId))
-          .filter((childId) => childId.length > 0 && childId !== parentId),
-      ),
-    );
-    normalized[parentId] = childIds;
-  });
-
-  return normalized;
-}
-
-type NormalizedAggregate = {
-  id: string;
-  projectId: string;
-  indicatorId: string;
-  organizationId: string;
-  start: string;
-  end: string;
-  total: number;
-};
-
-function normalizeAggregates(aggregates: Aggregate[]): NormalizedAggregate[] {
-  return aggregates
-    .map((aggregate) => {
-      const start = String(aggregate.period_start || aggregate.period_end || "");
-      const end = String(aggregate.period_end || aggregate.period_start || "");
-      if (!start || !end) return null;
-
-      return {
-        id: coerceId(aggregate.id),
-        projectId: coerceId(aggregate.project),
-        indicatorId: coerceId(aggregate.indicator),
-        organizationId: coerceId(aggregate.organization),
-        start,
-        end,
-        total: getAggregateTotal(aggregate),
-      } as NormalizedAggregate;
-    })
-    .filter((value): value is NormalizedAggregate => value !== null);
-}
-
-function buildPerformanceRows(input: {
-  targets: CoordinatorTarget[];
-  organizations: Organization[];
-  projectsById: Map<
-    string,
-    {
-      name: string;
-      organizationIds: string[];
-      hierarchyOverrides: Record<string, string[]>;
-    }
-  >;
-  indicatorsById: Map<string, string>;
-  aggregates: NormalizedAggregate[];
-}): CoordinatorPerformanceRow[] {
-  const { targets, organizations, projectsById, indicatorsById, aggregates } = input;
-  const globalDescendantsByParent = buildOrganizationDescendantMap(organizations);
-  const descendantsByParentByProjectId = new Map<string, Record<string, string[]>>();
-  const organizationNameById = new Map(organizations.map((organization) => [coerceId(organization.id), organization.name]));
-
+/**
+ * Display-only mapper (readiness R3). All coordinator totals — actual, own vs
+ * subgrantee contribution, achievement %, and status — are computed by the
+ * certified server-side rollup engine and arrive on each target. The frontend
+ * no longer calculates rollups; it only shapes the rows for the table and
+ * applies a stable display sort.
+ */
+function mapTargetsToRows(targets: CoordinatorTarget[]): CoordinatorPerformanceRow[] {
   return targets
     .map((target) => {
-      const coordinatorId = coerceId(target.coordinator_id);
-      const targetProjectId = coerceId(target.project_id);
-      const projectProfile = projectsById.get(targetProjectId);
-
-      // Prefer the server-side rollup (readiness R3) when the API supplies it,
-      // so coordinator totals are authoritative and cannot drift. The
-      // client-side computation below remains as a resilience fallback for
-      // backends that predate the server rollup.
-      if (typeof target.actual_value === "number") {
-        const targetValue = Number(target.target_value || 0);
-        const actualValue = target.actual_value;
-        const achievementPercent =
-          target.achievement_percent ?? (targetValue > 0 ? (actualValue / targetValue) * 100 : null);
-        return {
-          target,
-          projectName: target.project_name || projectProfile?.name || `Project ${targetProjectId}`,
-          coordinatorName:
-            target.coordinator_name ||
-            new Map(organizations.map((o) => [coerceId(o.id), o.name])).get(coordinatorId) ||
-            `Coordinator ${coordinatorId}`,
-          indicatorName:
-            target.indicator_name ||
-            indicatorsById.get(coerceId(target.indicator_id)) ||
-            `Indicator ${coerceId(target.indicator_id)}`,
-          ownActualValue: target.own_actual_value ?? 0,
-          actualValue,
-          achievementPercent,
-          variance: typeof target.variance === "number" ? target.variance : actualValue - targetValue,
-          status:
-            target.performance_status ??
-            calculatePerformanceStatus({ targetValue, achievementPercent }),
-          childContributions: target.child_contributions ?? [],
-        } satisfies CoordinatorPerformanceRow;
-      }
-      const descendantsByParent =
-        descendantsByParentByProjectId.get(targetProjectId) ||
-        (() => {
-          const mapped = buildOrganizationDescendantMap(
-            organizations,
-            projectProfile
-              ? {
-                  hierarchyOverrides: projectProfile.hierarchyOverrides,
-                  scopedOrganizationIds: projectProfile.organizationIds,
-                }
-              : undefined,
-          );
-          descendantsByParentByProjectId.set(targetProjectId, mapped);
-          return mapped;
-        })();
-      const targetIndicatorIdRaw = coerceId(target.indicator_id);
-      const targetIndicatorId = resolveIndicatorIdString(targetIndicatorIdRaw);
-      const descendants =
-        descendantsByParent[coordinatorId] ??
-        globalDescendantsByParent[coordinatorId] ??
-        [];
-      const scopeOrgIds = new Set([coordinatorId, ...descendants]);
-      const fiscalRange = getFiscalQuarterDateRange(Number(target.year), target.quarter);
-
-      const seenAggregateIds = new Set<string>();
-      const childTotalsByOrgId = new Map<string, number>();
-      let ownActualValue = 0;
-      let actualValue = 0;
-
-      for (const aggregate of aggregates) {
-        if (aggregate.projectId !== targetProjectId || aggregate.indicatorId !== targetIndicatorId) continue;
-        if (!scopeOrgIds.has(aggregate.organizationId)) continue;
-        if (
-          !isIsoRangeOverlapping({
-            leftStart: aggregate.start,
-            leftEnd: aggregate.end,
-            rightStart: fiscalRange.start,
-            rightEnd: fiscalRange.end,
-          })
-        ) {
-          continue;
-        }
-        if (seenAggregateIds.has(aggregate.id)) continue;
-        seenAggregateIds.add(aggregate.id);
-
-        actualValue += aggregate.total;
-        if (aggregate.organizationId === coordinatorId) {
-          ownActualValue += aggregate.total;
-        } else {
-          childTotalsByOrgId.set(
-            aggregate.organizationId,
-            (childTotalsByOrgId.get(aggregate.organizationId) || 0) + aggregate.total,
-          );
-        }
-      }
-
-      const childContributions = Array.from(childTotalsByOrgId.entries())
-        .map(([organizationId, childValue]) => ({
-          organization_id: Number(organizationId),
-          organization_name: organizationNameById.get(organizationId) || `Organization ${organizationId}`,
-          actual_value: childValue,
-          share_percent: actualValue > 0 ? (childValue / actualValue) * 100 : 0,
-        }))
-        .sort((left, right) => right.actual_value - left.actual_value);
-
       const targetValue = Number(target.target_value || 0);
-      const achievementPercent = targetValue > 0 ? (actualValue / targetValue) * 100 : null;
-      const variance = actualValue - targetValue;
-
+      const actualValue = typeof target.actual_value === "number" ? target.actual_value : 0;
+      const achievementPercent =
+        target.achievement_percent ?? (targetValue > 0 ? (actualValue / targetValue) * 100 : null);
       return {
         target,
-        projectName:
-          target.project_name ||
-          projectProfile?.name ||
-          `Project ${targetProjectId}`,
-        coordinatorName:
-          target.coordinator_name ||
-          organizationNameById.get(coordinatorId) ||
-          `Coordinator ${coordinatorId}`,
-        indicatorName:
-          target.indicator_name ||
-          indicatorsById.get(targetIndicatorIdRaw) ||
-          indicatorsById.get(targetIndicatorId) ||
-          `Indicator ${targetIndicatorId}`,
-        ownActualValue,
+        projectName: target.project_name || `Project ${coerceId(target.project_id)}`,
+        coordinatorName: target.coordinator_name || `Coordinator ${coerceId(target.coordinator_id)}`,
+        indicatorName: target.indicator_name || `Indicator ${coerceId(target.indicator_id)}`,
+        ownActualValue: target.own_actual_value ?? 0,
         actualValue,
         achievementPercent,
-        variance,
-        status: calculatePerformanceStatus({
-          targetValue,
-          achievementPercent,
-        }),
-        childContributions,
+        variance: typeof target.variance === "number" ? target.variance : actualValue - targetValue,
+        status: target.performance_status ?? "no_target",
+        childContributions: target.child_contributions ?? [],
       } satisfies CoordinatorPerformanceRow;
     })
     .sort((left, right) => {
@@ -359,6 +153,7 @@ export function CoordinatorTargetsPage() {
   const [saving, setSaving] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (queryIndicatorApplied) return;
@@ -405,8 +200,6 @@ export function CoordinatorTargetsPage() {
   const { data: optionTargetsData } = useCoordinatorTargets(optionFilters);
   const optionTargets = (optionTargetsData?.results ?? EMPTY_ITEMS) as CoordinatorTarget[];
   const { data: allProjectsData } = useAllProjects();
-  const { data: allOrganizationsData } = useAllOrganizations();
-  const { data: allIndicatorsData } = useAllIndicators();
 
   const coordinatorTargetsUnavailable = isBackendUnavailable(coordinatorTargetsError);
 
@@ -416,8 +209,6 @@ export function CoordinatorTargetsPage() {
   const hasNextPage = Boolean(coordinatorTargetsData?.next);
 
   const projects = (allProjectsData?.results ?? EMPTY_ITEMS) as Project[];
-  const organizations = allOrganizationsData?.results ?? EMPTY_ITEMS;
-  const indicators = (allIndicatorsData ?? EMPTY_ITEMS) as Indicator[];
 
   const projectOptions = useMemo<NamedOption[]>(
     () =>
@@ -490,71 +281,12 @@ export function CoordinatorTargetsPage() {
     [filters.year, targets],
   );
 
-  const aggregateFilters = useMemo<AggregateFilters | null>(() => {
-    if (coordinatorTargetsUnavailable || targets.length === 0) return null;
-    const query: AggregateFilters = {};
-    if (filters.projectId !== "all") query.project = filters.projectId;
-    if (filters.indicatorId !== "all") query.indicator = filters.indicatorId;
-
-    if (filters.year !== "all") {
-      const fiscalYear = Number(filters.year);
-      if (Number.isFinite(fiscalYear)) {
-        const range =
-          filters.quarter === "all"
-            ? getFiscalYearDateRange(fiscalYear)
-            : getFiscalQuarterDateRange(fiscalYear, filters.quarter);
-        query.date_from = range.start;
-        query.date_to = range.end;
-      }
-    }
-    query.status = "approved";
-
-    return query;
-  }, [coordinatorTargetsUnavailable, filters.indicatorId, filters.projectId, filters.quarter, filters.year, targets.length]);
-
-  const {
-    data: allAggregates,
-    error: allAggregatesError,
-    isLoading: allAggregatesLoading,
-  } = useAllAggregates(aggregateFilters);
-
-  const projectsById = useMemo(
-    () =>
-      new Map(
-        projects.map((project) => {
-          const projectId = coerceId(project.id);
-          return [
-            projectId,
-            {
-              name: String(project.name || "Project"),
-              organizationIds: toIdArray((project as { organizations?: unknown[] }).organizations),
-              hierarchyOverrides: normalizeHierarchyOverrides(project.hierarchy_overrides),
-            },
-          ] as const;
-        }),
-      ),
-    [projects],
-  );
-  const indicatorsById = useMemo(
-    () => new Map(indicators.map((indicator) => [coerceId(indicator.id), String(indicator.name || "Indicator")])),
-    [indicators],
-  );
-
-  const normalizedAggregates = useMemo(
-    () => normalizeAggregates((allAggregates ?? EMPTY_ITEMS) as Aggregate[]),
-    [allAggregates],
-  );
-
+  // Display-only: rows come straight from the server-computed targets. No
+  // aggregate fetching, no client-side rollup — the backend is the single
+  // source of truth (readiness R3).
   const performanceRows = useMemo(
-    () =>
-      buildPerformanceRows({
-        targets: targets as CoordinatorTarget[],
-        organizations: organizations as Organization[],
-        projectsById,
-        indicatorsById,
-        aggregates: normalizedAggregates,
-      }),
-    [indicatorsById, normalizedAggregates, organizations, projectsById, targets],
+    () => mapTargetsToRows(targets as CoordinatorTarget[]),
+    [targets],
   );
 
   const applyFilters = (patch: Partial<CoordinatorTargetsFilterState>) => {
@@ -647,12 +379,28 @@ export function CoordinatorTargetsPage() {
         : "Unable to load coordinator targets."
       : null;
 
-  const aggregateWarning =
-    allAggregatesError instanceof Error
-      ? allAggregatesError.message
-      : allAggregatesError
-        ? "Unable to load aggregates for actuals calculation."
-        : null;
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const blob = await coordinatorTargetsService.exportCsv(targetFilters);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "coordinator-targets.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unable to export coordinator targets.",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -666,6 +414,21 @@ export function CoordinatorTargetsPage() {
         ]}
         actions={
           <div className="flex flex-wrap gap-2">
+            {!coordinatorTargetsUnavailable ? (
+              <Button
+                variant="outline"
+                onClick={() => void handleExport()}
+                disabled={exporting || totalCount === 0}
+                title={totalCount === 0 ? "No targets to export" : undefined}
+              >
+                {exporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Export CSV
+              </Button>
+            ) : null}
             {canEditTargets ? (
               <>
                 <Button
@@ -737,21 +500,8 @@ export function CoordinatorTargetsPage() {
             </div>
           ) : null}
 
-          {aggregateWarning ? (
-            <Card className="border-amber-500/30 bg-amber-500/5">
-              <CardContent className="p-3 text-sm text-amber-700">{aggregateWarning}</CardContent>
-            </Card>
-          ) : null}
-
           <Card className="border-border/70 shadow-sm">
             <CardContent className="space-y-4 p-4">
-              {allAggregatesLoading ? (
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Calculating coordinator actuals...
-                </div>
-              ) : null}
-
               <CoordinatorTargetsTable
                 rows={performanceRows}
                 loading={coordinatorTargetsLoading}

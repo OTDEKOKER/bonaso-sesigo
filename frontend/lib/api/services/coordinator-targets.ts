@@ -1,4 +1,4 @@
-import { api, type PaginatedResponse } from "../client";
+import { api, fetchWithAuth, normalizeApiError, type PaginatedResponse } from "../client";
 
 export type CoordinatorTargetQuarter = "Q1" | "Q2" | "Q3" | "Q4";
 
@@ -64,9 +64,8 @@ export interface CoordinatorTargetBulkAssignRequest {
 }
 
 // Shape of a child organization's contribution toward a coordinator target.
-// Performance rows are computed client-side from already-fetched data
-// (see components/targets/coordinator-targets-page.tsx); there is no
-// dedicated backend performance endpoint.
+// Performance is computed server-side by the certified rollup engine
+// (analysis.services.coordinator_rollups); the frontend is display-only.
 export interface CoordinatorTargetChildContribution {
   organization_id: number;
   organization_name: string;
@@ -147,5 +146,31 @@ export const coordinatorTargetsService = {
       skipped: number;
     }>(`${ENDPOINT}bulk-assign/`, request);
     return data;
+  },
+
+  // Server-rendered CSV export. Uses the SAME rollup engine and the SAME scoped
+  // queryset as the list endpoint, so the file always matches the dashboard.
+  async exportCsv(filters?: CoordinatorTargetFilters): Promise<Blob> {
+    const params = filters as Record<string, string> | undefined;
+    const qs = params
+      ? `?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+          ) as Record<string, string>,
+        ).toString()}`
+      : "";
+    const response = await fetchWithAuth(`/analysis/coordinator-targets/export/${qs}`);
+    if (!response.ok) {
+      const contentType = response.headers.get("content-type");
+      const payload = contentType?.includes("application/json")
+        ? await response.json()
+        : await response.text();
+      throw normalizeApiError({
+        status: response.status,
+        payload,
+        fallbackMessage: "Failed to export coordinator targets",
+      });
+    }
+    return response.blob();
   },
 };

@@ -408,7 +408,7 @@ function resolveRollupOrganization({
       };
     }
 
-    const parentId = resolveParentOrganizationId(current as { parent?: string | number | null; parentId?: string | number | null });
+    const parentId = resolveParentOrganizationId(current as { id: string | number; parent?: string | number | null; parentId?: string | number | null });
     if (!parentId) break;
     current = organizationById.get(String(parentId));
   }
@@ -439,7 +439,9 @@ function resolveQuarterTargetValue(
     | "q3_target"
     | "q4_target";
   const quarterValue = targetRow[fieldName];
-  if (quarterValue === null || quarterValue === undefined || quarterValue === "") return null;
+  // Runtime guard kept for API rows that may arrive as an empty string even
+  // though the type is number; cast so the comparison type-checks.
+  if (quarterValue === null || quarterValue === undefined || (quarterValue as unknown) === "") return null;
   return toSafeNumber(quarterValue);
 }
 
@@ -976,7 +978,9 @@ export function buildHomeDashboardScreeningInsights({
   >();
   const ncdDisaggregateFallbackColorByKey = new Map<string, string>();
   const projectTotals = new Map<string, { label: string; target: number; total: number }>();
-  const stageTotals = new Map(screeningStageDefinitions.map((stage) => [stage.id, 0]));
+  const stageTotals = new Map<string, number>(
+    screeningStageDefinitions.map((stage) => [stage.id, 0] as [string, number]),
+  );
   const servicePathwayTotals = new Map<string, Map<string, number>>(
     pathwayCardDefinitions.map((card) => [
       card.id,

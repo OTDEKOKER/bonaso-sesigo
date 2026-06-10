@@ -62,6 +62,10 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
     variance = serializers.SerializerMethodField()
     performance_status = serializers.SerializerMethodField()
     child_contributions = serializers.SerializerMethodField()
+    # The coordinator's own contribution vs everything rolled up from its
+    # subgrantees/children (own + subgrantee == actual_value).
+    own_contribution = serializers.SerializerMethodField()
+    subgrantee_contribution = serializers.SerializerMethodField()
 
     class Meta:
         model = CoordinatorTarget
@@ -86,11 +90,13 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
             'variance',
             'performance_status',
             'child_contributions',
+            'own_contribution',
+            'subgrantee_contribution',
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'project_name', 'coordinator_name', 'indicator_name',
             'own_actual_value', 'actual_value', 'achievement_percent', 'variance',
-            'performance_status', 'child_contributions',
+            'performance_status', 'child_contributions', 'own_contribution', 'subgrantee_contribution',
         ]
 
     def _actuals(self, obj):
@@ -113,6 +119,12 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
 
     def get_child_contributions(self, obj):
         return self._actuals(obj).get('child_contributions', [])
+
+    def get_own_contribution(self, obj):
+        return self._actuals(obj).get('own_contribution', 0.0)
+
+    def get_subgrantee_contribution(self, obj):
+        return self._actuals(obj).get('subgrantee_contribution', 0.0)
 
     def validate(self, attrs):
         project = attrs.get('project', getattr(self.instance, 'project', None))

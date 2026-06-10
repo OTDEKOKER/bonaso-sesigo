@@ -1331,7 +1331,12 @@ function DashboardPageContent({
     (link) => !(isReadOnlyUser && link.readOnlyHidden),
   );
   const indicatorById = useMemo(
-    () => new Map((indicatorsData ?? []).map((indicator) => [String(indicator.id), indicator])),
+    () =>
+      new Map(
+        ((indicatorsData ?? []) as Indicator[]).map(
+          (indicator) => [String(indicator.id), indicator] as const,
+        ),
+      ),
     [indicatorsData],
   );
   const activeIndicatorIds = useMemo(
@@ -1341,10 +1346,9 @@ function DashboardPageContent({
   const activeIndicatorIdByName = useMemo(
     () =>
       new Map(
-        (indicatorsData ?? []).map((indicator) => [
-          normalizeDashboardText(indicator.name),
-          String(indicator.id),
-        ]),
+        ((indicatorsData ?? []) as Indicator[]).map(
+          (indicator) => [normalizeDashboardText(indicator.name), String(indicator.id)] as const,
+        ),
       ),
     [indicatorsData],
   );

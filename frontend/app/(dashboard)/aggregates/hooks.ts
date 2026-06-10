@@ -161,7 +161,14 @@ export function useAggregateVisibilityScope(args: AggregateVisibilityScopeArgs) 
   const { organizations, user } = args;
   const userOrganizationId = useMemo(() => getUserOrganizationId(user), [user]);
   const canReportAcrossOrganizations = useMemo(() => isPlatformAdmin(user), [user]);
+  // Approval tier (final sign-off at BONASO level): admins + M&E Managers.
+  // Kept named `canReviewAggregates` because the org-visibility logic below
+  // (descendants / coordinator portfolio) keys on the approval tier.
   const canReviewAggregates = Boolean(user && (isPlatformAdmin(user) || user.role === "manager"));
+  const canApproveAggregates = canReviewAggregates;
+  // First review tier (mark `reviewed`): M&E Officers also qualify, in addition
+  // to anyone who can approve.
+  const canMarkReviewed = Boolean(canApproveAggregates || (user && user.role === "officer"));
   const ownOrganizationId = userOrganizationId ? String(userOrganizationId) : "";
 
   const childrenByParentId = useMemo(() => {
@@ -265,6 +272,8 @@ export function useAggregateVisibilityScope(args: AggregateVisibilityScopeArgs) 
     availableCoordinatorOrganizations,
     canReportAcrossOrganizations,
     canReviewAggregates,
+    canApproveAggregates,
+    canMarkReviewed,
     defaultOwnOrganizationValue: ownOrganizationId,
     isOrganizationSelectionLocked: !canReportAcrossOrganizations,
     userOrganizationId,
@@ -871,10 +880,9 @@ export function useAggregateChartState(args: AggregateChartStateArgs) {
       );
       const indicatorGroups = getIndicatorDisaggregateGroups(indicator);
       const { matrix, keyPops, secondDimensionValues, ageBands } = buildDisplayMatrix(
-        alignedDisaggregates,
-        indicatorGroups,
-        indicator,
-      );
+      alignedDisaggregates,
+      indicatorGroups,
+    );
       const totalBands = getBandsForTotals(ageBands);
       const hasSecondDimensionView =
         secondDimensionValues.length > 1 ||
@@ -994,7 +1002,6 @@ export function useAggregateChartState(args: AggregateChartStateArgs) {
     const { keyPops, secondDimensionValues, ageBands } = buildDisplayMatrix(
       alignedDisaggregates,
       indicatorGroups,
-      indicator,
     );
     const hasKeyPopulationView = keyPops.length > 1 || (keyPops.length === 1 && keyPops[0] !== "All");
     const hasSecondDimensionView =

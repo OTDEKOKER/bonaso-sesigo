@@ -89,6 +89,10 @@ type AggregateReviewQueueProps = {
   embedded?: boolean;
   initialReviewAggregateId?: string | null;
   canBulkApproveAll?: boolean;
+  // When false, this is the first-tier reviewer (M&E Officer): they may mark
+  // rows as "reviewed" but cannot approve / flag / bulk-approve / delete.
+  // Defaults to true to preserve existing manager/admin behaviour.
+  canApprove?: boolean;
 };
 
 const statusLabelMap: Record<Aggregate["status"], string> = {
@@ -217,6 +221,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     embedded = false,
     initialReviewAggregateId = null,
     canBulkApproveAll = false,
+    canApprove: canApproveRows = true,
   } = props;
 
   const initialReviewAggregate =
@@ -311,7 +316,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     (item) => item.status === "pending" || item.status === "reviewed",
   );
   const canShowBulkApproveAll =
-    Boolean(canBulkApproveAll) && mode === "review" && bulkApproveableItems.length > 0;
+    canApproveRows && Boolean(canBulkApproveAll) && mode === "review" && bulkApproveableItems.length > 0;
 
   const activeCorrectionConfig = useMemo(() => {
     if (!reviewingAggregate) return null;
@@ -470,7 +475,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
       indicator,
     );
     const { matrix, keyPops, secondDimensionValues, ageBands, showAypColumn } =
-      buildDisplayMatrix(alignedDisaggregates, indicatorGroups, indicator);
+      buildDisplayMatrix(alignedDisaggregates, indicatorGroups);
     const safeDimensions = secondDimensionValues.length ? secondDimensionValues : ["All"];
     const safeAgeBands = ageBands.length ? ageBands : ["Value"];
     const totalBands = getBandsForTotals(safeAgeBands);
@@ -949,13 +954,15 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                             <Flag className="mr-2 h-4 w-4" />
                             {isFlagging ? "Flagging..." : "Flag"}
                           </Button>
-                          <Button
-                            onClick={() => void onApprove(aggregateId)}
-                            disabled={Boolean(actingAggregateId) || !canApprove}
-                          >
-                            <Check className="mr-2 h-4 w-4" />
-                            {isApproving ? "Approving..." : "Approve"}
-                          </Button>
+                          {canApproveRows ? (
+                            <Button
+                              onClick={() => void onApprove(aggregateId)}
+                              disabled={Boolean(actingAggregateId) || !canApprove}
+                            >
+                              <Check className="mr-2 h-4 w-4" />
+                              {isApproving ? "Approving..." : "Approve"}
+                            </Button>
+                          ) : null}
                           <Button
                             variant="destructive"
                             onClick={() => {

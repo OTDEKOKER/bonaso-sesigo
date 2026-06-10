@@ -118,7 +118,7 @@ function renderMatrixGroupCard(
   const primaryDisaggregateLabel = getPrimaryDisaggregateLabel(indicator);
   const alignedDisaggregates = normalizeMatrixDisaggregatesForIndicator(disaggregates, indicator);
   const { matrix, keyPops, secondDimensionValues, ageBands, showAypColumn } =
-    buildDisplayMatrix(alignedDisaggregates, indicatorGroups, indicator);
+    buildDisplayMatrix(alignedDisaggregates, indicatorGroups);
 
   const safeDimensions = secondDimensionValues.length ? secondDimensionValues : ["All"];
   const safeAgeBands = ageBands.length ? ageBands : ["Value"];

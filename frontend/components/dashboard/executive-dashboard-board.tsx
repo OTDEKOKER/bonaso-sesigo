@@ -78,6 +78,7 @@ export type DashboardAggregateReviewSnapshot = {
 interface DashboardExecutiveBoardProps {
   activeProjects: Project[];
   activeUpdatesTab: UpdatesTab;
+  aggregateReviewSnapshot?: DashboardAggregateReviewSnapshot;
   aggregateFilterContext?: DashboardAggregateFilterContext;
   chartPreferences: DashboardChartPreferences;
   customWidgets: DashboardCustomWidget[];

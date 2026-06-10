@@ -297,7 +297,7 @@ export default function ProjectsPage() {
             childIds.filter(
               (childId) => childId !== coordinatorId && allowedOrganizationIds.has(childId),
             ),
-          ])
+          ] as [string, string[]])
           .filter(
             ([coordinatorId, childIds]) =>
               allowedOrganizationIds.has(coordinatorId) && childIds.length > 0,

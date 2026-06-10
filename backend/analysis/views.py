@@ -26,8 +26,15 @@ from indicators.canonical import canonical_id_map
 from projects.models import Project
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
 from projects.assignment_rules import count_project_indicators_for_organization_scope
-from projects.scope import get_default_project_id, get_user_project_scope, user_can_access_project
+from projects.scope import (
+    get_default_project_id,
+    get_user_project_scope,
+    user_can_access_project,
+    filter_queryset_by_assigned_projects,
+)
 from .serializers import ReportSerializer, SavedQuerySerializer, ScheduledReportSerializer, CoordinatorTargetSerializer
+from .services.coordinator_rollups import get_coordinator_performance
+from audit.recording import record_audit_event
 from aggregates.models import Aggregate
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, should_include_training, training_view_mode, is_training_only_request
 from organizations.models import Organization
@@ -680,22 +687,20 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         return context
 
     def list(self, request, *args, **kwargs):
-        from .coordinator_rollup import compute_target_actuals
-
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         targets = page if page is not None else list(queryset)
-        self._target_actuals = compute_target_actuals(targets)
+        # Single certified server-side rollup (analysis.services.coordinator_rollups)
+        # — the same engine that backs retrieve(), export(), and any future API.
+        self._target_actuals = get_coordinator_performance(targets)
         serializer = self.get_serializer(targets, many=True)
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
     def retrieve(self, request, *args, **kwargs):
-        from .coordinator_rollup import compute_target_actuals
-
         instance = self.get_object()
-        self._target_actuals = compute_target_actuals([instance])
+        self._target_actuals = get_coordinator_performance([instance])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
@@ -758,17 +763,43 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             if not project_org_ids.intersection(ancestor_ids):
                 raise PermissionDenied('Selected coordinator is not within the selected project scope.')
 
+    def _audit_target(self, action, target, *, description):
+        record_audit_event(
+            action=action,
+            request=self.request,
+            object_type='coordinator_target',
+            object_id=target.id,
+            organization=getattr(target, 'coordinator', None),
+            project=getattr(target, 'project', None),
+            description=description,
+            metadata={
+                'indicator_id': target.indicator_id,
+                'year': target.year,
+                'quarter': target.quarter,
+                'target_value': str(target.target_value),
+            },
+        )
+
     def perform_create(self, serializer):
         project = serializer.validated_data.get('project')
         coordinator = serializer.validated_data.get('coordinator')
         self._assert_can_write_target(project=project, coordinator=coordinator)
-        serializer.save()
+        target = serializer.save()
+        self._audit_target('create', target, description=f'Coordinator target {target.id} created.')
 
     def perform_update(self, serializer):
         project = serializer.validated_data.get('project', serializer.instance.project)
         coordinator = serializer.validated_data.get('coordinator', serializer.instance.coordinator)
         self._assert_can_write_target(project=project, coordinator=coordinator)
-        serializer.save()
+        target = serializer.save()
+        self._audit_target('update', target, description=f'Coordinator target {target.id} updated.')
+
+    def perform_destroy(self, instance):
+        # Authorise the same way as create/update before removing the row.
+        self._assert_can_write_target(project=instance.project, coordinator=instance.coordinator)
+        target_id = instance.id
+        self._audit_target('delete', instance, description=f'Coordinator target {target_id} deleted.')
+        instance.delete()
 
     @action(detail=False, methods=['post'], url_path='bulk-assign')
     def bulk_assign(self, request):
@@ -867,7 +898,75 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                     else:
                         skipped += 1
 
+        record_audit_event(
+            action='assign',
+            request=request,
+            object_type='coordinator_target',
+            project=project,
+            description=(
+                f'Bulk-assigned coordinator targets for project {project.id}: '
+                f'{created} created, {updated} updated, {skipped} skipped.'
+            ),
+            metadata={
+                'project_id': project.id,
+                'coordinator_ids': coordinator_id_values,
+                'indicator_ids': indicator_id_values,
+                'year': year_value,
+                'quarter': quarter,
+                'created': created,
+                'updated': updated,
+                'skipped': skipped,
+            },
+        )
         return Response({'created': created, 'updated': updated, 'skipped': skipped})
+
+    @action(detail=False, methods=['get'], url_path='export')
+    def export(self, request):
+        """CSV export of coordinator performance.
+
+        Export certification (readiness R3): values come from the SAME
+        ``get_coordinator_performance`` engine and the SAME scoped queryset as
+        the list endpoint, so an exported file can never disagree with the
+        dashboard. No rollup math is duplicated here.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        targets = list(queryset)
+        actuals = get_coordinator_performance(targets)
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="coordinator-targets.csv"'
+        writer = csv.writer(response)
+        writer.writerow([
+            'project', 'coordinator', 'indicator', 'year', 'quarter',
+            'target_value', 'actual_value', 'own_contribution',
+            'subgrantee_contribution', 'achievement_percent', 'performance_status',
+        ])
+        for target in targets:
+            payload = actuals.get(target.id, {})
+            achievement = payload.get('achievement_percent')
+            writer.writerow([
+                target.project.name if target.project_id else '',
+                target.coordinator.name if target.coordinator_id else '',
+                target.indicator.name if target.indicator_id else '',
+                target.year,
+                target.quarter,
+                target.target_value,
+                payload.get('actual_value', 0.0),
+                payload.get('own_contribution', 0.0),
+                payload.get('subgrantee_contribution', 0.0),
+                '' if achievement is None else round(achievement, 2),
+                payload.get('performance_status', 'no_target'),
+            ])
+
+        record_audit_event(
+            action='export',
+            request=request,
+            object_type='coordinator_target',
+            description=f'Exported {len(targets)} coordinator target(s) to CSV.',
+            metadata={'count': len(targets)},
+        )
+        return response
+
 
 class ReportViewSet(viewsets.ModelViewSet):
     """ViewSet for managing reports."""
