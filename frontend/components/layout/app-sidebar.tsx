@@ -284,8 +284,8 @@ export function AppSidebar() {
   // A nav entry is visible when its route has no module gate, or the user may
   // view that module. (No-op for users an admin hasn't explicitly configured.)
   const isNavVisible = (href: string) => {
-    const module = moduleForPath(href)
-    return !module || canView(module)
+    const activeModule = moduleForPath(href)
+    return !activeModule || canView(activeModule)
   }
 
   const parentOrganizations = (organizationTree ?? [])

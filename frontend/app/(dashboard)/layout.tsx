@@ -262,8 +262,8 @@ function ModuleRouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { canView } = useModulePermissions()
-  const module = moduleForPath(pathname)
-  if (module && !canView(module)) {
+  const activeModule = moduleForPath(pathname)
+  if (activeModule && !canView(activeModule)) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center">
         <X className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
