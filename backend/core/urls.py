@@ -35,6 +35,7 @@ urlpatterns = [
     path('api/profiles/', include('profiles.urls')),
     path('api/uploads/', include('uploads.urls')),
     path('api/messages/', include('messaging.urls')),
+    path('api/audit/', include('audit.urls')),
     path('api/system/status/', SystemStatusView.as_view(), name='system_status'),
 
     # Offline sync-down package for field data capture

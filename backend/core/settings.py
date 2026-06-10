@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'uploads',
     'messaging',
     'idempotency',
+    'audit',
 ]
 
 MIDDLEWARE = [

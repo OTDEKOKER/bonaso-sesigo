@@ -35,6 +35,7 @@ from respondents.models import Response as InteractionResponse
 from organizations.access import get_user_organization_ids, is_organization_admin, can_review_aggregates, can_approve_aggregates, can_submit_aggregates, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
 from projects.scope import filter_queryset_by_assigned_projects
 from idempotency.mixins import IdempotentMutationMixin
+from audit.recording import record_audit_event
 from organizations.models import Organization
 from respondents.rollups import sync_project_indicator_total
 from users.models import User
@@ -303,6 +304,16 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         )
         serializer.instance = aggregate
         self._notify_pending_submission(aggregate)
+        record_audit_event(
+            action='create' if _created else 'update',
+            request=self.request,
+            object_type='aggregate',
+            object_id=aggregate.id,
+            organization=aggregate.organization,
+            project=aggregate.project,
+            description=f'Aggregate {aggregate.id} submitted for review.',
+            metadata={'indicator_id': aggregate.indicator_id},
+        )
 
     def perform_update(self, serializer):
         next_project = serializer.validated_data.get('project', serializer.instance.project)
@@ -349,6 +360,21 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             aggregate.reviewed_by = self.request.user
         aggregate.save(update_fields=['status', 'reviewed_at', 'reviewed_by', 'updated_at'])
         self._notify_status_change(aggregate, status_value)
+        record_audit_event(
+            action={
+                'reviewed': 'review',
+                'approved': 'approve',
+                'rejected': 'reject',
+                'flagged': 'flag',
+            }.get(status_value, 'update'),
+            request=self.request,
+            object_type='aggregate',
+            object_id=aggregate.id,
+            organization=aggregate.organization,
+            project=aggregate.project,
+            description=f'Aggregate {aggregate.id} {status_value} (was {previous_status}).',
+            metadata={'previous_status': previous_status, 'new_status': status_value},
+        )
         if previous_status == 'approved' or status_value == 'approved':
             sync_project_indicator_total(aggregate.project_id, aggregate.indicator_id)
         return aggregate
@@ -1399,6 +1425,22 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             sync_project_indicator_total(project_id, indicator_id)
 
         for row in aggregate_rows:
+            if row['id'] not in found_ids:
+                continue
+            record_audit_event(
+                action='approve',
+                request=request,
+                object_type='aggregate',
+                object_id=row['id'],
+                description=f"Aggregate {row['id']} approved (bulk).",
+                metadata={
+                    'organization_id': row.get('organization_id'),
+                    'project_id': row.get('project_id'),
+                    'bulk': True,
+                },
+            )
+
+        for row in aggregate_rows:
             submitter_id = row.get('created_by_id')
             if not submitter_id or submitter_id == request.user.id:
                 continue
@@ -1488,6 +1530,15 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             aggregate.status = 'approved'
             aggregate.copy_paste_verified = True
             aggregate.save(update_fields=['status', 'copy_paste_verified', 'updated_at'])
+        record_audit_event(
+            action='unflag',
+            request=request,
+            object_type='aggregate',
+            object_id=aggregate.id,
+            organization=aggregate.organization,
+            project=aggregate.project,
+            description=f'Aggregate {aggregate.id} flags dismissed and restored to approved.',
+        )
         return Response(AggregateSerializer(aggregate).data)
 
     @action(detail=False, methods=['post'])
