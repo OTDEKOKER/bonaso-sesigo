@@ -199,6 +199,37 @@ function buildPerformanceRows(input: {
       const coordinatorId = coerceId(target.coordinator_id);
       const targetProjectId = coerceId(target.project_id);
       const projectProfile = projectsById.get(targetProjectId);
+
+      // Prefer the server-side rollup (readiness R3) when the API supplies it,
+      // so coordinator totals are authoritative and cannot drift. The
+      // client-side computation below remains as a resilience fallback for
+      // backends that predate the server rollup.
+      if (typeof target.actual_value === "number") {
+        const targetValue = Number(target.target_value || 0);
+        const actualValue = target.actual_value;
+        const achievementPercent =
+          target.achievement_percent ?? (targetValue > 0 ? (actualValue / targetValue) * 100 : null);
+        return {
+          target,
+          projectName: target.project_name || projectProfile?.name || `Project ${targetProjectId}`,
+          coordinatorName:
+            target.coordinator_name ||
+            new Map(organizations.map((o) => [coerceId(o.id), o.name])).get(coordinatorId) ||
+            `Coordinator ${coordinatorId}`,
+          indicatorName:
+            target.indicator_name ||
+            indicatorsById.get(coerceId(target.indicator_id)) ||
+            `Indicator ${coerceId(target.indicator_id)}`,
+          ownActualValue: target.own_actual_value ?? 0,
+          actualValue,
+          achievementPercent,
+          variance: typeof target.variance === "number" ? target.variance : actualValue - targetValue,
+          status:
+            target.performance_status ??
+            calculatePerformanceStatus({ targetValue, achievementPercent }),
+          childContributions: target.child_contributions ?? [],
+        } satisfies CoordinatorPerformanceRow;
+      }
       const descendantsByParent =
         descendantsByParentByProjectId.get(targetProjectId) ||
         (() => {

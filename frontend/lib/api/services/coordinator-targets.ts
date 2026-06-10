@@ -17,6 +17,14 @@ export interface CoordinatorTarget {
   project_name?: string;
   coordinator_name?: string;
   indicator_name?: string;
+  // Server-side rollup actuals (readiness R3). Authoritative when present —
+  // the page prefers these over the client-side fallback computation.
+  own_actual_value?: number;
+  actual_value?: number;
+  achievement_percent?: number | null;
+  variance?: number;
+  performance_status?: "no_target" | "met" | "on_track" | "behind";
+  child_contributions?: CoordinatorTargetChildContribution[];
 }
 
 export interface CoordinatorTargetFilters {

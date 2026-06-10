@@ -54,6 +54,15 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
     coordinator_name = serializers.CharField(source='coordinator.name', read_only=True)
     indicator_name = serializers.CharField(source='indicator.name', read_only=True)
 
+    # Server-side rollup actuals (readiness R3). Populated from
+    # context['target_actuals'] by the viewset; absent on write responses.
+    own_actual_value = serializers.SerializerMethodField()
+    actual_value = serializers.SerializerMethodField()
+    achievement_percent = serializers.SerializerMethodField()
+    variance = serializers.SerializerMethodField()
+    performance_status = serializers.SerializerMethodField()
+    child_contributions = serializers.SerializerMethodField()
+
     class Meta:
         model = CoordinatorTarget
         fields = [
@@ -71,8 +80,39 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
             'project_name',
             'coordinator_name',
             'indicator_name',
+            'own_actual_value',
+            'actual_value',
+            'achievement_percent',
+            'variance',
+            'performance_status',
+            'child_contributions',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'project_name', 'coordinator_name', 'indicator_name']
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'project_name', 'coordinator_name', 'indicator_name',
+            'own_actual_value', 'actual_value', 'achievement_percent', 'variance',
+            'performance_status', 'child_contributions',
+        ]
+
+    def _actuals(self, obj):
+        return (self.context.get('target_actuals') or {}).get(obj.id, {})
+
+    def get_own_actual_value(self, obj):
+        return self._actuals(obj).get('own_actual_value', 0.0)
+
+    def get_actual_value(self, obj):
+        return self._actuals(obj).get('actual_value', 0.0)
+
+    def get_achievement_percent(self, obj):
+        return self._actuals(obj).get('achievement_percent')
+
+    def get_variance(self, obj):
+        return self._actuals(obj).get('variance', 0.0)
+
+    def get_performance_status(self, obj):
+        return self._actuals(obj).get('performance_status', 'no_target')
+
+    def get_child_contributions(self, obj):
+        return self._actuals(obj).get('child_contributions', [])
 
     def validate(self, attrs):
         project = attrs.get('project', getattr(self.instance, 'project', None))

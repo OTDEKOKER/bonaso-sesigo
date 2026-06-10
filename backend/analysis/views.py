@@ -26,9 +26,10 @@ from indicators.canonical import canonical_id_map
 from projects.models import Project
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
 from projects.assignment_rules import count_project_indicators_for_organization_scope
+from projects.scope import get_default_project_id, get_user_project_scope, user_can_access_project
 from .serializers import ReportSerializer, SavedQuerySerializer, ScheduledReportSerializer, CoordinatorTargetSerializer
 from aggregates.models import Aggregate
-from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, should_include_training, training_view_mode
+from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, should_include_training, training_view_mode, is_training_only_request
 from organizations.models import Organization
 
 
@@ -673,11 +674,38 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
     ordering_fields = ['year', 'quarter', 'target_value', 'updated_at', 'created_at']
     ordering = ['-updated_at']
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['target_actuals'] = getattr(self, '_target_actuals', {})
+        return context
+
+    def list(self, request, *args, **kwargs):
+        from .coordinator_rollup import compute_target_actuals
+
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        targets = page if page is not None else list(queryset)
+        self._target_actuals = compute_target_actuals(targets)
+        serializer = self.get_serializer(targets, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        from .coordinator_rollup import compute_target_actuals
+
+        instance = self.get_object()
+        self._target_actuals = compute_target_actuals([instance])
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     def get_queryset(self):
         qs = self.queryset
         qs = apply_training_filter(qs, self.request, project_lookup='project')
         user = self.request.user
         if not (user.is_superuser or user.is_staff or getattr(user, 'role', None) == 'admin'):
+            # Project-assignment gate first: only targets for assigned projects.
+            qs = filter_queryset_by_assigned_projects(qs, user, 'project_id')
             if getattr(user, 'organization', None):
                 qs = qs.filter(
                     models.Q(coordinator=user.organization) |
@@ -1100,6 +1128,27 @@ class ScheduledReportViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=self.request.user, next_run=next_run)
 
 
+def _empty_overview_payload(*, selected_project_id=None, default_project_id=None, code=None):
+    """Shared empty/no-data dashboard overview shape (keeps the response schema
+    stable for the frontend). ``code='no_project'`` tells the frontend to show
+    the "No assigned project" state."""
+    payload = {
+        'total_respondents': 0,
+        'total_assessments': 0,
+        'active_projects': 0,
+        'total_indicators': 0,
+        'indicators_behind': 0,
+        'recent_activity': [],
+        'selected_project_id': selected_project_id,
+        'default_project_id': default_project_id,
+    }
+    if code:
+        payload['code'] = code
+        if code == 'no_project':
+            payload['detail'] = 'No assigned project.'
+    return payload
+
+
 class DashboardView(viewsets.ViewSet):
     """Dashboard analytics endpoints."""
 
@@ -1160,6 +1209,26 @@ class DashboardView(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # The dashboard always operates within a single selected project. When
+        # none is supplied we fall back to the user's default/current project.
+        # Organization visibility is then resolved from the PROJECT HIERARCHY
+        # (ProjectOrganizationHierarchy) + the user's project assignment — never
+        # the global Organization.parent tree.
+        include_training = is_training_only_request(request)
+        resolved_default_project_id = get_default_project_id(user, include_training=include_training)
+        if project_id is None:
+            project_id = resolved_default_project_id
+        if project_id is None:
+            return Response(_empty_overview_payload(default_project_id=None, code='no_project'))
+
+        project_obj = Project.objects.filter(id=project_id).first()
+        if project_obj is None or not user_can_access_project(user, project_obj):
+            return Response(_empty_overview_payload(
+                selected_project_id=None,
+                default_project_id=resolved_default_project_id,
+                code='no_project',
+            ))
+
         requested_org_ids = None
         if coordinator_id is not None:
             requested_org_ids = _organization_scope_with_descendants(coordinator_id, project_id=project_id)
@@ -1172,18 +1241,14 @@ class DashboardView(viewsets.ViewSet):
             )
 
         if requested_org_ids is not None and len(requested_org_ids) == 0:
-            return Response(
-                {
-                    'total_respondents': 0,
-                    'total_assessments': 0,
-                    'active_projects': 0,
-                    'total_indicators': 0,
-                    'indicators_behind': 0,
-                    'recent_activity': [],
-                }
-            )
+            return Response(_empty_overview_payload(
+                selected_project_id=project_id,
+                default_project_id=resolved_default_project_id,
+            ))
 
-        user_scope_ids = None if is_organization_admin(user) else set(get_user_organization_ids(user) or [])
+        # Non-admin visibility comes from the project hierarchy + assignment,
+        # NOT the global organization tree.
+        user_scope_ids = None if is_organization_admin(user) else get_user_project_scope(user, project_obj)
         effective_org_ids = requested_org_ids
         if user_scope_ids is not None:
             effective_org_ids = (
@@ -1192,16 +1257,10 @@ class DashboardView(viewsets.ViewSet):
                 else effective_org_ids.intersection(user_scope_ids)
             )
             if len(effective_org_ids) == 0:
-                return Response(
-                    {
-                        'total_respondents': 0,
-                        'total_assessments': 0,
-                        'active_projects': 0,
-                        'total_indicators': 0,
-                        'indicators_behind': 0,
-                        'recent_activity': [],
-                    }
-                )
+                return Response(_empty_overview_payload(
+                    selected_project_id=project_id,
+                    default_project_id=resolved_default_project_id,
+                ))
 
         # Build base querysets based on user role
         respondents = Respondent.objects.all()
@@ -1293,6 +1352,8 @@ class DashboardView(viewsets.ViewSet):
             'total_indicators': total_indicators,
             'indicators_behind': 0,  # Calculate based on project targets
             'recent_activity': recent_activity,
+            'selected_project_id': project_id,
+            'default_project_id': resolved_default_project_id,
         })
 
     @action(detail=False, methods=['get'])
