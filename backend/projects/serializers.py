@@ -52,7 +52,8 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = [
             'id', 'name', 'code', 'description', 'funder', 'status',
-            'start_date', 'end_date', 'organizations', 'indicators_count',
+            'start_date', 'end_date', 'organizations', 'assigned_users',
+            'indicators_count',
             'tasks_count', 'progress_percentage', 'hierarchy_overrides',
             'client_organizations',
             'is_training', 'training_expires_after_days', 'training_notes',
@@ -107,6 +108,14 @@ class ProjectSerializer(serializers.ModelSerializer):
         from organizations.access import is_organization_admin
         request = self.context.get('request')
         return request is not None and is_organization_admin(request.user)
+
+    def validate_assigned_users(self, value):
+        # Only admins may manage which users are assigned to a project.
+        if not self._is_admin_request():
+            if self.instance is not None:
+                return list(self.instance.assigned_users.all())
+            return []
+        return value
 
     def validate_is_training(self, value):
         if not self._is_admin_request():

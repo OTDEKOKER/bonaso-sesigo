@@ -26,6 +26,10 @@ export interface User {
   // { module: [actions] }. Backend remains the source of truth; this drives
   // sidebar visibility, route guards and in-module action gating.
   module_permissions?: Record<string, string[]>
+  // True only when an admin has explicitly configured this user's module
+  // permissions. The UI restricts access ONLY when this is true, so existing
+  // (un-configured) users keep their full role-based experience.
+  module_permissions_enforced?: boolean
 }
 
 export interface Profile extends User {

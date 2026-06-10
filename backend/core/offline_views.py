@@ -82,12 +82,16 @@ class OfflineBootstrapView(APIView):
         own_org = user.organization
 
         # --- Projects in scope (mode-aware) ---------------------------------
+        # Organization scope (base) + project-assignment gate (narrows to the
+        # projects the worker is assigned to, when assignments exist).
+        from projects.scope import filter_queryset_by_assigned_projects
         projects_qs = Project.objects.all()
         if not is_admin:
             if org_ids:
                 projects_qs = projects_qs.filter(organizations__id__in=org_ids).distinct()
             else:
                 projects_qs = projects_qs.none()
+            projects_qs = filter_queryset_by_assigned_projects(projects_qs, user, 'id')
         projects_qs = apply_training_filter_to_projects(projects_qs, request)
         project_ids = list(projects_qs.values_list("id", flat=True))
 

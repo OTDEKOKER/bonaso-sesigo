@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.db import models
 from django.db.models import Count, Sum, Prefetch
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from projects.scope import filter_queryset_by_assigned_projects
 
 from .models import Event, Participant, EventPhase
 from .serializers import (
@@ -60,6 +61,10 @@ class EventViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if is_organization_admin(user):
             return queryset
+        # Project-assignment gate (org-level events with no project are kept).
+        queryset = filter_queryset_by_assigned_projects(
+            queryset, user, 'project_id', include_null_project=True
+        )
         org_ids = get_user_organization_ids(user)
         if org_ids:
             return filter_queryset_by_org_ids(queryset, 'organization_id', org_ids)
@@ -158,6 +163,9 @@ class ParticipantViewSet(viewsets.ModelViewSet):
         queryset = apply_training_filter(queryset, self.request, project_lookup="event__project")
         if is_organization_admin(user):
             return queryset
+        queryset = filter_queryset_by_assigned_projects(
+            queryset, user, 'event__project_id', include_null_project=True
+        )
         org_ids = get_user_organization_ids(user)
         if org_ids:
             return filter_queryset_by_org_ids(queryset, 'event__organization_id', org_ids)
@@ -193,6 +201,9 @@ class EventPhaseViewSet(viewsets.ModelViewSet):
         queryset = apply_training_filter(queryset, self.request, project_lookup="event__project")
         if is_organization_admin(user):
             return queryset
+        queryset = filter_queryset_by_assigned_projects(
+            queryset, user, 'event__project_id', include_null_project=True
+        )
         org_ids = get_user_organization_ids(user)
         if org_ids:
             return filter_queryset_by_org_ids(queryset, 'event__organization_id', org_ids)

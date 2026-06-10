@@ -33,6 +33,18 @@ class Project(models.Model):
         blank=True,
         related_name='projects'
     )
+    # User access scope: non-admin users only see data for projects they are
+    # explicitly assigned to. A user may be assigned to more than one project.
+    # Admins / staff are exempt and see all projects.
+    assigned_users = models.ManyToManyField(
+        'users.User',
+        blank=True,
+        related_name='assigned_projects',
+        help_text=(
+            "Users explicitly assigned to this project. Non-admin users only "
+            "see data for projects they are assigned to."
+        ),
+    )
     hierarchy_overrides = models.JSONField(default=dict, blank=True)
     
     # Training mode: records linked to training projects are excluded from

@@ -11,6 +11,7 @@ from django.db.models import Count, Max, Prefetch
 from django.http import HttpResponse
 import csv
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from projects.scope import filter_queryset_by_assigned_projects
 from idempotency.mixins import IdempotentMutationMixin
 from projects.assignment_rules import (
     is_indicator_assigned_to_organization,
@@ -155,6 +156,11 @@ class InteractionViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         user = self.request.user
         if not is_organization_admin(user):
+            # Project-assignment gate (project-less interactions are kept; org
+            # scope still applies).
+            queryset = filter_queryset_by_assigned_projects(
+                queryset, user, 'project_id', include_null_project=True
+            )
             org_ids = get_user_organization_ids(user)
             if org_ids:
                 queryset = filter_queryset_by_org_ids(queryset, 'respondent__organization_id', org_ids)
@@ -278,6 +284,9 @@ class ResponseViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             'interaction', 'indicator', 'question', 'interaction__respondent'
         )
         if not is_organization_admin(user):
+            queryset = filter_queryset_by_assigned_projects(
+                queryset, user, 'interaction__project_id', include_null_project=True
+            )
             org_ids = get_user_organization_ids(user)
             if org_ids:
                 queryset = filter_queryset_by_org_ids(queryset, 'interaction__respondent__organization_id', org_ids)

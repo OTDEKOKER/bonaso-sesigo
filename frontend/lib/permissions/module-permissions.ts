@@ -22,13 +22,25 @@ function effectiveMap(user?: User | null): Record<string, string[]> {
   return (user?.module_permissions as Record<string, string[]> | undefined) ?? {}
 }
 
-/** True if the user may perform `action` on `module`. Admins always pass. */
+/** Restriction only applies to users an admin explicitly configured. */
+function isEnforced(user?: User | null): boolean {
+  return Boolean(user?.module_permissions_enforced)
+}
+
+/**
+ * True if the user may perform `action` on `module`.
+ *
+ * Admins always pass. Crucially, users an admin has NOT configured also pass —
+ * the UI never restricts below the existing role-based experience; only an
+ * explicitly-configured user is gated by their assigned permissions.
+ */
 export function hasModulePermission(
   user: User | null | undefined,
   module: ModuleName,
   action: ActionName,
 ): boolean {
   if (isPlatformAdmin(user)) return true
+  if (!isEnforced(user)) return true
   return (effectiveMap(user)[module] ?? []).includes(action)
 }
 
@@ -41,6 +53,8 @@ export interface ModulePermissionApi {
   /** Effective {module: [actions]} map (admins resolve as all-allowed at call sites). */
   permissions: Record<string, string[]>
   isAdmin: boolean
+  /** True only when this user is explicitly configured and thus UI-gated. */
+  enforced: boolean
   can: (module: ModuleName, action: ActionName) => boolean
   canView: (module: ModuleName) => boolean
 }
@@ -52,6 +66,7 @@ export function useModulePermissions(): ModulePermissionApi {
     () => ({
       permissions: effectiveMap(user),
       isAdmin: isPlatformAdmin(user),
+      enforced: isEnforced(user),
       can: (module, action) => hasModulePermission(user, module, action),
       canView: (module) => canViewModule(user, module),
     }),

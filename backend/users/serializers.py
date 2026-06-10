@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission, Group
 from django.contrib.auth.password_validation import validate_password
 from organizations.access import is_organization_admin
+from projects.models import Project
 from .models import UserActivity
 
 User = get_user_model()
@@ -18,6 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     permissions = serializers.SerializerMethodField()
     groups = serializers.SerializerMethodField()
+    assigned_projects = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = User
@@ -27,6 +29,7 @@ class UserSerializer(serializers.ModelSerializer):
             'organization_dashboard_config', 'phone', 'avatar',
             'is_active', 'last_activity', 'date_joined',
             'created_at', 'updated_at', 'permissions', 'groups',
+            'assigned_projects',
             'home_dashboard_preferences',
         ]
         read_only_fields = ['id', 'date_joined', 'created_at', 'updated_at', 'last_activity']
@@ -48,14 +51,20 @@ class UserCreateSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
-    
+    assigned_projects = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Project.objects.all(),
+        required=False,
+    )
+
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'role', 'organization', 'phone', 'password', 'password_confirm', 'permissions'
+            'role', 'organization', 'phone', 'password', 'password_confirm',
+            'permissions', 'assigned_projects',
         ]
-    
+
     def validate(self, attrs):
         if attrs.get('password') != attrs.get('password_confirm'):
             raise serializers.ValidationError({'password_confirm': "Passwords don't match."})
@@ -64,20 +73,25 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if role in {'manager', 'officer', 'collector', 'client'} and not organization:
             raise serializers.ValidationError({'organization': 'Organization is required for this role.'})
         return attrs
-    
+
     def create(self, validated_data):
         permissions = validated_data.pop('permissions', [])
+        assigned_projects = validated_data.pop('assigned_projects', None)
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
         request = self.context.get('request')
         requester = getattr(request, 'user', None)
         if permissions and not is_organization_admin(requester):
             raise serializers.ValidationError({'permissions': 'Only admins can assign explicit permissions.'})
+        if assigned_projects and not is_organization_admin(requester):
+            raise serializers.ValidationError({'assigned_projects': 'Only admins can assign projects to users.'})
         user = User(**validated_data)
         user.set_password(password)
         user.save()
         if permissions:
             user.user_permissions.set(Permission.objects.filter(id__in=permissions))
+        if assigned_projects is not None:
+            user.assigned_projects.set(assigned_projects)
         return user
 
 
@@ -94,12 +108,18 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    assigned_projects = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Project.objects.all(),
+        required=False,
+    )
 
     class Meta:
         model = User
         fields = [
             'first_name', 'last_name', 'email', 'role', 'organization',
-            'phone', 'avatar', 'is_active', 'permissions', 'groups', 'home_dashboard_preferences'
+            'phone', 'avatar', 'is_active', 'permissions', 'groups',
+            'assigned_projects', 'home_dashboard_preferences',
         ]
 
     def validate(self, attrs):
@@ -112,16 +132,21 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         permissions = validated_data.pop('permissions', None)
         group_names = validated_data.pop('groups', None)
+        assigned_projects = validated_data.pop('assigned_projects', None)
         request = self.context.get('request')
         requester = getattr(request, 'user', None)
         if permissions is not None and not is_organization_admin(requester):
             raise serializers.ValidationError({'permissions': 'Only admins can assign explicit permissions.'})
+        if assigned_projects is not None and not is_organization_admin(requester):
+            raise serializers.ValidationError({'assigned_projects': 'Only admins can assign projects to users.'})
         user = super().update(instance, validated_data)
         if permissions is not None:
             user.user_permissions.set(Permission.objects.filter(id__in=permissions))
         if group_names is not None:
             groups = [Group.objects.get_or_create(name=name.strip())[0] for name in group_names if name.strip()]
             user.groups.set(groups)
+        if assigned_projects is not None:
+            user.assigned_projects.set(assigned_projects)
         return user
 
 

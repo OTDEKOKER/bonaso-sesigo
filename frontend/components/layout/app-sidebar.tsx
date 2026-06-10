@@ -8,6 +8,8 @@ import { useOrganizationTree } from "@/lib/hooks/use-api"
 import { useAuth } from "@/lib/contexts/auth-context"
 import { useSessionMode } from "@/lib/contexts/session-mode-context"
 import { isSharedLiveRoute } from "@/lib/training-mode"
+import { useModulePermissions } from "@/lib/permissions/module-permissions"
+import { moduleForPath } from "@/lib/permissions/module-routes"
 import {
   LayoutDashboard,
   Building2,
@@ -276,8 +278,15 @@ export function AppSidebar() {
   const { data: organizationTree } = useOrganizationTree()
   const { logout, user } = useAuth()
   const { isTrainingMode } = useSessionMode()
+  const { canView } = useModulePermissions()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const canViewSystemStatus = user?.role === "admin"
+  // A nav entry is visible when its route has no module gate, or the user may
+  // view that module. (No-op for users an admin hasn't explicitly configured.)
+  const isNavVisible = (href: string) => {
+    const module = moduleForPath(href)
+    return !module || canView(module)
+  }
 
   const parentOrganizations = (organizationTree ?? [])
     .sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")))
@@ -328,17 +337,19 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {navigation.map((item) => (
-          <NavItem
-            key={item.href}
-            title={item.title}
-            href={item.href}
-            icon={item.icon}
-            badge={item.badge}
-            isActive={pathname === item.href || pathname?.startsWith(item.href + "/")}
-            subItems={item.children}
-          />
-        ))}
+        {navigation
+          .filter((item) => isNavVisible(item.href))
+          .map((item) => (
+            <NavItem
+              key={item.href}
+              title={item.title}
+              href={item.href}
+              icon={item.icon}
+              badge={item.badge}
+              isActive={pathname === item.href || pathname?.startsWith(item.href + "/")}
+              subItems={item.children?.filter((child) => isNavVisible(child.href))}
+            />
+          ))}
       </nav>
 
       {/* Bottom section */}
@@ -351,12 +362,14 @@ export function AppSidebar() {
             isActive={pathname === "/system-status"}
           />
         )}
-        <NavItem
-          title="Settings"
-          href="/settings"
-          icon={<Settings className="h-4 w-4" />}
-          isActive={pathname === "/settings"}
-        />
+        {isNavVisible("/settings") && (
+          <NavItem
+            title="Settings"
+            href="/settings"
+            icon={<Settings className="h-4 w-4" />}
+            isActive={pathname === "/settings"}
+          />
+        )}
         <button
           type="button"
           onClick={handleSignOut}

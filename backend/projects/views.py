@@ -117,13 +117,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
         # Non-admins: isolate Sesigo Live System and Sesigo Training Mode projects.
         queryset = apply_training_filter_to_projects(queryset, self.request)
-        org_ids = get_user_organization_ids(user)
-        if org_ids:
-            return queryset.filter(
-                models.Q(organizations__id__in=org_ids) |
-                models.Q(created_by=user)
-            ).distinct()
-        return queryset.filter(created_by=user)
+        # Project-assignment gate: non-admin users only see projects they are
+        # explicitly assigned to (or that they created). This is the official
+        # "users must not see projects they shouldn't" rule and replaces the
+        # previous global Organization.parent-tree membership check.
+        assigned_project_ids = set(user.assigned_projects.values_list('id', flat=True))
+        return queryset.filter(
+            models.Q(id__in=assigned_project_ids) |
+            models.Q(created_by=user)
+        ).distinct()
 
     def perform_create(self, serializer):
         # A project created while operating in Sesigo Training Mode must be a

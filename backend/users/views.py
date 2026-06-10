@@ -140,6 +140,13 @@ def current_user(request):
     # and in-module actions. Backend remains the source of truth — this payload
     # only mirrors what the server already enforces.
     data['module_permissions'] = resolve_user_module_permissions(request.user)
+    # Whether an admin has explicitly configured this user. The frontend only
+    # *restricts* the UI when this is true; un-configured users keep their full
+    # role-based experience so existing users are never silently locked out.
+    data['module_permissions_enforced'] = (
+        not is_organization_admin(request.user)
+        and request.user.module_permissions.exists()
+    )
     return Response(data)
 
 

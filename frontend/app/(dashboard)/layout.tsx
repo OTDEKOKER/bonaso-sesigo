@@ -18,6 +18,8 @@ import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { SessionModeProvider, useSessionMode } from "@/lib/contexts/session-mode-context"
 import { isTrainingMode, isSharedLiveRoute } from "@/lib/training-mode"
+import { useModulePermissions } from "@/lib/permissions/module-permissions"
+import { moduleForPath } from "@/lib/permissions/module-routes"
 
 function TrainingModeBanner() {
   const { isTrainingMode } = useSessionMode()
@@ -229,26 +231,56 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   // While the redirect is happening, don't render the dashboard shell.
   if (!isAuthenticated) return null
 
-  // A training session has landed on a live route: hold rendering until the
-  // redirect to the /training equivalent completes, so no live data is fetched.
-  if (trainingRedirectPending) {
+  return (
+    <ModuleRouteGuard>
+      <DashboardShell
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        desktopSidebarOpen={desktopSidebarOpen}
+        setDesktopSidebarOpen={setDesktopSidebarOpen}
+      >
+        {trainingRedirectPending ? (
+          <div className="min-h-screen bg-background p-6">
+            <div className="text-sm text-muted-foreground">Switching to Sesigo Training Mode…</div>
+          </div>
+        ) : (
+          children
+        )}
+      </DashboardShell>
+    </ModuleRouteGuard>
+  )
+}
+
+/**
+ * Centralized module route guard (granular permissions). When an admin has
+ * explicitly configured the current user and they lack `view` on the module for
+ * this route, show "Access denied" instead of the page. The backend still
+ * enforces every API — this prevents the page content/data fetches from
+ * rendering. No-op for admins and un-configured users.
+ */
+function ModuleRouteGuard({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const router = useRouter()
+  const { canView } = useModulePermissions()
+  const module = moduleForPath(pathname)
+  if (module && !canView(module)) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="text-sm text-muted-foreground">Switching to Sesigo Training Mode…</div>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center">
+        <X className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+        <div className="space-y-1">
+          <p className="text-base font-semibold text-foreground">Access denied</p>
+          <p className="max-w-md text-sm text-muted-foreground">
+            You don&apos;t have permission to view this section. Contact an administrator if you
+            believe this is a mistake.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => router.replace("/dashboard")}>
+          Go to Dashboard
+        </Button>
       </div>
     )
   }
-
-  return (
-    <DashboardShell
-      sidebarOpen={sidebarOpen}
-      setSidebarOpen={setSidebarOpen}
-      desktopSidebarOpen={desktopSidebarOpen}
-      setDesktopSidebarOpen={setDesktopSidebarOpen}
-    >
-      {children}
-    </DashboardShell>
-  )
+  return <>{children}</>
 }
 
 export default function DashboardLayout({
