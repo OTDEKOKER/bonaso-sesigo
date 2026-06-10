@@ -20,6 +20,7 @@ import { getUserRoleLabel } from "@/lib/roles"
 import type { Notification } from "@/lib/types"
 import { usePathname, useSearchParams } from "next/navigation"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
+import { EnvironmentBadge } from "@/components/layout/environment-badge"
 
 interface AppHeaderProps {
   onMenuClick?: () => void
@@ -161,6 +162,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
+        <EnvironmentBadge className="hidden sm:inline-flex" />
         <ThemeToggle />
         {pathname === "/dashboard" ? (
           <Button

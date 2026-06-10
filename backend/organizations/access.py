@@ -16,6 +16,59 @@ def is_organization_admin(user) -> bool:
     return bool(user and (user.is_superuser or user.is_staff or user.role == "admin"))
 
 
+def can_review_aggregates(user) -> bool:
+    """Who may review / flag / reject (and delete) aggregates — the first tier.
+
+    Workflow: M&E Officers handle their own organization's submitted data —
+    marking it ``reviewed``, ``flagged`` or ``rejected`` — and M&E Managers then
+    give the final ``approved`` sign-off at BONASO level. So this tier admits
+    Officers, Managers and admins; only ``approved`` is reserved for Managers/
+    admins (see ``can_approve_aggregates``). Because the review actions run
+    through the org-scoped queryset, an Officer is naturally limited to their own
+    organization and its descendants — they cannot touch another org's data.
+
+    Kept separate from ``is_organization_admin`` so that admitting Officers/
+    Managers here does NOT grant them admin-only powers (cross-org read-all,
+    training opt-in, etc.).
+    """
+    return bool(
+        user
+        and (
+            is_organization_admin(user)
+            or getattr(user, "role", None) in {"manager", "officer"}
+        )
+    )
+
+
+def can_approve_aggregates(user) -> bool:
+    """Who may approve / reject / flag aggregates (the final review tier).
+
+    Final sign-off happens at BONASO level, so this admits M&E Managers and
+    admins only — Officers can mark data ``reviewed`` but cannot approve it.
+    Managers remain org-scoped via the aggregate queryset.
+    """
+    return bool(user and (is_organization_admin(user) or getattr(user, "role", None) == "manager"))
+
+
+def can_submit_aggregates(user) -> bool:
+    """Who may create / update aggregate data entries.
+
+    Admins, M&E Managers, M&E Officers and Data Collectors submit data within
+    their scope. **Clients are external/read stakeholders and may never write
+    aggregates**, even if their organization happens to sit in a project's scope
+    with an assigned indicator — scope alone must not authorize a write. Org +
+    descendant + indicator-assignment scoping is enforced separately by the view;
+    this is the role gate layered on top. Unknown/None roles are denied.
+    """
+    return bool(
+        user
+        and (
+            is_organization_admin(user)
+            or getattr(user, "role", None) in {"manager", "officer", "collector"}
+        )
+    )
+
+
 def filter_queryset_by_org_ids(queryset, field_name: str, org_ids: Iterable[int]):
     org_ids = list(org_ids)
     if not org_ids:

@@ -32,7 +32,8 @@ from projects.assignment_rules import (
 )
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
 from respondents.models import Response as InteractionResponse
-from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from organizations.access import get_user_organization_ids, is_organization_admin, can_review_aggregates, can_approve_aggregates, can_submit_aggregates, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from projects.scope import filter_queryset_by_assigned_projects
 from idempotency.mixins import IdempotentMutationMixin
 from organizations.models import Organization
 from respondents.rollups import sync_project_indicator_total
@@ -201,6 +202,10 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         if is_organization_admin(user):
             return queryset
+        # Project-assignment gate: non-admins only see aggregates for projects
+        # they are assigned to (project hierarchy / org scope is layered on top
+        # via the filter backends when a project is selected).
+        queryset = filter_queryset_by_assigned_projects(queryset, user, 'project_id')
         org_ids = get_user_organization_ids(user)
         if org_ids:
             return filter_queryset_by_org_ids(queryset, 'organization_id', org_ids)
@@ -214,6 +219,11 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
     def _assert_write_scope(self, *, project, organization, indicator=None):
         user = self.request.user
+        # Role gate: only data-handling roles may write aggregates. Clients are
+        # read/external stakeholders — scope (org-in-project + indicator
+        # assignment) must never on its own authorize a write.
+        if not can_submit_aggregates(user):
+            raise PermissionDenied('Your role does not permit submitting aggregate data.')
         # Enforce the Sesigo Training/Live boundary before any other scope check.
         assert_project_write_allowed(self.request, project)
         allowed_org_ids = self._allowed_org_ids_for_user()
@@ -322,8 +332,13 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             sync_project_indicator_total(project_id, indicator_id)
 
     def _mark_review_state(self, aggregate, status_value):
-        if status_value in {'reviewed', 'approved', 'rejected', 'flagged'} and not is_organization_admin(self.request.user):
-            raise PermissionDenied('Only admins can review or approve aggregate records.')
+        user = self.request.user
+        # Officers may review, flag and reject within their org scope; only the
+        # final "approved" sign-off is reserved for M&E Managers / admins.
+        if status_value in {'reviewed', 'flagged', 'rejected'} and not can_review_aggregates(user):
+            raise PermissionDenied('Only M&E Officers, Managers, and admins can review, flag, or reject aggregate records.')
+        if status_value == 'approved' and not can_approve_aggregates(user):
+            raise PermissionDenied('Only M&E Managers and admins can approve aggregate records.')
         previous_status = aggregate.status
         aggregate.status = status_value
         if status_value == 'pending':
@@ -1324,8 +1339,8 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def bulk_approve(self, request):
         """Approve multiple queued aggregates at once."""
-        if not is_organization_admin(request.user):
-            return Response({'error': 'admin access required'}, status=status.HTTP_403_FORBIDDEN)
+        if not can_approve_aggregates(request.user):
+            return Response({'error': 'admin or manager access required'}, status=status.HTTP_403_FORBIDDEN)
 
         raw_ids = request.data.get('ids', [])
         if not isinstance(raw_ids, list) or not raw_ids:
@@ -1454,6 +1469,9 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     def unflag(self, request, pk=None):
         """Dismiss open data-quality flags on an aggregate and restore it to approved."""
         aggregate = self.get_object()
+        # Restoring to approved is a sign-off action → Managers / admins only.
+        if not can_approve_aggregates(request.user):
+            raise PermissionDenied('Only M&E Managers and admins can dismiss flags and restore an aggregate to approved.')
         notes = str(request.data.get('notes') or '').strip()
         with transaction.atomic():
             open_flags = Flag.objects.filter(

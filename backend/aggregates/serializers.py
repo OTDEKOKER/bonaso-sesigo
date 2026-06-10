@@ -1,10 +1,11 @@
 from rest_framework import serializers
 from .models import Aggregate
+from .validation import validate_aggregate_value
 
 
 class AggregateSerializer(serializers.ModelSerializer):
     """Serializer for Aggregate model."""
-    
+
     indicator_name = serializers.CharField(source='indicator.name', read_only=True)
     indicator_code = serializers.CharField(source='indicator.code', read_only=True)
     project_name = serializers.CharField(source='project.name', read_only=True)
@@ -30,6 +31,33 @@ class AggregateSerializer(serializers.ModelSerializer):
             'updated_at',
             'created_by',
         ]
+
+    def validate(self, attrs):
+        """Server-side data-quality guards (readiness blocker C4 / risk R1).
+
+        Enforces reporting-period ordering and the aggregate ``value`` shape so
+        malformed or out-of-range numbers can never reach the reporting tables.
+        Works for both single and bulk create/update (partial updates only
+        re-validate the fields actually supplied).
+        """
+        attrs = super().validate(attrs)
+
+        instance = getattr(self, 'instance', None)
+        period_start = attrs.get(
+            'period_start', getattr(instance, 'period_start', None)
+        )
+        period_end = attrs.get('period_end', getattr(instance, 'period_end', None))
+        if period_start and period_end and period_start > period_end:
+            raise serializers.ValidationError({
+                'period_end': 'Reporting period end cannot be before the start date.'
+            })
+
+        if 'value' in attrs:
+            indicator = attrs.get('indicator', getattr(instance, 'indicator', None))
+            attrs['value'] = validate_aggregate_value(
+                attrs['value'], indicator=indicator
+            )
+        return attrs
 
 
 class AggregateLightSerializer(serializers.ModelSerializer):
