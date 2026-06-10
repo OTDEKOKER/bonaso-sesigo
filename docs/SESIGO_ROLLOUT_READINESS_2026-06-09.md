@@ -29,7 +29,7 @@
 | Coordinator rollup server-side | 🔴 Not Started | still `frontend/components/targets/coordinator-targets-page.tsx` |
 | Unified audit log | 🔴 Not Started | only `users.UserActivity` (login/logout/admin) |
 | Live/Training banner | ✅ Complete | Always-on header `EnvironmentBadge` (green LIVE SYSTEM / amber TRAINING, both modes) + existing full-width amber training bar; driven by signed-JWT mode marker (`components/layout/environment-badge.tsx`, wired in `app-header.tsx`). *(Single unified login still separate — tracked apart.)* |
-| Frontend default-project + assignment UI | 🟡 In Progress | types added (`lib/types.ts`); interactive UI pending |
+| Frontend default-project + assignment UI | 🟡 In Progress | Reusable `useDefaultProject` hook + `NoProjectEmptyState` (2026-06-10); wired into **aggregates** (browse + entry auto-select, current-project context, multi-project guidance, empty state, training-preserving). Remaining: roll the hook into targets/coordinator/project-setup assignment screens. |
 
 ---
 
@@ -90,7 +90,7 @@
 | R4 | Procedural authz regressions | Low | High | ✅ Mitigated | Permission contract suite added 2026-06-10 (`organizations/test_permission_contracts.py` role matrix incl. `can_submit_aggregates`; `aggregates/test_permissions.py` coordinator/sub-grantee/cross-org/client isolation). Client-submit gap **closed** — `_assert_write_scope` now role-gates writes via `can_submit_aggregates`. |
 | R5 | Wrong-mode data entry (no banner) | Low | Med | ✅ Mitigated | Always-on `EnvironmentBadge` (LIVE/TRAINING) in header, both modes, 2026-06-10 |
 | R6 | Weak forensics (no audit log) | Med | Med | Med | Central audit on writes/approvals |
-| R7 | FE default-project not auto-selected → "no project" confusion | High | Low | Med | Wire `default_project_id` in dashboard |
+| R7 | FE default-project not auto-selected → "no project" confusion | Low | Low | 🟡 Mitigated (aggregates) | `useDefaultProject` auto-selects single/backend-default/training project; live on aggregates 2026-06-10. Remaining: dashboard + other assignment screens. |
 
 ---
 

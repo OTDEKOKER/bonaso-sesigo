@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { OrganizationMultiSelect } from "@/components/shared/organization-multi-select";
+import { NoProjectEmptyState } from "@/components/shared/no-project-empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/contexts/auth-context";
 import { useSessionMode } from "@/lib/contexts/session-mode-context";
@@ -36,6 +37,7 @@ import {
   useAllProjects,
   useProject,
 } from "@/lib/hooks/use-api";
+import { useDefaultProject } from "@/lib/hooks/use-default-project";
 import {
   buildEmptyEntryMatrix,
   buildEntryMatrixPayload,
@@ -223,6 +225,23 @@ function AggregatesPageContent() {
       ),
     [projectsData],
   );
+  // Default-project resolution (risk R7): auto-select when a single live/active
+  // project (or the user's backend default, or the training project) applies, so
+  // single-project users are never forced to pick, and multi-project users are
+  // guided to choose. Mode isolation is preserved by the hook itself.
+  const userDefaultProjectId =
+    (user as { default_project_id?: number | string | null } | null)?.default_project_id ?? null;
+  const {
+    defaultProjectId,
+    isSingleProject,
+    isMultiProject,
+    hasProjects,
+  } = useDefaultProject(projects, {
+    isTrainingMode,
+    trainingProjectId,
+    preferredProjectId: userDefaultProjectId,
+  });
+
   const indicators = useMemo(
     () =>
       [...(indicatorsData || [])].sort((left, right) =>
@@ -283,6 +302,8 @@ function AggregatesPageContent() {
     availableCoordinatorOrganizations,
     canReportAcrossOrganizations,
     canReviewAggregates,
+    canApproveAggregates,
+    canMarkReviewed,
     defaultOwnOrganizationValue,
     isOrganizationSelectionLocked,
     userOrganizationId,
@@ -347,6 +368,10 @@ function AggregatesPageContent() {
       setProjectFilter(urlProjectParam);
     } else if (isTrainingMode && trainingProjectId) {
       setProjectFilter(trainingProjectId);
+    } else if (defaultProjectId) {
+      // Single-project / backend-default users land already focused on their
+      // project instead of the ambiguous "All Projects".
+      setProjectFilter(defaultProjectId);
     }
 
     if (
@@ -404,7 +429,18 @@ function AggregatesPageContent() {
     visibleOrganizations,
     isTrainingMode,
     trainingProjectId,
+    defaultProjectId,
   ]);
+
+  // Entry form: pre-select the project when a single/default/training project
+  // applies, so opening "Add aggregates" doesn't force a redundant pick. The
+  // submit guard (handleSave) still blocks if no project is set.
+  useEffect(() => {
+    if (!isDialogOpen) return;
+    if (formProject) return;
+    if (!defaultProjectId) return;
+    handleFormProjectChange(defaultProjectId);
+  }, [isDialogOpen, formProject, defaultProjectId, handleFormProjectChange]);
 
   useEffect(() => {
     if (appliedUrlPeriodFilterRef.current) return;
@@ -780,14 +816,14 @@ function AggregatesPageContent() {
   );
 
   useEffect(() => {
-    if (!reviewAggregateIdParam || !canReviewAggregates) return;
+    if (!reviewAggregateIdParam || !canMarkReviewed) return;
     const hasMatch = reviewQueueAggregates.some(
       (aggregate) => String(aggregate.id) === reviewAggregateIdParam,
     );
     if (hasMatch) {
       setIsReviewQueueOpen(true);
     }
-  }, [canReviewAggregates, reviewAggregateIdParam, reviewQueueAggregates]);
+  }, [canMarkReviewed, reviewAggregateIdParam, reviewQueueAggregates]);
   const {
     actingAggregateId,
     actingReviewAction,
@@ -1326,7 +1362,7 @@ function AggregatesPageContent() {
         actions={
           <div className="flex w-full justify-end sm:w-auto">
             <div className="flex w-full items-center justify-end gap-2 overflow-x-auto whitespace-nowrap pb-1 sm:w-auto sm:overflow-visible [&_button]:shrink-0">
-            {canReviewAggregates ? (
+            {canMarkReviewed ? (
               <Button variant="outline" onClick={() => setIsReviewQueueOpen(true)}>
                 <Clock3 className="mr-2 h-4 w-4" />
                 Queued Review
@@ -1433,7 +1469,7 @@ function AggregatesPageContent() {
         }
       />
 
-      {canReviewAggregates ? (
+      {canMarkReviewed ? (
         <Dialog open={isReviewQueueOpen} onOpenChange={setIsReviewQueueOpen}>
           <DialogContent className="fixed inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !h-screen !w-screen !max-w-none overflow-hidden rounded-none p-0">
             <DialogHeader className="border-b border-border/70 px-6 py-4">
@@ -1442,7 +1478,9 @@ function AggregatesPageContent() {
                 Queued Review
               </DialogTitle>
               <DialogDescription>
-                Review submissions, flag issues for correction, and approve only after review.
+                {canApproveAggregates
+                  ? "Review submissions, flag issues for correction, and approve only after review."
+                  : "Review your organization's submissions and mark them as reviewed. A BONASO M&E Manager approves them after review."}
               </DialogDescription>
             </DialogHeader>
             <div className="h-[calc(100vh-88px)] overflow-y-auto p-6">
@@ -1463,6 +1501,7 @@ function AggregatesPageContent() {
                 actingAggregateId={actingAggregateId}
                 actingReviewAction={actingReviewAction}
                 canBulkApproveAll
+                canApprove={canApproveAggregates}
                 embedded
                 initialReviewAggregateId={reviewAggregateIdParam}
               />
@@ -1471,7 +1510,7 @@ function AggregatesPageContent() {
         </Dialog>
       ) : null}
 
-      {canReviewAggregates && reviewQueueAggregates.length > 0 ? (
+      {canMarkReviewed && reviewQueueAggregates.length > 0 ? (
         <Alert>
           <Clock3 className="h-4 w-4" />
           <AlertTitle>Queued aggregates are awaiting review</AlertTitle>
@@ -1548,6 +1587,31 @@ function AggregatesPageContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Current-project context / guidance (risk R7) */}
+          {!hasProjects ? (
+            <NoProjectEmptyState
+              title="No active project available"
+              description="You are not assigned to any active project yet. Ask an administrator to assign you to a project to start entering and reviewing data."
+            />
+          ) : projectFilter !== "all" ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm">
+              <span className="font-medium text-foreground">Current project:</span>
+              <span className="text-muted-foreground">
+                {projectNameById.get(projectFilter) || "Selected project"}
+              </span>
+              {isSingleProject ? (
+                <Badge variant="secondary" className="rounded-full text-[10px]">
+                  your only project
+                </Badge>
+              ) : null}
+            </div>
+          ) : isMultiProject ? (
+            <div className="flex items-center gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-950/30 dark:text-amber-200">
+              <Filter className="h-4 w-4 shrink-0" />
+              <span>Multiple projects are available — select a project below to focus the data.</span>
+            </div>
+          ) : null}
+
           <div className="grid items-end gap-2 md:grid-cols-2 lg:grid-cols-[minmax(220px,1.15fr)_repeat(4,minmax(170px,1fr))]">
             <div className="space-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
