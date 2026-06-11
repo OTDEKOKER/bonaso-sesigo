@@ -215,6 +215,56 @@ export const usersService = {
   async resendInvitation(id: number): Promise<void> {
     await api.post(`/users/${id}/resend-invitation/`);
   },
+
+  // --- Granular module permissions ---
+
+  /** Module/action catalog. GET /api/users/module-catalog/ */
+  async getModuleCatalog(): Promise<{ modules: Record<string, string[]> }> {
+    const { data } = await api.get<{ modules: Record<string, string[]> }>('/users/module-catalog/');
+    return data;
+  },
+
+  /** Role default permissions. GET /api/users/module-permission-defaults/?role= */
+  async getModuleDefaults(role: string): Promise<{ role: string; defaults: Record<string, string[]> }> {
+    const { data } = await api.get<{ role: string; defaults: Record<string, string[]> }>(
+      `/users/module-permission-defaults/?role=${encodeURIComponent(role)}`,
+    );
+    return data;
+  },
+
+  /** A user's module permissions. GET /api/users/:id/module-permissions/ */
+  async getModulePermissions(id: number): Promise<ModulePermissionsResponse> {
+    const { data } = await api.get<ModulePermissionsResponse>(`/users/${id}/module-permissions/`);
+    return data;
+  },
+
+  /** Replace a user's module permissions. PUT /api/users/:id/module-permissions/ */
+  async setModulePermissions(
+    id: number,
+    permissions: ModulePermissionRow[],
+  ): Promise<{ user_id: number; effective: Record<string, string[]> }> {
+    const { data } = await api.put<{ user_id: number; effective: Record<string, string[]> }>(
+      `/users/${id}/module-permissions/`,
+      { permissions },
+    );
+    return data;
+  },
 };
+
+export interface ModulePermissionRow {
+  module: string;
+  actions: string[];
+  scope?: Record<string, unknown>;
+  is_enabled?: boolean;
+}
+
+export interface ModulePermissionsResponse {
+  user_id: number;
+  role: string;
+  modules: Record<string, string[]>;
+  role_defaults: Record<string, string[]>;
+  custom: ModulePermissionRow[];
+  effective: Record<string, string[]>;
+}
 
 export default usersService;

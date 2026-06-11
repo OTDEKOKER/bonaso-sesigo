@@ -28,6 +28,7 @@ import type { UserRole } from "@/lib/types"
 import { USER_ROLE_OPTIONS, USER_ROLE_COLORS } from "@/lib/roles"
 import { canManageUsers } from "@/lib/permissions"
 import { useAuth } from "@/lib/contexts/auth-context"
+import { ModuleAccessEditor } from "@/components/users/module-access-editor"
 import { useToast } from "@/hooks/use-toast"
 import { useSmartBack } from "@/lib/hooks/use-smart-back"
 
@@ -464,6 +465,10 @@ export default function UserEditPage() {
           )}
         </CardContent>
       </Card>
+
+      {canEditRestrictedFields && Number.isFinite(userId) ? (
+        <ModuleAccessEditor userId={userId} role={form.role} />
+      ) : null}
     </div>
   )
 }

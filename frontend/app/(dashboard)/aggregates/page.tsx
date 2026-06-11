@@ -38,6 +38,7 @@ import {
   useProject,
 } from "@/lib/hooks/use-api";
 import { useDefaultProject } from "@/lib/hooks/use-default-project";
+import { useModulePermissions } from "@/lib/permissions/module-permissions";
 import {
   buildEmptyEntryMatrix,
   buildEntryMatrixPayload,
@@ -106,6 +107,7 @@ function toIdArray(values: unknown): string[] {
 function AggregatesPageContent() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { can } = useModulePermissions();
   const { isTrainingMode, trainingProjectId } = useSessionMode();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1362,7 +1364,7 @@ function AggregatesPageContent() {
         actions={
           <div className="flex w-full justify-end sm:w-auto">
             <div className="flex w-full items-center justify-end gap-2 overflow-x-auto whitespace-nowrap pb-1 sm:w-auto sm:overflow-visible [&_button]:shrink-0">
-            {canMarkReviewed ? (
+            {canMarkReviewed && can("aggregates", "review") ? (
               <Button variant="outline" onClick={() => setIsReviewQueueOpen(true)}>
                 <Clock3 className="mr-2 h-4 w-4" />
                 Queued Review
@@ -1371,12 +1373,16 @@ function AggregatesPageContent() {
                 </span>
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => importInputRef.current?.click()}>
-              <Upload className="mr-2 h-4 w-4" /> Import
-            </Button>
-            <Button variant="outline" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" /> Export
-            </Button>
+            {can("aggregates", "create") ? (
+              <Button variant="outline" onClick={() => importInputRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" /> Import
+              </Button>
+            ) : null}
+            {can("aggregates", "export") ? (
+              <Button variant="outline" onClick={handleExport}>
+                <Download className="mr-2 h-4 w-4" /> Export
+              </Button>
+            ) : null}
 
             <input
               ref={importInputRef}
