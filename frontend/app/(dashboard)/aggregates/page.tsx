@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
+import { ReportingWorkbookDialog } from "@/components/aggregates/ReportingWorkbookDialog";
 import { OrganizationMultiSelect } from "@/components/shared/organization-multi-select";
 import { NoProjectEmptyState } from "@/components/shared/no-project-empty-state";
 import { useToast } from "@/hooks/use-toast";
@@ -1374,8 +1375,16 @@ function AggregatesPageContent() {
               </Button>
             ) : null}
             {can("aggregates", "create") ? (
+              <ReportingWorkbookDialog
+                projects={projects}
+                organizations={writableOrganizations}
+                defaultProject={projectFilter}
+                onImported={() => { void mutate(); }}
+              />
+            ) : null}
+            {can("aggregates", "create") ? (
               <Button variant="outline" onClick={() => importInputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" /> Import
+                <Upload className="mr-2 h-4 w-4" /> Import (CSV)
               </Button>
             ) : null}
             {can("aggregates", "export") ? (
