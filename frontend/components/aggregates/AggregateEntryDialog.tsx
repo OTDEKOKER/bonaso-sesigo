@@ -255,15 +255,15 @@ export function AggregateEntryDialog(props: AggregateEntryDialogProps) {
           <Plus className="mr-2 h-4 w-4" /> Add Entry
         </Button>
       </DialogTrigger>
-      <DialogContent className="fixed inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-screen !h-screen overflow-hidden rounded-none p-0">
-        <DialogHeader className="border-b border-border/70 px-5 py-4">
+      <DialogContent className="fixed inset-0 !top-0 !left-0 !translate-x-0 !translate-y-0 !max-w-none !w-screen !h-screen flex flex-col overflow-hidden rounded-none p-0">
+        <DialogHeader className="shrink-0 border-b border-border/70 px-5 py-4">
           <DialogTitle>Add Aggregate Entries</DialogTitle>
           <DialogDescription>
             Select a project, organization, and one or more indicators. Each indicator will render the entry table its disaggregates require.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid h-[calc(100vh-138px)] gap-4 overflow-y-auto px-5 py-4">
+        <div className="grid flex-1 min-h-0 gap-4 content-start overflow-y-auto px-5 py-4">
           <div className="grid gap-x-3 gap-y-2 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.5fr)] lg:items-end">
             <div className={fieldBlockClass}>
               <Label htmlFor="agg-project">Project</Label>
@@ -656,7 +656,7 @@ export function AggregateEntryDialog(props: AggregateEntryDialogProps) {
           </div>
         </div>
 
-        <DialogFooter className="border-t border-border/70 px-5 py-4">
+        <DialogFooter className="shrink-0 border-t border-border/70 px-5 py-4">
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
