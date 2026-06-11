@@ -22,6 +22,7 @@ from .models import Upload, ImportJob, ExportJob
 from .serializers import UploadSerializer, ImportJobSerializer, ExportJobSerializer
 from .jobs import resolve_report_workbook_import_script, run_aggregate_review_import_job
 from organizations.access import is_training_only_request
+from aggregates import reporting_workbook as agg_rw
 
 
 REPORT_WORKBOOK_IMPORT_SCRIPT = "import_selected_q3_workbook.py"
@@ -41,6 +42,35 @@ def _is_truthy(value):
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _current_fiscal_quarter():
+    """(quarter, fiscal_start_year) for today on the Botswana Apr–Mar fiscal year."""
+    from datetime import date
+    today = date.today()
+    month, year = today.month, today.year
+    if 4 <= month <= 6:
+        return 1, year
+    if 7 <= month <= 9:
+        return 2, year
+    if 10 <= month <= 12:
+        return 3, year
+    return 4, year - 1
+
+
+def _is_sesigo_reporting_workbook(path) -> bool:
+    """True when an uploaded file is a SESIGO reporting workbook (carries the
+    hidden Metadata + _cellmap sheets). Used to route uploads to the donor-style
+    smart importer instead of the legacy fuzzy NAHPA template importer."""
+    try:
+        workbook = load_workbook(path, read_only=True)
+    except Exception:
+        return False
+    try:
+        names = set(workbook.sheetnames)
+    finally:
+        workbook.close()
+    return {agg_rw.SHEET_META, agg_rw.SHEET_CELLMAP}.issubset(names)
 
 
 def _parse_reporting_period_range(label):
@@ -191,6 +221,16 @@ class UploadViewSet(viewsets.ModelViewSet):
         upload = self.get_object()
         queue_aggregate_review = _is_truthy(request.data.get("queue_aggregate_review"))
         dry_run = _is_truthy(request.data.get("dry_run"))
+
+        # Smart routing (Phase 3): a SESIGO reporting workbook carries its own
+        # project/organization/quarter metadata, so it bypasses the legacy fuzzy
+        # importer and is processed by the donor-style smart importer. Existing
+        # (flat / multi-org NAHPA) uploads fall through to the original pipeline.
+        try:
+            if _is_sesigo_reporting_workbook(upload.file.path):
+                return self._import_sesigo_reporting_workbook(request, upload, dry_run=dry_run)
+        except Exception:
+            pass  # On any detection error, fall back to the legacy pipeline.
 
         job_status = "pending" if queue_aggregate_review else "ready_for_review"
         job = ImportJob.objects.create(
@@ -349,9 +389,70 @@ class UploadViewSet(viewsets.ModelViewSet):
         payload["log_path"] = str(log_path)
         return Response(payload, status=status.HTTP_202_ACCEPTED)
 
+    def _import_sesigo_reporting_workbook(self, request, upload, *, dry_run=False):
+        """Process a SESIGO reporting workbook upload by reusing the aggregates
+        smart-import endpoint (single source of truth for parsing + permissions
+        + aggregate writes), recording the outcome on an ImportJob."""
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from aggregates.views import AggregateViewSet
+
+        job = ImportJob.objects.create(
+            upload=upload,
+            status="processing",
+            job_type="reporting_workbook_import",
+            created_by=request.user,
+            started_at=timezone.now(),
+        )
+
+        path = "/api/aggregates/import-reporting-workbook/"
+        if is_training_only_request(request):
+            path += "?training_only=true"
+        file_handle = open(upload.file.path, "rb")
+        try:
+            data = {"file": file_handle}
+            if dry_run:
+                data["dry_run"] = "true"
+            internal = APIRequestFactory().post(path, data=data, format="multipart")
+            force_authenticate(internal, user=request.user)
+            response = AggregateViewSet.as_view({"post": "import_reporting_workbook"})(internal)
+        finally:
+            file_handle.close()
+
+        result = response.data if hasattr(response, "data") else {}
+        if response.status_code >= 400:
+            job.status = "failed"
+            job.completed_at = timezone.now()
+            job.errors = [result]
+            job.result = result
+            job.save(update_fields=["status", "completed_at", "errors", "result"])
+            return Response(result, status=response.status_code)
+
+        summary = result.get("summary", {}) if isinstance(result, dict) else {}
+        job.total_rows = int(summary.get("indicators_found", 0) or 0)
+        job.processed_rows = job.total_rows
+        job.successful_rows = int(summary.get("indicators_valid", 0) or 0)
+        job.failed_rows = int(summary.get("indicators_failed", 0) or 0)
+        job.status = "validated" if dry_run else "imported"
+        job.completed_at = timezone.now()
+        job.result = result
+        job.errors = []
+        job.save(update_fields=[
+            "total_rows", "processed_rows", "successful_rows", "failed_rows",
+            "status", "completed_at", "result", "errors",
+        ])
+        payload = ImportJobSerializer(job).data
+        payload.update(result if isinstance(result, dict) else {})
+        return Response(payload, status=response.status_code)
+
     @action(detail=False, methods=['get'], url_path='download_template')
     def download_template(self, request):
-        """Generate and stream a batch-record Excel template for a project."""
+        """Generate and stream a reporting workbook for a project/organization.
+
+        When an organization is selected this returns the donor-style SESIGO
+        reporting workbook (delegating to the aggregates generator — the single
+        source of truth for assignment/target/disaggregation resolution and
+        permission/training enforcement). With no organization it falls back to
+        the legacy flat batch-entry template for backward compatibility."""
         from projects.models import Project, ProjectIndicator, ProjectOrganization
 
         project_id = request.query_params.get('project')
@@ -359,6 +460,30 @@ class UploadViewSet(viewsets.ModelViewSet):
 
         if not project_id:
             return Response({'detail': 'project query param required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Donor reporting workbook (Phase 1): reuse the aggregates generator.
+        if organization_id:
+            from rest_framework.test import APIRequestFactory, force_authenticate
+            from aggregates.views import AggregateViewSet
+
+            query = {'project': project_id, 'organization': organization_id}
+            quarter = request.query_params.get('quarter')
+            fiscal_year = request.query_params.get('fiscal_year')
+            if quarter:
+                query['quarter'] = quarter
+                if fiscal_year:
+                    query['fiscal_year'] = fiscal_year
+            else:
+                cq, cfy = _current_fiscal_quarter()
+                query['quarter'] = f"Q{cq}"
+                query['fiscal_year'] = cfy
+            if _is_truthy(request.query_params.get('with_data')):
+                query['with_data'] = 'true'
+            if is_training_only_request(request):
+                query['training_only'] = 'true'
+            internal = APIRequestFactory().get("/api/aggregates/reporting-workbook/", query)
+            force_authenticate(internal, user=request.user)
+            return AggregateViewSet.as_view({"get": "reporting_workbook"})(internal)
 
         try:
             project = Project.objects.get(pk=project_id)

@@ -18,6 +18,44 @@ import {
 // Types
 // ============================================================================
 
+/**
+ * Sesigo Training Mode: when the aggregates page is used under /training, write
+ * + download endpoints must carry training_only=true so the backend keeps the
+ * live/training boundary (a training session may only touch training projects).
+ * fetchWithAuth (unlike the api.* helpers) does not append this automatically.
+ */
+function withTrainingQuery(endpoint: string): string {
+  if (typeof window === 'undefined') return endpoint;
+  const path = window.location.pathname || '';
+  if (path !== '/training' && !path.startsWith('/training/')) return endpoint;
+  if (/[?&]training_only=/.test(endpoint)) return endpoint;
+  return `${endpoint}${endpoint.includes('?') ? '&' : '?'}training_only=true`;
+}
+
+export interface ReportingWorkbookImportSummary {
+  project?: string;
+  project_id?: number;
+  organization?: string;
+  organization_id?: number;
+  quarter?: string | number;
+  period_start?: string;
+  period_end?: string;
+  workbook_version?: string;
+  indicators_found?: number;
+  indicators_valid?: number;
+  indicators_failed?: number;
+  created?: number;
+  updated?: number;
+}
+
+export interface ReportingWorkbookImportResult {
+  dry_run?: boolean;
+  error?: string;
+  messages?: string[];
+  summary?: ReportingWorkbookImportSummary;
+  errors?: Array<{ indicator?: string | number; error?: string }>;
+}
+
 export interface AggregateFilters {
   search?: string;
   indicator?: string;
@@ -436,6 +474,72 @@ export const aggregatesService = {
       });
     }
     return response.blob();
+  },
+
+  /**
+   * Download a reporting workbook (NAHPA/CBO-style) for a project/org/quarter.
+   * Django endpoint: GET /api/aggregates/reporting-workbook/
+   * Pass withData=true to pre-fill current submissions (round-trip editing).
+   */
+  async downloadReportingWorkbook(params: {
+    project: string | number;
+    organization: string | number;
+    quarter: string; // e.g. "Q3"
+    fiscal_year: string | number;
+    withData?: boolean;
+  }): Promise<Blob> {
+    const search = new URLSearchParams({
+      project: String(params.project),
+      organization: String(params.organization),
+      quarter: params.quarter,
+      fiscal_year: String(params.fiscal_year),
+    });
+    if (params.withData) search.set('with_data', 'true');
+    const response = await fetchWithAuth(
+      withTrainingQuery(`/aggregates/reporting-workbook/?${search.toString()}`),
+    );
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      const payload = contentType?.includes('application/json')
+        ? await response.json()
+        : await response.text();
+      throw normalizeApiError({
+        status: response.status,
+        payload,
+        fallbackMessage: 'Failed to download reporting workbook',
+      });
+    }
+    return response.blob();
+  },
+
+  /**
+   * Upload a completed reporting workbook. The backend reads project/org/quarter
+   * from the embedded metadata — no technical ID columns required.
+   * Django endpoint: POST /api/aggregates/import-reporting-workbook/
+   */
+  async importReportingWorkbook(
+    file: File,
+    options?: { dryRun?: boolean },
+  ): Promise<ReportingWorkbookImportResult> {
+    const form = new FormData();
+    form.append('file', file);
+    if (options?.dryRun) form.append('dry_run', 'true');
+    const response = await fetchWithAuth(withTrainingQuery(`/aggregates/import-reporting-workbook/`), {
+      method: 'POST',
+      body: form,
+    });
+    const payload = (await response.json().catch(() => ({}))) as ReportingWorkbookImportResult;
+    if (!response.ok) {
+      // Surface the friendly validation payload (error + messages) to the caller.
+      const err = normalizeApiError({
+        status: response.status,
+        payload,
+        fallbackMessage: 'Workbook import failed',
+      }) as Error & { payload?: ReportingWorkbookImportResult };
+      err.payload = payload;
+      throw err;
+    }
+    return payload;
   },
 
   async startExportJob(

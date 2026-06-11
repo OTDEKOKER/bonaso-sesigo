@@ -22,6 +22,13 @@ from io import BytesIO
 from .models import Aggregate
 from .pagination import AggregatePagination
 from .serializers import AggregateSerializer, AggregateLightSerializer
+from . import reporting_workbook as rw
+
+
+def _is_truthy(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "y"}
 from indicators.models import Indicator
 from flags.models import Flag
 from projects.models import Project
@@ -1202,6 +1209,243 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             wb_values.close()
             if hasattr(wb_formula, "close"):
                 wb_formula.close()
+
+    # ── Reporting workbook (NAHPA/CBO-style download / upload) ──────────────
+    def _resolve_quarter_params(self, request):
+        """Resolve (quarter, fiscal_start_year) from query params.
+
+        Accepts ``quarter`` (1-4 or "Q3"), ``fiscal_year``/``fiscal_start_year``
+        (start year), or an explicit ``period_start``/``period_end`` pair.
+        """
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end')
+        quarter_raw = str(request.query_params.get('quarter') or '').strip()
+        fy_raw = request.query_params.get('fiscal_year') or request.query_params.get('fiscal_start_year')
+
+        parsed = rw.parse_quarter_label(quarter_raw)
+        if parsed:
+            return parsed
+        match = re.match(r'^[Qq]?([1-4])$', quarter_raw)
+        if match and fy_raw:
+            try:
+                return int(match.group(1)), int(fy_raw)
+            except (TypeError, ValueError):
+                pass
+        if period_start and period_end:
+            try:
+                from datetime import date as _date
+                resolved = rw.period_to_quarter(
+                    _date.fromisoformat(str(period_start)),
+                    _date.fromisoformat(str(period_end)),
+                )
+                if resolved:
+                    return resolved
+            except ValueError:
+                pass
+        return None
+
+    def _build_indicator_plans(self, *, project, organization, quarter, period_start=None, period_end=None, with_data=False):
+        """Resolve assigned indicators + targets (+ existing data) for the form."""
+        from projects.models import ProjectIndicator, ProjectIndicatorOrganizationTarget
+        from projects.assignment_rules import get_assigned_indicator_ids_for_organization
+
+        indicator_ids = get_assigned_indicator_ids_for_organization(
+            project=project, organization_id=organization.id,
+        )
+        if not indicator_ids:
+            return []
+        indicators = list(
+            Indicator.objects.filter(id__in=indicator_ids, is_active=True)
+            .exclude(canonical_indicator__isnull=False)
+            .order_by('name')
+        )
+        project_indicators = {
+            pi.indicator_id: pi
+            for pi in ProjectIndicator.objects.filter(project=project, indicator_id__in=indicator_ids)
+        }
+        org_targets = {
+            ot.project_indicator.indicator_id: ot
+            for ot in ProjectIndicatorOrganizationTarget.objects.filter(
+                project_indicator__project=project,
+                project_indicator__indicator_id__in=indicator_ids,
+                organization=organization,
+            ).select_related('project_indicator')
+        }
+
+        existing_by_indicator = {}
+        if with_data and period_start and period_end:
+            for agg in Aggregate.objects.filter(
+                project=project, organization=organization,
+                period_start=period_start, period_end=period_end,
+                indicator_id__in=indicator_ids,
+            ):
+                existing_by_indicator[agg.indicator_id] = agg.value
+
+        q_attr = f'q{quarter}_target'
+        plans = []
+        for indicator in indicators:
+            target = None
+            ot = org_targets.get(indicator.id)
+            pi = project_indicators.get(indicator.id)
+            source = ot or pi
+            if source is not None:
+                raw = getattr(source, q_attr, None)
+                if raw is not None:
+                    try:
+                        target = float(raw)
+                    except (TypeError, ValueError):
+                        target = None
+            cfg = rw.resolve_matrix_config(indicator)
+            existing_cells = {}
+            if with_data and indicator.id in existing_by_indicator:
+                existing_cells = rw.extract_cells_from_value(existing_by_indicator[indicator.id], cfg)
+            plans.append(rw.IndicatorPlan(
+                indicator=indicator, config=cfg, target=target, existing_cells=existing_cells,
+            ))
+        return plans
+
+    @action(detail=False, methods=['get'], url_path='reporting-workbook')
+    def reporting_workbook(self, request):
+        """Download a blank (or data-filled) reporting workbook for a project/org/quarter."""
+        project_id = request.query_params.get('project')
+        organization_id = request.query_params.get('organization')
+        if not project_id or not organization_id:
+            return Response({'detail': 'project and organization query params are required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        project = Project.objects.filter(id=project_id).first()
+        organization = Organization.objects.filter(id=organization_id).first()
+        if not project or not organization:
+            return Response({'detail': 'Project or organization not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Permission + training/live boundary enforcement (no indicator → scope only).
+        self._assert_write_scope(project=project, organization=organization)
+
+        resolved = self._resolve_quarter_params(request)
+        if not resolved:
+            return Response(
+                {'detail': 'A valid quarter is required. Provide quarter=Q3 & fiscal_year=2025, or period_start & period_end.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        quarter, fiscal_start_year = resolved
+        period_start, period_end = rw.quarter_period_range(quarter, fiscal_start_year)
+        with_data = _is_truthy(request.query_params.get("with_data"))
+
+        plans = self._build_indicator_plans(
+            project=project, organization=organization, quarter=quarter,
+            period_start=period_start, period_end=period_end, with_data=with_data,
+        )
+        if not plans:
+            return Response(
+                {'detail': 'No indicators are assigned to this organization for the selected project.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        buf = rw.generate_workbook(
+            project=project, organization=organization, quarter=quarter,
+            fiscal_start_year=fiscal_start_year, indicator_plans=plans,
+            generated_by=getattr(request.user, 'username', '') or '', with_data=with_data,
+        )
+        kind = 'data' if with_data else 'blank'
+        org_code = (organization.code or organization.name or 'org').replace(' ', '_')
+        filename = f"reporting_workbook_{org_code}_Q{quarter}_{fiscal_start_year}_{kind}.xlsx"
+        response = HttpResponse(
+            buf.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='import-reporting-workbook')
+    def import_reporting_workbook(self, request):
+        """Upload a completed reporting workbook. Reads project/org/quarter from the
+        embedded metadata — no technical ID columns required.
+
+        Pass ``dry_run=true`` to validate + preview without writing.
+        """
+        upload = request.FILES.get('file') or request.FILES.get('workbook')
+        if upload is None:
+            return Response({'error': 'No file uploaded. Attach the completed workbook as "file".'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        dry_run = _is_truthy(request.data.get("dry_run"))
+
+        try:
+            parsed = rw.parse_workbook(upload)
+        except rw.WorkbookError as exc:
+            return Response({'error': 'Workbook Validation Failed', 'messages': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        metadata = parsed.metadata
+        project = Project.objects.filter(id=metadata.get('project_id')).first()
+        organization = Organization.objects.filter(id=metadata.get('organization_id')).first()
+        period_start = metadata.get('period_start')
+        period_end = metadata.get('period_end')
+        if not project or not organization or not period_start or not period_end:
+            return Response(
+                {'error': 'Workbook Validation Failed',
+                 'messages': ['The workbook metadata no longer matches an existing project/organization.',
+                              'Please download a fresh workbook and try again.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Scope/training check up front (without indicator) for a clean 403.
+        self._assert_write_scope(project=project, organization=organization)
+
+        errors = []
+        to_write = []
+        for item in parsed.indicators:
+            indicator = Indicator.objects.filter(id=item.indicator_id).first()
+            if indicator is None:
+                errors.append({'indicator': item.indicator_code or item.indicator_id,
+                               'error': 'Indicator no longer exists.'})
+                continue
+            try:
+                self._assert_write_scope(project=project, organization=organization, indicator=indicator)
+            except PermissionDenied as exc:
+                errors.append({'indicator': indicator.code or indicator.name, 'error': str(exc)})
+                continue
+            serializer = AggregateSerializer(data={
+                'indicator': indicator.id, 'project': project.id, 'organization': organization.id,
+                'period_start': period_start, 'period_end': period_end, 'value': item.value,
+            })
+            if not serializer.is_valid():
+                errors.append({'indicator': indicator.code or indicator.name,
+                               'error': '; '.join(f'{k}: {v}' for k, v in serializer.errors.items())})
+                continue
+            to_write.append(serializer.validated_data)
+
+        summary = {
+            'project': project.name, 'project_id': project.id,
+            'organization': organization.name, 'organization_id': organization.id,
+            'quarter': metadata.get('quarter_label') or metadata.get('quarter'),
+            'period_start': str(period_start), 'period_end': str(period_end),
+            'workbook_version': metadata.get('workbook_version'),
+            'indicators_found': len(parsed.indicators),
+            'indicators_valid': len(to_write),
+            'indicators_failed': len(errors),
+        }
+
+        if dry_run:
+            return Response({'dry_run': True, 'summary': summary, 'errors': errors},
+                            status=status.HTTP_200_OK)
+        if errors and not to_write:
+            return Response({'error': 'No rows could be imported.', 'summary': summary, 'errors': errors},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        created = updated = 0
+        with transaction.atomic():
+            for validated in to_write:
+                aggregate, was_created = self._upsert_pending_aggregate(
+                    indicator=validated['indicator'], project=validated['project'],
+                    organization=validated['organization'], period_start=validated['period_start'],
+                    period_end=validated['period_end'], value=validated.get('value'), notes='',
+                )
+                created += int(was_created)
+                updated += int(not was_created)
+                self._notify_pending_submission(aggregate)
+        summary['created'] = created
+        summary['updated'] = updated
+        return Response({'dry_run': False, 'summary': summary, 'errors': errors},
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def export(self, request):

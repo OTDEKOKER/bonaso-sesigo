@@ -88,6 +88,7 @@ import {
 } from "@/lib/aggregates/quarter-buckets";
 import { normalizeAggregateDisaggregationConfig } from "@/lib/indicators/disaggregation-presets";
 import { mergeDisaggregatesForGroup } from "@/lib/aggregates/aggregate-helpers";
+import { foldSingleAgesIntoGroups } from "@/lib/aggregates/age-band-folding";
 import {
   NAHPA_DISAGGREGATE_DIMENSION_OPTIONS,
   NAHPA_INDICATOR_GROUP_OPTIONS,
@@ -304,7 +305,8 @@ const getDisaggregatesMap = (value: unknown): DisaggregateCategoryMap | null => 
   if (!value || typeof value !== "object") return null;
   const source = value as Record<string, unknown>;
   if (!source.disaggregates || typeof source.disaggregates !== "object") return null;
-  return source.disaggregates as DisaggregateCategoryMap;
+  // Rollup/analysis surface: fold single-year ages into their five-year group.
+  return foldSingleAgesIntoGroups(source.disaggregates as DisaggregateCategoryMap);
 };
 
 const readEntryTotal = (entry: DisaggregateEntry | undefined) => {
@@ -1385,7 +1387,11 @@ export function ReportsHub() {
   );
 
   const selectedIndicatorMergedDisaggregates = useMemo(
-    () => mergeDisaggregatesForGroup(selectedDisaggregateIndicatorAggregates),
+    () => {
+      const merged = mergeDisaggregatesForGroup(selectedDisaggregateIndicatorAggregates);
+      // Rollup/analysis surface: fold single-year ages into their five-year group.
+      return merged ? foldSingleAgesIntoGroups(merged) : merged;
+    },
     [selectedDisaggregateIndicatorAggregates],
   );
 

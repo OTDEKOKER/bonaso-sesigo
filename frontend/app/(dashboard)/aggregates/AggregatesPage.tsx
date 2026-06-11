@@ -30,7 +30,6 @@ import {
   Search,
   Filter,
   Download,
-  Upload,
   Table2,
   BarChart3,
   Calendar,
@@ -69,6 +68,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/shared/page-header";
 import { OrganizationSelect } from "@/components/shared/organization-select";
+import { ReportingWorkbookDialog } from "@/components/aggregates/ReportingWorkbookDialog";
 import { aggregatesService } from "@/lib/api";
 import {
   useAllAggregates,
@@ -2624,12 +2624,13 @@ export default function AggregatesPage() {
           ]}
           actions={
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => importInputRef.current?.click()}
-              >
-                <Upload className="mr-2 h-4 w-4" /> Import
-              </Button>
+              <ReportingWorkbookDialog
+                projects={projects}
+                organizations={accessibleOrganizations}
+                defaultProject={projectFilter}
+                defaultOrganization={orgFilter}
+                onImported={() => { void mutate(); }}
+              />
               <Button variant="outline" onClick={handleExport}>
                 <Download className="mr-2 h-4 w-4" /> Export
               </Button>
