@@ -1,16 +1,28 @@
 from django.db import models
 
+# Environment a saved analysis artifact belongs to. These models have no project
+# FK to isolate through, so a direct mode field keeps training-generated outputs
+# out of live (and vice versa). See organizations.access.apply_mode_field_filter.
+MODE_CHOICES = [
+    ('live', 'Live'),
+    ('training', 'Training'),
+]
+
 
 class Report(models.Model):
     """Saved/generated reports."""
-    
+
     TYPE_CHOICES = [
         ('dashboard', 'Dashboard'),
         ('indicator', 'Indicator Report'),
         ('project', 'Project Report'),
         ('custom', 'Custom Report'),
     ]
-    
+
+    # Sesigo environment isolation. Defaults to 'live'; existing rows backfill to
+    # 'live' (none referenced a training project — verified at migration time).
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='live', db_index=True)
+
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     report_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='custom')
@@ -50,7 +62,8 @@ class Report(models.Model):
 
 class SavedQuery(models.Model):
     """Saved queries for quick access."""
-    
+
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='live', db_index=True)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     query_params = models.JSONField()
@@ -80,6 +93,7 @@ class ScheduledReport(models.Model):
         ('quarterly', 'Quarterly'),
     ]
 
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='live', db_index=True)
     report_name = models.CharField(max_length=255)
     report_type = models.CharField(max_length=50, default='custom')
     parameters = models.JSONField(default=dict)

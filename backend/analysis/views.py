@@ -1013,18 +1013,23 @@ class ReportViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
     
     def get_queryset(self):
+        from organizations.access import apply_mode_field_filter
         user = self.request.user
+        # Environment isolation first: live never shows training reports and
+        # vice versa (admin include_training opt-in shows all).
+        base = apply_mode_field_filter(Report.objects.all(), self.request)
         if is_organization_admin(user):
-            return Report.objects.all()
+            return base
         org_ids = get_user_organization_ids(user)
-        return Report.objects.filter(
+        return base.filter(
             models.Q(organization_id__in=org_ids) |
             models.Q(is_public=True) |
             models.Q(created_by=user)
         )
-    
+
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        from organizations.access import request_mode_value
+        serializer.save(created_by=self.request.user, mode=request_mode_value(self.request))
 
     @action(detail=False, methods=['get', 'post'], url_path='home')
     def home(self, request):
@@ -1053,8 +1058,11 @@ class ReportViewSet(viewsets.ModelViewSet):
             if int(org_id) not in allowed:
                 raise PermissionDenied('You do not have access to this organization.')
 
+        from organizations.access import request_mode_value
+        mode = request_mode_value(request)
+        # Keep live and training home dashboards separate per organization.
         report = (
-            Report.objects.filter(organization_id=org_id, parameters__is_home=True)
+            Report.objects.filter(organization_id=org_id, parameters__is_home=True, mode=mode)
             .order_by('id')
             .first()
         )
@@ -1067,6 +1075,7 @@ class ReportViewSet(viewsets.ModelViewSet):
                 is_public=True,
                 parameters={'is_home': True, 'charts': []},
                 created_by=request.user,
+                mode=mode,
             )
         return Response(ReportSerializer(report).data)
 
@@ -1231,10 +1240,14 @@ class SavedQueryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        return SavedQuery.objects.filter(user=self.request.user)
-    
+        from organizations.access import apply_mode_field_filter
+        return apply_mode_field_filter(
+            SavedQuery.objects.filter(user=self.request.user), self.request
+        )
+
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        from organizations.access import request_mode_value
+        serializer.save(user=self.request.user, mode=request_mode_value(self.request))
 
 
 class ScheduledReportViewSet(viewsets.ModelViewSet):
@@ -1249,15 +1262,21 @@ class ScheduledReportViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_queryset(self):
+        from organizations.access import apply_mode_field_filter
         user = self.request.user
+        base = apply_mode_field_filter(ScheduledReport.objects.all(), self.request)
         if is_organization_admin(user):
-            return ScheduledReport.objects.all()
-        return ScheduledReport.objects.filter(created_by=user)
+            return base
+        return base.filter(created_by=user)
 
     def perform_create(self, serializer):
+        from organizations.access import request_mode_value
         data = serializer.validated_data
         next_run = data.get('next_run') or _next_run_for_frequency(data.get('frequency'))
-        serializer.save(created_by=self.request.user, next_run=next_run)
+        serializer.save(
+            created_by=self.request.user, next_run=next_run,
+            mode=request_mode_value(self.request),
+        )
 
 
 def _empty_overview_payload(*, selected_project_id=None, default_project_id=None, code=None):

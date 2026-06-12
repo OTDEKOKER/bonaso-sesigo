@@ -163,6 +163,30 @@ def training_view_mode(request) -> str:
     return "live"
 
 
+def request_mode_value(request) -> str:
+    """The environment a write/create belongs to: ``'training'`` or ``'live'``.
+
+    Used to stamp models that carry a direct ``mode`` field (e.g. analysis
+    Report / ScheduledReport / SavedQuery, which have no project FK to isolate
+    through). Derived from the signed JWT claim, so it cannot be spoofed.
+    """
+    return "training" if is_training_only_request(request) else "live"
+
+
+def apply_mode_field_filter(queryset, request, field: str = "mode"):
+    """Isolate models that carry a direct ``mode`` CharField ('live'/'training').
+
+    Mirrors apply_training_filter for models with no project relationship:
+        live (default) → only ``mode='live'`` rows.
+        training       → only ``mode='training'`` rows.
+        admin include_training=true → no filtering.
+    """
+    mode = training_view_mode(request)
+    if mode == "all":
+        return queryset
+    return queryset.filter(**{field: mode})
+
+
 def apply_training_filter(queryset, request, project_lookup: str = "project"):
     """
     Isolate Sesigo Live System and Sesigo Training Mode data on a project-scoped
