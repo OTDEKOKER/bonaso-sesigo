@@ -20,6 +20,7 @@ import { SessionModeProvider, useSessionMode } from "@/lib/contexts/session-mode
 import { isTrainingMode, isSharedLiveRoute } from "@/lib/training-mode"
 import { useModulePermissions } from "@/lib/permissions/module-permissions"
 import { moduleForPath } from "@/lib/permissions/module-routes"
+import { NoAccessState } from "@/components/shared/ux-states"
 
 function TrainingModeBanner() {
   const { isTrainingMode } = useSessionMode()
@@ -268,18 +269,16 @@ function ModuleRouteGuard({ children }: { children: React.ReactNode }) {
   const activeModule = moduleForPath(pathname)
   if (activeModule && !canView(activeModule)) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center">
-        <X className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-        <div className="space-y-1">
-          <p className="text-base font-semibold text-foreground">Access denied</p>
-          <p className="max-w-md text-sm text-muted-foreground">
-            You don&apos;t have permission to view this section. Contact an administrator if you
-            believe this is a mistake.
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => router.replace("/dashboard")}>
-          Go to Dashboard
-        </Button>
+      <div className="min-h-[60vh] p-6">
+        <NoAccessState
+          title="Access denied"
+          description="You don't have permission to view this section. Contact an administrator if you believe this is a mistake."
+          action={
+            <Button variant="outline" onClick={() => router.replace("/dashboard")}>
+              Go to Dashboard
+            </Button>
+          }
+        />
       </div>
     )
   }
