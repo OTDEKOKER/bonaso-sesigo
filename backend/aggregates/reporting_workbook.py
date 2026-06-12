@@ -356,6 +356,9 @@ def generate_workbook(
     number_validation.promptTitle = "Enter a number"
     number_validation.prompt = "Type a whole number of people/events for this cell."
     form.add_data_validation(number_validation)
+    # Collect input-cell coordinates here; bind them to the validation in one
+    # shot after all blocks are written (see _input_cell).
+    number_validation._pending_coords = []
 
     title = f"{project.name} — {organization.name}"
     form.cell(row=1, column=COL_NAME, value=title).font = Font(bold=True, size=14)
@@ -371,6 +374,12 @@ def generate_workbook(
             form, row, plan, cellmap_rows, number_validation, with_data=with_data
         )
         row += 1  # spacer
+
+    # Bind every collected input cell to the numeric validation in a single
+    # assignment (one MultiCellRange build instead of thousands).
+    if number_validation._pending_coords:
+        number_validation.sqref = " ".join(number_validation._pending_coords)
+    del number_validation._pending_coords
 
     # Lock the sheet: only the unlocked light-blue input cells are editable;
     # labels, headers and auto-sum formulas stay locked.
@@ -470,7 +479,15 @@ def _input_cell(ws, row, col, dv, value=None):
     cell = _style(ws.cell(row=row, column=col), fill=_INPUT_FILL, locked=False)
     if value is not None:
         cell.value = value
-    dv.add(cell)
+    # Defer validation binding: collecting coordinates and setting ``dv.sqref``
+    # once (in generate_workbook) avoids openpyxl rebuilding the MultiCellRange
+    # on every single ``dv.add`` — that per-cell rebuild is O(n^2) and was the
+    # dominant cost when a form has thousands of input cells (6s+ -> sub-second).
+    coll = getattr(dv, "_pending_coords", None)
+    if coll is not None:
+        coll.append(cell.coordinate)
+    else:
+        dv.add(cell)
     return cell
 
 

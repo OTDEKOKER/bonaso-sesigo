@@ -6,8 +6,10 @@ import { ArrowLeft, Loader2, Save, Shield, UserCog, Building2, Mail, AtSign } fr
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -20,9 +22,8 @@ import {
 
 import { PageHeader } from "@/components/shared/page-header"
 import { OrganizationSelect } from "@/components/shared/organization-select"
-import { UserPermissionsManager } from "@/components/users/user-permissions-manager"
 
-import { useAllOrganizations, useUser, useUserPermissions, useGroupCatalog } from "@/lib/hooks/use-api"
+import { useAllOrganizations, useUser, useGroupCatalog } from "@/lib/hooks/use-api"
 import { usersService } from "@/lib/api"
 import type { UserRole } from "@/lib/types"
 import { USER_ROLE_OPTIONS, USER_ROLE_COLORS } from "@/lib/roles"
@@ -86,9 +87,6 @@ export default function UserEditPage() {
 
   const { data: user, isLoading, error, mutate } = useUser(isValidUserId ? userId : null)
   const { data: orgsData } = useAllOrganizations()
-  const { data: availablePermissions = [], isLoading: isPermissionsLoading } = useUserPermissions(
-    canEditRestrictedFields,
-  )
   const { data: catalogData = [] } = useGroupCatalog(canEditRestrictedFields)
 
   const organizations = orgsData?.results || []
@@ -136,6 +134,15 @@ export default function UserEditPage() {
   const selectedRoleLabel = useMemo(() => {
     return USER_ROLE_OPTIONS.find((item) => item.value === form.role)?.label || "User"
   }, [form.role])
+
+  const fullName = `${form.firstName} ${form.lastName}`.trim() || form.username || "Unnamed user"
+  const initials =
+    `${(form.firstName?.[0] || "").toUpperCase()}${(form.lastName?.[0] || "").toUpperCase()}` ||
+    (form.username?.[0] || "U").toUpperCase()
+  const organizationName = useMemo(() => {
+    if (!form.organizationId || form.organizationId === "none" || form.organizationId === "all") return "—"
+    return organizations.find((org) => String(org.id) === String(form.organizationId))?.name || "—"
+  }, [organizations, form.organizationId])
 
   const handleSave = async () => {
     if (!isValidUserId) {
@@ -250,41 +257,57 @@ export default function UserEditPage() {
         }
       />
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/20">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-1">
-              <CardTitle>
-                {form.firstName || form.lastName
-                  ? `${form.firstName} ${form.lastName}`.trim()
-                  : "User Details"}
-              </CardTitle>
-              <CardDescription>Edit account information and access settings.</CardDescription>
-            </div>
+      <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+        <aside className="lg:sticky lg:top-6 lg:self-start">
+          <Card>
+            <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
+              <Avatar className="h-20 w-20">
+                <AvatarFallback className="text-xl font-semibold">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="space-y-0.5">
+                <p className="text-lg font-semibold leading-tight">{fullName}</p>
+                {form.username ? (
+                  <p className="text-sm text-muted-foreground">@{form.username}</p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Badge variant={form.isActive ? "default" : "secondary"}>
+                  {form.isActive ? "Active" : "Inactive"}
+                </Badge>
+                <Badge variant="secondary" className={USER_ROLE_COLORS[form.role] || ""}>
+                  <Shield className="mr-1 h-3 w-3" />
+                  {selectedRoleLabel}
+                </Badge>
+              </div>
+              <Separator />
+              <dl className="w-full space-y-3 text-left text-sm">
+                <div className="flex items-start gap-2">
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <dt className="text-xs text-muted-foreground">Email</dt>
+                    <dd className="break-all font-medium">{form.email || "—"}</dd>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <dt className="text-xs text-muted-foreground">Organization</dt>
+                    <dd className="font-medium">{organizationName}</dd>
+                  </div>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+        </aside>
 
-            <div className="flex flex-wrap gap-2">
-              <Badge variant={form.isActive ? "default" : "secondary"}>
-                {form.isActive ? "Active" : "Inactive"}
-              </Badge>
-              <Badge
-                variant="secondary"
-                className={USER_ROLE_COLORS[form.role] || ""}
-              >
-                <Shield className="mr-1 h-3 w-3" />
-                {selectedRoleLabel}
-              </Badge>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="grid gap-6 p-6">
+        <div className="min-w-0 space-y-6">
           {!canEditRestrictedFields && (
             <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
               Role, organization, status, and permissions can only be updated by admins.
             </div>
           )}
 
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-6 xl:grid-cols-2">
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
@@ -409,26 +432,6 @@ export default function UserEditPage() {
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-muted-foreground" />
-                  <CardTitle className="text-base">Permissions</CardTitle>
-                </div>
-                <CardDescription>Manage granular access for this user.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <UserPermissionsManager
-                  availablePermissions={availablePermissions}
-                  value={form.permissions}
-                  onChange={(permissions) => updateField("permissions", permissions)}
-                  isLoading={isPermissionsLoading}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          {canEditRestrictedFields && (
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-muted-foreground" />
                   <CardTitle className="text-base">User Groups</CardTitle>
                 </div>
@@ -463,12 +466,11 @@ export default function UserEditPage() {
               </CardContent>
             </Card>
           )}
-        </CardContent>
-      </Card>
-
-      {canEditRestrictedFields && Number.isFinite(userId) ? (
-        <ModuleAccessEditor userId={userId} role={form.role} />
-      ) : null}
+          {canEditRestrictedFields && Number.isFinite(userId) ? (
+            <ModuleAccessEditor userId={userId} role={form.role} />
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }

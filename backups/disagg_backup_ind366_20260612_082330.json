@@ -1,0 +1,97 @@
+[
+  {
+    "id": 63529,
+    "value": {
+      "male": 0,
+      "total": 33,
+      "female": 0,
+      "disaggregates": {
+        "Kgotlas": {
+          "All": {
+            "18-24": 3
+          }
+        },
+        "Schools": {
+          "All": {
+            "18-24": 12
+          }
+        },
+        "Health Talks": {
+          "All": {
+            "18-24": 1
+          }
+        },
+        "Commemorations": {
+          "All": {
+            "18-24": 2
+          }
+        },
+        "Mall Activations": {
+          "All": {
+            "18-24": 10
+          }
+        },
+        "Street Interactions": {
+          "All": {
+            "18-24": 1
+          }
+        },
+        "Tertiary Institutions": {
+          "All": {
+            "18-24": 4
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": 63519,
+    "value": {
+      "male": 0,
+      "total": 45,
+      "female": 0,
+      "disaggregates": {
+        "Marathons": {
+          "All": {
+            "18-24": 1
+          }
+        },
+        "Door to door": {
+          "All": {
+            "18-24": 4
+          }
+        },
+        "Health Talks": {
+          "All": {
+            "18-24": 8
+          }
+        },
+        "Commemorations": {
+          "All": {
+            "18-24": 3
+          }
+        },
+        "Commemmorations": {
+          "All": {
+            "18-24": 2
+          }
+        },
+        "Mall Activations": {
+          "All": {
+            "18-24": 13
+          }
+        },
+        "Street Interaction": {
+          "All": {
+            "18-24": 4
+          }
+        },
+        "Street Interactions": {
+          "All": {
+            "18-24": 10
+          }
+        }
+      }
+    }
+  }
+]

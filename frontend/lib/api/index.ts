@@ -56,6 +56,8 @@ export type {
   UpdateUserRequest,
   UserActivity,
   UserPermissionOption,
+  ModulePermissionRow,
+  ModulePermissionsResponse,
 } from './services/users';
 
 // Projects, Tasks & Deadlines

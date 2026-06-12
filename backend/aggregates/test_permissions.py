@@ -214,3 +214,39 @@ class AggregateHierarchyPermissionTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    # --- bulk_create scope (status-code correctness) -----------------------
+
+    def test_bulk_create_cross_org_returns_403_and_writes_nothing(self):
+        """A cross-org bulk_create must surface as 403 (PermissionDenied), not a
+        flattened 400, and must not persist any row (atomic rollback)."""
+        self.client.force_authenticate(self.sub1_officer)
+        before = Aggregate.objects.count()
+        response = self.client.post(
+            "/api/aggregates/bulk_create/",
+            {
+                "project": self.project.id,
+                "organization": self.sub2.id,  # sibling org, outside officer scope
+                "period_start": "2026-01-01",
+                "period_end": "2026-03-31",
+                "data": [{"indicator": self.indicator.id, "value": {"total": 3}}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(Aggregate.objects.count(), before)
+
+    def test_bulk_create_own_org_succeeds(self):
+        self.client.force_authenticate(self.sub1_officer)
+        response = self.client.post(
+            "/api/aggregates/bulk_create/",
+            {
+                "project": self.project.id,
+                "organization": self.sub1.id,
+                "period_start": "2026-07-01",
+                "period_end": "2026-09-30",
+                "data": [{"indicator": self.indicator.id, "value": {"total": 4}}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)

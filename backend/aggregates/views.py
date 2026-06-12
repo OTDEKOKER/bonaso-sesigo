@@ -2,7 +2,7 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 import django_filters
 from rest_framework.filters import OrderingFilter
@@ -626,7 +626,10 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                         'period_start': period_start,
                         'period_end': period_end,
                         'value': item.get('value'),
-                        'notes': item.get('notes'),
+                        # notes is blank=True but not nullable; mirror single
+                        # create (which omits it) so a bulk row without notes is
+                        # not rejected with a spurious "may not be null" 400.
+                        'notes': item.get('notes') or '',
                     })
                     serializer.is_valid(raise_exception=True)
                     validated = serializer.validated_data
@@ -650,6 +653,13 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                         updated_count += 1
                     self._notify_pending_submission(aggregate)
                     results.append(AggregateSerializer(aggregate).data)
+        except APIException:
+            # DRF exceptions carry their own correct status (PermissionDenied →
+            # 403, ValidationError → 400, NotFound → 404). Let the default
+            # handler render them rather than flattening every failure to 400
+            # with a raw exception string. The atomic block has already rolled
+            # back the partial batch.
+            raise
         except Exception as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

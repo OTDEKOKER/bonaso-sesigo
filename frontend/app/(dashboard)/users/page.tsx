@@ -6,18 +6,39 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Building2,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
-  FilterX,
+  KeyRound,
   Loader2,
+  Mail,
   MoreHorizontal,
+  Pencil,
   Plus,
+  Power,
   Search,
+  Settings2,
   Shield,
+  SlidersHorizontal,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { PageHeader } from "@/components/shared/page-header"
 import { OrganizationSelect } from "@/components/shared/organization-select"
@@ -156,6 +177,9 @@ export default function UsersPage() {
   } = useGroupCatalog(canAdministerUsers)
 
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [createStep, setCreateStep] = useState(1)
+  const [isGroupsOpen, setIsGroupsOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isResetOpen, setIsResetOpen] = useState(false)
   const [resetUser, setResetUser] = useState<User | null>(null)
@@ -229,16 +253,69 @@ export default function UsersPage() {
       const groups = uniqueGroups([...roleFallbackGroups, ...assignedGroups])
       const displayName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email
       const username = normalizeUsername(user)
+      const isActive =
+        (user as User & { is_active?: boolean; isActive?: boolean }).is_active ??
+        (user as User & { is_active?: boolean; isActive?: boolean }).isActive ??
+        true
       return {
         user,
         groups,
         displayName,
         username,
+        isActive,
         lastLoginDate: parseLastLogin(user.lastLogin),
         organizationName: organizationNameById.get(String(user.organizationId)) || "-",
       }
     })
   }, [users, organizationNameById])
+
+  const stats = useMemo(() => {
+    const total = enrichedUsers.length
+    const active = enrichedUsers.filter((entry) => entry.isActive).length
+    const neverLoggedIn = enrichedUsers.filter((entry) => !entry.lastLoginDate).length
+    return { total, active, inactive: total - active, neverLoggedIn }
+  }, [enrichedUsers])
+
+  const summaryItems = [
+    { label: "Total", value: stats.total, tone: "text-foreground" },
+    { label: "Active", value: stats.active, tone: "text-emerald-600 dark:text-emerald-400" },
+    { label: "Inactive", value: stats.inactive, tone: "text-destructive" },
+    { label: "Never logged in", value: stats.neverLoggedIn, tone: "text-amber-600 dark:text-amber-400" },
+  ]
+
+  const LAST_ACTIVE_LABELS: Record<LastActiveFilter, string> = {
+    all: "Any time",
+    today: "Today",
+    last_7_days: "Last 7 days",
+    last_30_days: "Last 30 days",
+    never: "Never logged in",
+  }
+
+  const advancedFilterCount = [
+    groupFilter !== "all",
+    organizationFilter !== "all",
+    lastActiveFilter !== "all",
+  ].filter(Boolean).length
+
+  const activeChips: Array<{ key: string; label: string; clear: () => void }> = []
+  if (searchQuery.trim()) {
+    activeChips.push({ key: "q", label: `“${searchQuery.trim()}”`, clear: () => setSearchQuery("") })
+  }
+  if (roleFilter !== "all") {
+    activeChips.push({ key: "role", label: USER_ROLE_LABELS[roleFilter as User["role"]] || roleFilter, clear: () => setRoleFilter("all") })
+  }
+  if (statusFilter !== "all") {
+    activeChips.push({ key: "status", label: statusFilter === "active" ? "Active" : "Inactive", clear: () => setStatusFilter("all") })
+  }
+  if (groupFilter !== "all") {
+    activeChips.push({ key: "group", label: groupFilter, clear: () => setGroupFilter("all") })
+  }
+  if (organizationFilter !== "all") {
+    activeChips.push({ key: "org", label: organizationNameById.get(organizationFilter) || "Organization", clear: () => setOrganizationFilter("all") })
+  }
+  if (lastActiveFilter !== "all") {
+    activeChips.push({ key: "last", label: LAST_ACTIVE_LABELS[lastActiveFilter], clear: () => setLastActiveFilter("all") })
+  }
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -262,12 +339,8 @@ export default function UsersPage() {
       }
 
       if (statusFilter !== "all") {
-        const isActive =
-          (entry.user as User & { is_active?: boolean; isActive?: boolean }).is_active ??
-          (entry.user as User & { is_active?: boolean; isActive?: boolean }).isActive ??
-          true
-        if (statusFilter === "active" && !isActive) return false
-        if (statusFilter === "inactive" && isActive) return false
+        if (statusFilter === "active" && !entry.isActive) return false
+        if (statusFilter === "inactive" && entry.isActive) return false
       }
 
       if (groupFilter !== "all" && !entry.groups.some((group) => group.toLowerCase() === groupFilter.toLowerCase())) {
@@ -302,7 +375,7 @@ export default function UsersPage() {
 
       return true
     })
-  }, [enrichedUsers, searchQuery, searchBy, groupFilter, organizationFilter, lastActiveFilter])
+  }, [enrichedUsers, searchQuery, searchBy, roleFilter, statusFilter, groupFilter, organizationFilter, lastActiveFilter])
 
   const sortedUsers = useMemo(() => {
     const sorted = [...filteredUsers]
@@ -633,169 +706,168 @@ export default function UsersPage() {
         }
       />
 
-      <section className="space-y-4 rounded-lg border border-border bg-card p-4">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold">User Groups</p>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-border bg-card px-4 py-2.5 text-sm">
+        {summaryItems.map((item, index) => (
+          <div key={item.label} className="flex items-center gap-5">
+            {index > 0 ? <Separator orientation="vertical" className="h-4" /> : null}
+            <span className="flex items-baseline gap-1.5">
+              <span className={cn("text-base font-semibold tabular-nums", item.tone)}>{item.value}</span>
+              <span className="text-muted-foreground">{item.label}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-48 flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              id="users-search"
+              placeholder="Search users…"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <Select value={searchBy} onValueChange={(value) => setSearchBy(value as SearchBy)}>
+            <SelectTrigger className="w-[7.5rem]">
+              <SelectValue placeholder="Field" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">By name</SelectItem>
+              <SelectItem value="email">By email</SelectItem>
+              <SelectItem value="username">By username</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="All roles" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All roles</SelectItem>
+              {USER_ROLE_OPTIONS.map((role) => (
+                <SelectItem key={role.value} value={role.value}>
+                  {role.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                More
+                {advancedFilterCount > 0 ? (
+                  <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 justify-center px-1 text-[10px]">
+                    {advancedFilterCount}
+                  </Badge>
+                ) : null}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Group</Label>
+                <Select value={groupFilter} onValueChange={setGroupFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All groups" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All groups</SelectItem>
+                    {groupFilterOptions.map((group) => (
+                      <SelectItem key={group} value={group}>
+                        {group}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Organization</Label>
+                <Select value={organizationFilter} onValueChange={setOrganizationFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All organizations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All organizations</SelectItem>
+                    {organizations.map((organization) => (
+                      <SelectItem key={organization.id} value={String(organization.id)}>
+                        {organization.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Last active</Label>
+                <Select
+                  value={lastActiveFilter}
+                  onValueChange={(value) => setLastActiveFilter(value as LastActiveFilter)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Any time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Any time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="last_7_days">Last 7 days</SelectItem>
+                    <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                    <SelectItem value="never">Never logged in</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {canAdministerUsers ? (
+            <Button variant="outline" className="gap-2" onClick={() => setIsGroupsOpen(true)}>
+              <Settings2 className="h-4 w-4" />
+              Groups
+            </Button>
+          ) : null}
+
+          <span className="ml-auto text-xs text-muted-foreground">
+            {totalUsers} of {stats.total}
+          </span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {groupCatalog.length === 0 ? (
-            <span className="text-sm text-muted-foreground">No groups created yet.</span>
-          ) : (
-            groupCatalog.map((group) => (
-              <Badge
-                key={group}
-                variant="secondary"
-                className={cn("px-3 py-1 text-xs", !BASE_GROUP_OPTIONS.includes(group) && "cursor-pointer")}
-                onClick={() => handleRemoveGroup(group)}
-                title={BASE_GROUP_OPTIONS.includes(group) ? undefined : "Remove group"}
-              >
-                {group}{!BASE_GROUP_OPTIONS.includes(group) ? " x" : ""}
+
+        {activeChips.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {activeChips.map((chip) => (
+              <Badge key={chip.key} variant="secondary" className="gap-1 py-1 pl-2.5 pr-1 font-normal">
+                <span className="max-w-[16rem] truncate">{chip.label}</span>
+                <button
+                  type="button"
+                  onClick={chip.clear}
+                  className="rounded-full p-0.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
+                  aria-label="Remove filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </Badge>
-            ))
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="Add group (e.g. Coordinators)"
-            value={newGroupName}
-            onChange={(event) => setNewGroupName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                handleAddGroup()
-              }
-            }}
-            className="min-w-0 flex-1"
-          />
-          <Button type="button" variant="outline" onClick={handleAddGroup} className="shrink-0">
-            Add Group
-          </Button>
-        </div>
-      </section>
-
-      <section className="space-y-4 rounded-lg border border-border bg-card p-4">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold">Search + Filters</p>
-          <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
-            <FilterX className="mr-2 h-4 w-4" />
-            Clear filters
-          </Button>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-8">
-          <div className="space-y-2 xl:col-span-2">
-            <Label htmlFor="users-search">Search</Label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id="users-search"
-                placeholder="Search users"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="pl-9"
-              />
-            </div>
+            ))}
+            <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={clearFilters}>
+              Clear all
+            </Button>
           </div>
-
-          <div className="space-y-2">
-            <Label>Search by</Label>
-            <Select value={searchBy} onValueChange={(value) => setSearchBy(value as SearchBy)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Field" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="username">Username</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Role</Label>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All roles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
-                {USER_ROLE_OPTIONS.map((role) => (
-                  <SelectItem key={role.value} value={role.value}>
-                    {role.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger>
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Group</Label>
-            <Select value={groupFilter} onValueChange={setGroupFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All groups" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All groups</SelectItem>
-                {groupFilterOptions.map((group) => (
-                  <SelectItem key={group} value={group}>
-                    {group}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Organization</Label>
-            <Select value={organizationFilter} onValueChange={setOrganizationFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All organizations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All organizations</SelectItem>
-                {organizations.map((organization) => (
-                  <SelectItem key={organization.id} value={String(organization.id)}>
-                    {organization.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Last active</Label>
-            <Select
-              value={lastActiveFilter}
-              onValueChange={(value) => setLastActiveFilter(value as LastActiveFilter)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Any time" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Any time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="last_7_days">Last 7 days</SelectItem>
-                <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                <SelectItem value="never">Never logged in</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </section>
+        ) : null}
+      </div>
 
       <section className="rounded-lg border border-border bg-card">
         <div className="w-full overflow-x-auto">
@@ -844,20 +916,21 @@ export default function UsersPage() {
                   return (
                     <TableRow
                       key={entry.user.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/users/${entry.user.id}`)}
+                      className={cn("cursor-pointer py-2", !entry.isActive && "opacity-60")}
+                      onClick={() => setSelectedUser(entry.user)}
                     >
                       <TableCell className="whitespace-normal">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <Avatar className="h-8 w-8 shrink-0">
-                            <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 space-y-0.5">
-                            <p className="truncate text-sm font-medium text-foreground">{entry.displayName}</p>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <p className="truncate text-sm font-medium text-foreground">{entry.displayName}</p>
+                              {!entry.isActive ? (
+                                <Badge variant="outline" className="shrink-0 border-destructive/40 px-1.5 py-0 text-[10px] text-destructive">
+                                  Inactive
+                                </Badge>
+                              ) : null}
+                            </div>
                             <p className="truncate text-xs text-muted-foreground">{entry.user.email}</p>
-                            {entry.username ? (
-                              <p className="truncate text-xs text-muted-foreground">@{entry.username}</p>
-                            ) : null}
                           </div>
                         </div>
                       </TableCell>
@@ -966,155 +1039,266 @@ export default function UsersPage() {
         </div>
       </section>
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <Dialog open={isCreateOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsCreateOpen(false)
+          setCreateStep(1)
+          setFormData({
+            username: "",
+            firstName: "",
+            lastName: "",
+            email: "",
+            role: "",
+            organizationId: "",
+            password: "",
+            passwordConfirm: "",
+            permissions: [],
+            groups: [],
+          })
+        } else {
+          setIsCreateOpen(true)
+        }
+      }}>
         <DialogContent className="w-[95vw] max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add User</DialogTitle>
+            <DialogTitle>Add User — Step {createStep} of 4</DialogTitle>
             <DialogDescription>
-              Create a new user account
+              {createStep === 1 && "Enter basic information"}
+              {createStep === 2 && "Set role and organization"}
+              {createStep === 3 && "Assign groups and permissions"}
+              {createStep === 4 && "Review and create"}
             </DialogDescription>
           </DialogHeader>
-          <form
-            className="max-h-[calc(90vh-8rem)] space-y-4 overflow-y-auto pr-1"
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleCreate()
-            }}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="username">Username *</Label>
-                <Input
-                  id="username"
-                  placeholder="jdoe"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name *</Label>
-                <Input
-                  id="firstName"
-                  placeholder="John"
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name *</Label>
-                <Input
-                  id="lastName"
-                  placeholder="Doe"
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="john@example.org"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="password">Password *</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="********"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="passwordConfirm">Confirm Password *</Label>
-                <Input
-                  id="passwordConfirm"
-                  type="password"
-                  placeholder="********"
-                  value={formData.passwordConfirm}
-                  onChange={(e) => setFormData({ ...formData, passwordConfirm: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Role *</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value) => setFormData({ ...formData, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {USER_ROLE_OPTIONS.map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>User Groups</Label>
-              <div className="grid gap-2 rounded-md border border-border p-3 sm:grid-cols-2">
-                {groupCatalog.map((group) => (
-                  <label key={group} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={formData.groups.includes(group)}
-                      onChange={(event) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          groups: event.target.checked
-                            ? [...prev.groups, group]
-                            : prev.groups.filter((entry) => entry !== group),
-                        }))
-                      }
-                    />
-                    <span>{group}</span>
-                  </label>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Step {createStep} of 4</span>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map((step) => (
+                  <div
+                    key={step}
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full transition",
+                      step <= createStep ? "bg-primary" : "bg-muted"
+                    )}
+                  />
                 ))}
               </div>
             </div>
-            <UserPermissionsManager
-              availablePermissions={availablePermissions}
-              value={formData.permissions}
-              onChange={(permissions) => setFormData({ ...formData, permissions })}
-              isLoading={isPermissionsLoading}
-              errorMessage={permissionsErrorMessage}
-              onRetry={() => {
-                void mutatePermissions()
+
+            <form
+              className="max-h-[calc(90vh-16rem)] space-y-4 overflow-y-auto pr-1"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (createStep === 4) {
+                  handleCreate()
+                } else {
+                  setCreateStep(createStep + 1)
+                }
               }}
-            />
-            <div className="space-y-2">
-              <Label htmlFor="organization">Organization</Label>
-              <OrganizationSelect
-                organizations={organizations}
-                value={formData.organizationId}
-                onChange={(value) => setFormData({ ...formData, organizationId: value })}
-                placeholder="Select organization"
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsCreateOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create User
-              </Button>
-            </DialogFooter>
-          </form>
+            >
+              {createStep === 1 && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Username *</Label>
+                    <Input
+                      id="username"
+                      placeholder="jdoe"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="john@example.org"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name *</Label>
+                      <Input
+                        id="firstName"
+                        placeholder="John"
+                        value={formData.firstName}
+                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Input
+                        id="lastName"
+                        placeholder="Doe"
+                        value={formData.lastName}
+                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password *</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="passwordConfirm">Confirm Password *</Label>
+                      <Input
+                        id="passwordConfirm"
+                        type="password"
+                        placeholder="••••••••"
+                        value={formData.passwordConfirm}
+                        onChange={(e) => setFormData({ ...formData, passwordConfirm: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {createStep === 2 && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role *</Label>
+                    <Select
+                      value={formData.role}
+                      onValueChange={(value) => setFormData({ ...formData, role: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {USER_ROLE_OPTIONS.map((role) => (
+                          <SelectItem key={role.value} value={role.value}>
+                            {role.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="organization">Organization</Label>
+                    <OrganizationSelect
+                      organizations={organizations}
+                      value={formData.organizationId}
+                      onChange={(value) => setFormData({ ...formData, organizationId: value })}
+                      placeholder="Select organization"
+                    />
+                  </div>
+                </>
+              )}
+
+              {createStep === 3 && (
+                <>
+                  <div className="space-y-2">
+                    <Label>User Groups</Label>
+                    <div className="grid gap-2 rounded-md border border-border p-3 sm:grid-cols-2">
+                      {groupCatalog.map((group) => (
+                        <label key={group} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={formData.groups.includes(group)}
+                            onChange={(event) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                groups: event.target.checked
+                                  ? [...prev.groups, group]
+                                  : prev.groups.filter((entry) => entry !== group),
+                              }))
+                            }
+                          />
+                          <span>{group}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {createStep === 4 && (
+                <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Username:</span>
+                      <span className="font-medium">{formData.username}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Email:</span>
+                      <span className="font-medium">{formData.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Name:</span>
+                      <span className="font-medium">{formData.firstName} {formData.lastName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Role:</span>
+                      <span className="font-medium">{USER_ROLE_LABELS[formData.role as User["role"]]}</span>
+                    </div>
+                    {formData.organizationId && formData.organizationId !== "all" && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Organization:</span>
+                        <span className="font-medium">
+                          {organizations.find((o) => String(o.id) === formData.organizationId)?.name}
+                        </span>
+                      </div>
+                    )}
+                    {formData.groups.length > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Groups:</span>
+                        <span className="font-medium">{formData.groups.length} group(s)</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (createStep === 1) {
+                      setIsCreateOpen(false)
+                      setCreateStep(1)
+                      setFormData({
+                        username: "",
+                        firstName: "",
+                        lastName: "",
+                        email: "",
+                        role: "",
+                        organizationId: "",
+                        password: "",
+                        passwordConfirm: "",
+                        permissions: [],
+                        groups: [],
+                      })
+                    } else {
+                      setCreateStep(createStep - 1)
+                    }
+                  }}
+                >
+                  {createStep === 1 ? "Cancel" : "Back"}
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : createStep === 4 ? (
+                    <Check className="mr-2 h-4 w-4" />
+                  ) : (
+                    <>Next</>
+                  )}
+                  {isSubmitting ? "Creating..." : createStep === 4 ? "Create User" : "Next"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1164,6 +1348,70 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isGroupsOpen} onOpenChange={setIsGroupsOpen}>
+        <DialogContent className="w-[95vw] max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage User Groups</DialogTitle>
+            <DialogDescription>
+              Create reusable groups to organize users. Built-in groups can’t be removed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="New group name (e.g. Coordinators)"
+                value={newGroupName}
+                onChange={(event) => setNewGroupName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    handleAddGroup()
+                  }
+                }}
+                className="min-w-0 flex-1"
+              />
+              <Button type="button" onClick={handleAddGroup} className="shrink-0">
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {groupCatalog.length === 0 ? (
+                <span className="text-sm text-muted-foreground">No groups created yet.</span>
+              ) : (
+                groupCatalog.map((group) => {
+                  const removable = !BASE_GROUP_OPTIONS.includes(group)
+                  return (
+                    <Badge
+                      key={group}
+                      variant="secondary"
+                      className={cn("gap-1 py-1 pl-2.5", removable ? "pr-1" : "pr-2.5")}
+                    >
+                      {group}
+                      {removable ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveGroup(group)}
+                          className="rounded-full p-0.5 text-muted-foreground transition hover:bg-background hover:text-destructive"
+                          aria-label={`Remove ${group}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      ) : null}
+                    </Badge>
+                  )
+                })
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsGroupsOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1195,6 +1443,145 @@ export default function UsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {selectedUser && (
+        <Sheet open={!!selectedUser} onOpenChange={(open) => {
+          if (!open) setSelectedUser(null)
+        }}>
+          <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
+            <SheetHeader>
+              <div className="flex items-center gap-4 pb-4">
+                <Avatar className="h-12 w-12">
+                  <AvatarFallback className="text-lg font-semibold">
+                    {`${(selectedUser.firstName?.[0] || "").toUpperCase()}${(selectedUser.lastName?.[0] || "").toUpperCase()}` || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <SheetTitle className="text-base">{selectedUser.firstName || ""} {selectedUser.lastName || ""}</SheetTitle>
+                  <p className="text-xs text-muted-foreground">@{normalizeUsername(selectedUser)}</p>
+                </div>
+              </div>
+            </SheetHeader>
+
+            {(() => {
+              const userIsActive =
+                (selectedUser as User & { is_active?: boolean }).is_active ?? true
+
+              return (
+                <>
+                  <div className="flex-1 overflow-y-auto space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Status</p>
+                      <Badge variant={userIsActive ? "default" : "secondary"}>
+                        {userIsActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Email</p>
+                        <p className="text-sm break-all">{selectedUser.email}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Role</p>
+                        <Badge variant="secondary" className={USER_ROLE_COLORS[selectedUser.role] || ""}>
+                          <Shield className="mr-1 h-3 w-3" />
+                          {USER_ROLE_LABELS[selectedUser.role]}
+                        </Badge>
+                      </div>
+                      {selectedUser.organizationId ? (
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">Organization</p>
+                          <p className="text-sm">{organizationNameById.get(String(selectedUser.organizationId)) || "—"}</p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {selectedUser.createdAt && (
+                      <>
+                        <Separator />
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">Created</p>
+                          <p className="text-sm">{new Date(selectedUser.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </>
+                    )}
+
+                    {selectedUser.lastLogin && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Last Active</p>
+                        <p className="text-sm">{new Date(selectedUser.lastLogin).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex flex-col gap-2 pt-4">
+                    <Button
+                      variant="outline"
+                      className="justify-start gap-2"
+                      onClick={() => {
+                        setSelectedUser(null)
+                        router.push(`/users/${selectedUser.id}/edit`)
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit
+                    </Button>
+                    {canResetPasswords && (
+                      <Button
+                        variant="outline"
+                        className="justify-start gap-2"
+                        onClick={() => {
+                          setSelectedUser(null)
+                          handleResetPassword(selectedUser)
+                        }}
+                      >
+                        <KeyRound className="h-4 w-4" />
+                        Reset Password
+                      </Button>
+                    )}
+                    {canActivateDeactivateUsers && (
+                      <Button
+                        variant="outline"
+                        className={cn("justify-start gap-2", !userIsActive && "text-green-600 hover:text-green-700")}
+                        onClick={() => {
+                          setConfirmAction({
+                            title: userIsActive ? "Deactivate User" : "Activate User",
+                            description: userIsActive
+                              ? `Are you sure you want to deactivate ${selectedUser.firstName}?`
+                              : `Are you sure you want to activate ${selectedUser.firstName}?`,
+                            destructive: userIsActive,
+                            onConfirm: async () => {
+                              try {
+                                await usersService.update(Number(selectedUser.id), { is_active: !userIsActive })
+                                toast({
+                                  title: "Success",
+                                  description: `User ${userIsActive ? "deactivated" : "activated"} successfully.`,
+                                })
+                                setSelectedUser(null)
+                                mutate()
+                              } catch (err) {
+                                throw err
+                              }
+                            },
+                          })
+                        }}
+                      >
+                        <Power className="h-4 w-4" />
+                        {userIsActive ? "Deactivate" : "Activate"}
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )
+            })()}
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   )
 }
