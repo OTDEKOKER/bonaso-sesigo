@@ -25,7 +25,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
-            'role', 'organization', 'organization_name',
+            'role', 'environment_access', 'organization', 'organization_name',
             'organization_dashboard_config', 'phone', 'avatar',
             'is_active', 'last_activity', 'date_joined',
             'created_at', 'updated_at', 'permissions', 'groups',
@@ -61,7 +61,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'role', 'organization', 'phone', 'password', 'password_confirm',
+            'role', 'environment_access', 'organization', 'phone', 'password', 'password_confirm',
             'permissions', 'assigned_projects',
         ]
 
@@ -117,7 +117,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'first_name', 'last_name', 'email', 'role', 'organization',
+            'first_name', 'last_name', 'email', 'role', 'environment_access', 'organization',
             'phone', 'avatar', 'is_active', 'permissions', 'groups',
             'assigned_projects', 'home_dashboard_preferences',
         ]

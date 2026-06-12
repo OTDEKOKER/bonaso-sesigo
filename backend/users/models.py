@@ -12,9 +12,21 @@ class User(AbstractUser):
         ('collector', 'Data Collector'),
         ('client', 'Client'),
     ]
-    
+
+    # Which Sesigo environment(s) a user may log into. 'both' (default) preserves
+    # existing behaviour; 'live'/'training' restrict the login to one environment.
+    # Enforced at token issuance (users.views.TrainingAwareTokenObtainPairSerializer).
+    ENVIRONMENT_ACCESS_CHOICES = [
+        ('both', 'Live and Training'),
+        ('live', 'Live only'),
+        ('training', 'Training only'),
+    ]
+
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='officer')
+    environment_access = models.CharField(
+        max_length=10, choices=ENVIRONMENT_ACCESS_CHOICES, default='both',
+    )
     organization = models.ForeignKey(
         'organizations.Organization',
         on_delete=models.SET_NULL,

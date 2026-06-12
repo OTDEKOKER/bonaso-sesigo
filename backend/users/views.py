@@ -60,12 +60,23 @@ class TrainingAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
 
     def validate(self, attrs):
+        from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
         data = super().validate(attrs)
         request = self.context.get("request")
         requested_mode = ""
         if request is not None:
             requested_mode = str(request.data.get("mode") or "").strip().lower()
         mode = "training" if requested_mode == "training" else "live"
+
+        # Environment assignment: a user restricted to one environment cannot log
+        # into the other. Default 'both' is unrestricted (existing behaviour).
+        access = getattr(self.user, "environment_access", "both") or "both"
+        if access != "both" and access != mode:
+            raise DRFPermissionDenied(
+                f"This account is restricted to the {access} environment and "
+                f"cannot sign in to {mode}."
+            )
+
         refresh = self.get_token(self.user)
         refresh["mode"] = mode
         data["refresh"] = str(refresh)

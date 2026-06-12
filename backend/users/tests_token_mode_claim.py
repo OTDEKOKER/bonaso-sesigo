@@ -44,6 +44,26 @@ class TokenModeClaimTests(APITestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(AccessToken(resp.data["access"])["mode"], "live")
 
+    def test_live_only_user_cannot_login_training(self):
+        self.user.environment_access = "live"
+        self.user.save(update_fields=["environment_access"])
+        resp = self._login(mode="training")
+        self.assertEqual(resp.status_code, 403)
+        # but live login still works and is stamped live
+        ok = self._login()
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(AccessToken(ok.data["access"])["mode"], "live")
+
+    def test_training_only_user_cannot_login_live(self):
+        self.user.environment_access = "training"
+        self.user.save(update_fields=["environment_access"])
+        self.assertEqual(self._login().status_code, 403)
+        self.assertEqual(self._login(mode="training").status_code, 200)
+
+    def test_both_user_can_login_either(self):
+        self.assertEqual(self._login().status_code, 200)
+        self.assertEqual(self._login(mode="training").status_code, 200)
+
     def test_mode_claim_survives_refresh_and_rotation(self):
         resp = self._login(mode="training")
         refresh = resp.data["refresh"]
