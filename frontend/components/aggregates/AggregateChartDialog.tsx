@@ -38,6 +38,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { SESIGO_CHART_PALETTE } from "@/lib/chart-theme";
+import {
+  exportChartToExcel,
+  type ChartExportType,
+} from "@/lib/chart-export";
 import {
   Dialog,
   DialogContent,
@@ -152,16 +158,21 @@ const CHART_TYPE_OPTIONS: ChartTypeOption[] = [
   },
 ];
 
-const reportPalette = [
-  "#AFC4D8",
-  "#CC0000",
-  "#93C94D",
-  "#F1E800",
-  "#0FA546",
-  "#20A3D3",
-  "#0A2B73",
-  "#6F35A5",
-];
+// Single source of truth shared with the web charts and the Excel export, so a
+// series keeps its colour on screen and in the downloaded workbook.
+const reportPalette = [...SESIGO_CHART_PALETTE];
+
+// Map the dialog's chart types to the Excel export's supported chart kinds.
+const EXCEL_CHART_TYPE: Record<string, ChartExportType> = {
+  bar: "column",
+  "stacked-bar": "stacked-column",
+  line: "line",
+  area: "line",
+  pie: "pie",
+  radar: "column",
+  scatter: "column",
+  gauge: "column",
+};
 
 const formatter = new Intl.NumberFormat("en-US");
 
@@ -233,6 +244,7 @@ export function AggregateChartDialog(props: AggregateChartDialogProps) {
   const chartRef = useRef<HTMLDivElement | null>(null);
 
   const [chartType, setChartType] = useState<AggregateChartType>("bar");
+  const { toast } = useToast();
   const gaugeAvailable = typeof target === "number" && target > 0;
 
   const isSexSplitSeries = useMemo(() => {
@@ -277,28 +289,43 @@ export function AggregateChartDialog(props: AggregateChartDialogProps) {
     [series],
   );
 
-  const downloadChartSvg = () => {
-    const container = chartRef.current;
-    if (!container) return;
-    const svg = container.querySelector("svg");
-    if (!svg) return;
+  const [exporting, setExporting] = useState(false);
 
-    const cloned = svg.cloneNode(true) as SVGSVGElement;
-    if (!cloned.getAttribute("xmlns")) {
-      cloned.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  const downloadChartExcel = async () => {
+    if (data.length === 0 || series.length === 0) return;
+    setExporting(true);
+    try {
+      const sourceFilters: Record<string, string> = {};
+      if (subtitle) sourceFilters["Context"] = subtitle;
+      if (meta) sourceFilters["Details"] = meta;
+
+      await exportChartToExcel({
+        title: title || "Aggregate Totals",
+        subtitle: subtitle,
+        chartType: EXCEL_CHART_TYPE[resolvedChartType] ?? "column",
+        categories: data.map((row) => String(row.name)),
+        series: series.map((entry, index) => ({
+          name: entry.label,
+          // Prefer the explicit series colour; the export falls back to the
+          // shared palette by index, matching the on-screen chart either way.
+          color: entry.color ?? reportPalette[index % reportPalette.length],
+          values: data.map((row) => toNumeric(row[entry.key])),
+        })),
+        sourceFilters,
+        valueAxisTitle: "Value",
+        categoryAxisTitle: "Category",
+        fileName: `${title || "aggregate-chart"}`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Excel export failed",
+        description:
+          error instanceof Error ? error.message : "Could not export the chart.",
+      });
+    } finally {
+      setExporting(false);
     }
-
-    const serializer = new XMLSerializer();
-    const svgText = serializer.serializeToString(cloned);
-    const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `aggregates_chart_${new Date().toISOString().slice(0, 10)}.svg`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
   };
 
   const scatterAvailable = series.length === 2;
@@ -387,9 +414,14 @@ export function AggregateChartDialog(props: AggregateChartDialogProps) {
           ) : (
             <div />
           )}
-          <Button variant="outline" size="sm" onClick={downloadChartSvg}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={downloadChartExcel}
+            disabled={exporting || !chartHasData}
+          >
             <Download className="mr-2 h-4 w-4" />
-            Download Chart
+            {exporting ? "Exporting…" : "Download Excel"}
           </Button>
         </div>
 

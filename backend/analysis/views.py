@@ -453,6 +453,39 @@ def _build_message_analytics_cache_key(
     return f'analysis:dashboard:message_analytics:v2:{digest}'
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def chart_export_excel(request):
+    """Render a portal chart spec to a native Excel chart workbook.
+
+    The frontend posts the already-rendered chart data (categories + series +
+    palette colours + source filters); we echo it into an .xlsx with a real
+    Excel chart so the download matches the on-screen chart, colours included.
+    No DB query happens here — the data was already mode/permission filtered by
+    whichever endpoint produced the chart.
+    """
+    from django.utils.text import slugify
+    from .chart_export import build_chart_workbook
+
+    spec = request.data if isinstance(request.data, dict) else {}
+    series = spec.get('series') or []
+    categories = spec.get('categories') or []
+    if not series or not categories:
+        return Response(
+            {'detail': 'chart export requires non-empty categories and series.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    content = build_chart_workbook(spec)
+    safe_name = slugify(str(spec.get('title') or 'chart')) or 'chart'
+    response = HttpResponse(
+        content,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}.xlsx"'
+    return response
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def indicator_trends(request, indicator_id: int):

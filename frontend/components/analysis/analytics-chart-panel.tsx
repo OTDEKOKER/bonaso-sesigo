@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 import { ChartHeader } from "@/components/analysis/chart-header";
+import { ChartExcelExportButton } from "@/components/analysis/chart-excel-export-button";
 import {
   type ChartDensity,
   getChartPanelClasses,
@@ -11,6 +12,7 @@ import {
   ChartSectionStat,
 } from "@/components/analysis/chart-theme";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import type { ChartExportSpec } from "@/lib/chart-export";
 
 type AnalyticsChartPanelProps = {
   title: string;
@@ -21,6 +23,13 @@ type AnalyticsChartPanelProps = {
   density?: ChartDensity;
   actions?: ReactNode;
   emphasized?: boolean;
+  /**
+   * When provided, the panel header shows a consistent "Export Excel" button
+   * that downloads a donor/M&E-style workbook (embedded chart + tables) whose
+   * colours match the on-screen chart. Pass a function to build the spec lazily
+   * from the latest data.
+   */
+  excelExport?: ChartExportSpec | (() => ChartExportSpec | null | undefined);
   stats?: Array<{
     label: string;
     value: string;
@@ -39,9 +48,18 @@ export function AnalyticsChartPanel(props: AnalyticsChartPanelProps) {
     density = "normal",
     actions,
     emphasized = false,
+    excelExport,
   } = props;
 
   const panelClasses = getChartPanelClasses(density);
+
+  const headerActions =
+    actions || excelExport ? (
+      <div className="flex items-center gap-2">
+        {actions}
+        {excelExport ? <ChartExcelExportButton spec={excelExport} /> : null}
+      </div>
+    ) : undefined;
 
   return (
     <Card
@@ -52,7 +70,7 @@ export function AnalyticsChartPanel(props: AnalyticsChartPanelProps) {
     >
       <CardHeader className={panelClasses.header}>
         <div className="space-y-2">
-          <ChartHeader title={title} subtitle={subtitle} rightContent={actions} />
+          <ChartHeader title={title} subtitle={subtitle} rightContent={headerActions} />
           {description ? (
             <div className="max-w-3xl text-[13px] leading-5 text-muted-foreground">
               {description}

@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ReportViewSet, SavedQueryViewSet, ScheduledReportViewSet, DashboardView, CoordinatorTargetViewSet, indicator_trends, indicator_trends_bulk
+from .views import ReportViewSet, SavedQueryViewSet, ScheduledReportViewSet, DashboardView, CoordinatorTargetViewSet, indicator_trends, indicator_trends_bulk, chart_export_excel
 
 # Create a router and register our viewsets
 router = DefaultRouter()
@@ -15,4 +15,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('trends/<int:indicator_id>/', indicator_trends, name='indicator-trends'),
     path('trends/', indicator_trends_bulk, name='indicator-trends-bulk'),
+    path('chart-export/', chart_export_excel, name='chart-export-excel'),
 ]
