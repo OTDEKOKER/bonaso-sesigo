@@ -708,7 +708,8 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
 
     queryset = CoordinatorTarget.objects.select_related('project', 'coordinator', 'indicator').all()
     serializer_class = CoordinatorTargetSerializer
-    permission_classes = [IsAuthenticated]
+    required_module = 'targets'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     pagination_class = CoordinatorTargetPagination
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['project__name', 'coordinator__name', 'indicator__name', 'notes']

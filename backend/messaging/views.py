@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from users.permissions import HasModulePermission
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
@@ -15,8 +16,9 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
     """ViewSet for announcements."""
 
     queryset = Announcement.objects.select_related('created_by', 'organization', 'project').all()
+    required_module = 'messages'
     serializer_class = AnnouncementSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['scope', 'organization', 'project']
     search_fields = ['title', 'content']
@@ -48,8 +50,9 @@ class MessageViewSet(viewsets.ModelViewSet):
     """ViewSet for managing messages."""
     
     queryset = Message.objects.all()
+    required_module = 'messages'
     serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['message_type', 'is_read']
     
@@ -104,8 +107,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
     """ViewSet for managing notifications."""
     
     queryset = Notification.objects.all()
+    required_module = 'notifications'
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['is_read']
     

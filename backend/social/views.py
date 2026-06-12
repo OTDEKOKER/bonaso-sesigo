@@ -1,5 +1,6 @@
 ﻿from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
+from users.permissions import HasModulePermission
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids
@@ -12,8 +13,9 @@ class SocialPostViewSet(viewsets.ModelViewSet):
     """ViewSet for managing social media posts."""
 
     queryset = SocialPost.objects.all()
+    required_module = 'social'
     serializer_class = SocialPostSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['indicator', 'organization', 'platform']
     search_fields = ['title', 'url']

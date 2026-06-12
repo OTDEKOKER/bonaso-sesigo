@@ -10,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from users.permissions import HasModulePermission
+
 
 def _is_admin_user(user):
     return bool(
@@ -79,7 +81,8 @@ def _count_model(label, model_path):
 
 
 class SystemStatusView(APIView):
-    permission_classes = [IsAuthenticated]
+    required_module = 'system_status'
+    permission_classes = [IsAuthenticated, HasModulePermission]
 
     def get(self, request):
         if not _is_admin_user(request.user):

@@ -70,3 +70,55 @@ class ModulePermissionEnforcementTests(APITestCase):
         )
         self._auth(self.officer)
         self.assertEqual(self.client.get("/api/users/").status_code, 403)
+
+    # ---- action-level RBAC ----------------------------------------------
+    def test_view_only_grant_allows_read_blocks_write(self):
+        # Officer granted indicators with VIEW only: GET ok, POST/DELETE denied.
+        UserModulePermission.objects.create(
+            user=self.officer, module="indicators", is_enabled=True, actions=["view"],
+        )
+        self._auth(self.officer)
+        self.assertEqual(self.client.get("/api/indicators/").status_code, 200)
+        create = self.client.post(
+            "/api/indicators/", {"name": "X", "code": "X1", "type": "number"}, format="json"
+        )
+        self.assertEqual(create.status_code, 403)
+
+    def test_create_grant_allows_post(self):
+        UserModulePermission.objects.create(
+            user=self.officer, module="organizations",
+            is_enabled=True, actions=["view", "create"],
+        )
+        self._auth(self.officer)
+        resp = self.client.post(
+            "/api/organizations/", {"name": "New Org", "code": "NEWO", "type": "partner"},
+            format="json",
+        )
+        # 201 created, or a 400 validation error — but NOT a 403 permission block.
+        self.assertNotEqual(resp.status_code, 403)
+
+    def test_auxiliary_endpoints_are_gated(self):
+        # The newly-gated auxiliary modules block on explicit denial too.
+        urls = {
+            "social": "/api/social/posts/",
+            "flags": "/api/flags/",
+            "system_status": "/api/system/status/",
+            "targets": "/api/analysis/coordinator-targets/",
+        }
+        for module in urls:
+            UserModulePermission.objects.update_or_create(
+                user=self.officer, module=module,
+                defaults={"is_enabled": False, "actions": []},
+            )
+        self._auth(self.officer)
+        for url in urls.values():
+            self.assertEqual(self.client.get(url).status_code, 403, url)
+
+    def test_export_action_requires_export_grant(self):
+        # View without export: the aggregates export endpoint (GET /export/) is
+        # mapped to the 'export' verb and must be denied.
+        from users.permissions import required_action_for
+
+        class _V:
+            action = "export"
+        self.assertEqual(required_action_for(type("R", (), {"method": "GET"})(), _V()), "export")

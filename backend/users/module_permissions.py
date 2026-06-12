@@ -32,6 +32,8 @@ MODULE_ACTIONS: dict[str, list[str]] = {
     'analytics': ['view', 'export'],
     'messages': ['view', 'create'],
     'notifications': ['view'],
+    'social': ['view', 'create', 'edit', 'delete'],
+    'flags': ['view', 'create', 'edit', 'resolve'],
     'system_status': ['view'],
     'settings': ['view', 'manage'],
     'training_mode': ['view'],

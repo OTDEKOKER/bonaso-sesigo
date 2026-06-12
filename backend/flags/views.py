@@ -2,6 +2,7 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from users.permissions import HasModulePermission
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
@@ -16,8 +17,9 @@ class FlagViewSet(viewsets.ModelViewSet):
     """ViewSet for managing flags."""
     
     queryset = Flag.objects.all()
+    required_module = 'flags'
     serializer_class = FlagSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['flag_type', 'status', 'priority', 'organization', 'assigned_to', 'content_type']
     search_fields = ['title', 'description']
@@ -88,8 +90,9 @@ class FlagCommentViewSet(viewsets.ModelViewSet):
     """ViewSet for flag comments."""
     
     queryset = FlagComment.objects.all()
+    required_module = 'flags'
     serializer_class = FlagCommentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['flag']
 
