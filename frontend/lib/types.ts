@@ -9,6 +9,8 @@ export interface User {
   firstName: string
   lastName: string
   role: UserRole
+  /** Which Sesigo environment(s) the user may sign in to (enforced at login). */
+  environment_access?: "both" | "live" | "training"
   permissions?: string[]
   groups?: string[]
   home_dashboard_preferences?: unknown

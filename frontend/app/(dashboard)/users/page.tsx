@@ -218,6 +218,7 @@ export default function UsersPage() {
     lastName: "",
     email: "",
     role: "",
+    environmentAccess: "both",
     organizationId: "",
     password: "",
     passwordConfirm: "",
@@ -481,6 +482,7 @@ export default function UsersPage() {
         last_name: formData.lastName,
         email: formData.email,
         role: formData.role as User["role"],
+        environment_access: formData.environmentAccess as "both" | "live" | "training",
         organization: formData.organizationId && formData.organizationId !== "all"
           ? Number(formData.organizationId)
           : undefined,
@@ -502,6 +504,7 @@ export default function UsersPage() {
         lastName: "",
         email: "",
         role: "",
+        environmentAccess: "both",
         organizationId: "",
         password: "",
         passwordConfirm: "",
@@ -1049,6 +1052,7 @@ export default function UsersPage() {
             lastName: "",
             email: "",
             role: "",
+            environmentAccess: "both",
             organizationId: "",
             password: "",
             passwordConfirm: "",
@@ -1184,6 +1188,25 @@ export default function UsersPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="environmentAccess">Environment access</Label>
+                    <Select
+                      value={formData.environmentAccess}
+                      onValueChange={(value) => setFormData({ ...formData, environmentAccess: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select environment access" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="both">Live and Training</SelectItem>
+                        <SelectItem value="live">Live only</SelectItem>
+                        <SelectItem value="training">Training only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Restricts which environment this user may sign in to (enforced at login).
+                    </p>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="organization">Organization</Label>
                     <OrganizationSelect
                       organizations={organizations}
@@ -1273,6 +1296,7 @@ export default function UsersPage() {
                         lastName: "",
                         email: "",
                         role: "",
+                        environmentAccess: "both",
                         organizationId: "",
                         password: "",
                         passwordConfirm: "",

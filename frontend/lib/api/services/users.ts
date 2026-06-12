@@ -29,6 +29,7 @@ export interface CreateUserRequest {
   password: string;
   password_confirm: string;
   role: UserRole;
+  environment_access?: "both" | "live" | "training";
   organization?: number;
   phone?: string;
   permissions?: string[];
@@ -39,6 +40,7 @@ export interface UpdateUserRequest {
   first_name?: string;
   last_name?: string;
   role?: UserRole;
+  environment_access?: "both" | "live" | "training";
   organization?: number;
   is_active?: boolean;
   permissions?: string[];

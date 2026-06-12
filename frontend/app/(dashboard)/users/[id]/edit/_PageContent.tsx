@@ -41,6 +41,7 @@ type EditableUser = {
   lastName?: string
   last_name?: string
   role?: UserRole
+  environment_access?: "both" | "live" | "training"
   organizationId?: string | number
   organization_id?: string | number
   organization?: string | number
@@ -55,6 +56,7 @@ type FormState = {
   firstName: string
   lastName: string
   role: UserRole
+  environmentAccess: "both" | "live" | "training"
   organizationId: string
   isActive: boolean
   permissions: string[]
@@ -67,6 +69,7 @@ const initialForm: FormState = {
   firstName: "",
   lastName: "",
   role: "client",
+  environmentAccess: "both",
   organizationId: "none",
   isActive: true,
   permissions: [],
@@ -109,6 +112,7 @@ export default function UserEditPage() {
       firstName: source.firstName || source.first_name || "",
       lastName: source.lastName || source.last_name || "",
       role: source.role || "client",
+      environmentAccess: (source.environment_access as FormState["environmentAccess"]) || "both",
       organizationId: String(
         source.organizationId ?? source.organization_id ?? source.organization ?? "none",
       ),
@@ -171,6 +175,7 @@ export default function UserEditPage() {
         first_name?: string
         last_name?: string
         role?: UserRole
+        environment_access?: "both" | "live" | "training"
         organization?: number
         is_active?: boolean
         permissions?: string[]
@@ -183,6 +188,7 @@ export default function UserEditPage() {
 
       if (canEditRestrictedFields) {
         requestPayload.role = form.role
+        requestPayload.environment_access = form.environmentAccess
         requestPayload.organization =
           form.organizationId !== "none" && form.organizationId !== "all"
             ? Number(form.organizationId)
@@ -397,6 +403,27 @@ export default function UserEditPage() {
 
                 {canEditRestrictedFields && (
                   <>
+                    <div className="space-y-2">
+                      <Label>Environment access</Label>
+                      <Select
+                        value={form.environmentAccess}
+                        onValueChange={(value) =>
+                          updateField("environmentAccess", value as FormState["environmentAccess"])
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select environment access" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="both">Live and Training</SelectItem>
+                          <SelectItem value="live">Live only</SelectItem>
+                          <SelectItem value="training">Training only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Restricts which environment this user may sign in to (enforced at login).
+                      </p>
+                    </div>
                     <div className="space-y-2">
                       <Label>Organization</Label>
                       <OrganizationSelect
