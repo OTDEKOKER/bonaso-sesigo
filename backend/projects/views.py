@@ -107,16 +107,21 @@ class ProjectViewSet(viewsets.ModelViewSet):
             )
 
         user = self.request.user
+        # Isolate Sesigo Live System and Sesigo Training Mode projects for EVERY
+        # caller, admins included. Audit finding: training projects (is_training=
+        # True) were leaking into the live project dropdowns because admins were
+        # exempted from this filter. Live mode now never surfaces training
+        # projects; an admin who genuinely needs to see them opts in explicitly
+        # with include_training=true (training_view_mode == "all"), which the
+        # helper honours. Training Mode (training_only/mode=training) still shows
+        # only training projects.
+        queryset = apply_training_filter_to_projects(queryset, self.request)
         if is_organization_admin(user):
-            # Admins see all projects; honour training_only for mode-switching
-            # but never silently hide the training project from a live admin session.
-            from organizations.access import is_training_only_request
-            if is_training_only_request(self.request):
-                queryset = queryset.filter(is_training=True)
+            # Admins keep cross-project visibility (no project-assignment gate);
+            # only the training/live isolation above is applied.
             return queryset
 
-        # Non-admins: isolate Sesigo Live System and Sesigo Training Mode projects.
-        queryset = apply_training_filter_to_projects(queryset, self.request)
+        # Non-admins: project-assignment gate on top of the training isolation.
         # Project-assignment gate: non-admin users only see projects they are
         # explicitly assigned to (or that they created). This is the official
         # "users must not see projects they shouldn't" rule and replaces the

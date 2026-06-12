@@ -188,6 +188,37 @@ class TrainingSeparationTests(TestCase):
         self.assertIn("LIVE-ORG", live)
         self.assertEqual(train, {"DEMO-ORG-T"})
 
+    def test_project_viewset_admin_live_hides_training(self):
+        # Regression: admins were exempted from the project training filter, so
+        # is_training projects leaked into the live project dropdowns. Live mode
+        # must exclude them even for an admin.
+        from projects.views import ProjectViewSet
+        live = self._vs_codes(ProjectViewSet, "")
+        self.assertIn("LIVE-P", live)
+        self.assertNotIn("DEMO-P", live)
+
+    def test_project_viewset_admin_training_shows_only_training(self):
+        from projects.views import ProjectViewSet
+        train = self._vs_codes(ProjectViewSet, "?training_only=true")
+        self.assertEqual(train, {"DEMO-P"})
+
+    def test_project_viewset_admin_include_training_shows_all(self):
+        # The explicit admin escape hatch still surfaces everything.
+        from projects.views import ProjectViewSet
+        allp = self._vs_codes(ProjectViewSet, "?include_training=true")
+        self.assertIn("LIVE-P", allp)
+        self.assertIn("DEMO-P", allp)
+
+    def test_project_viewset_token_training_hides_live(self):
+        # A training-stamped JWT binds the session: live projects stay hidden
+        # even if the client omits the query param.
+        from projects.views import ProjectViewSet
+        w = APIRequestFactory().get("/api/projects/")
+        r = Request(w); r.user = self.admin; r._auth = {"mode": "training"}
+        v = ProjectViewSet(); v.request = r; v.kwargs = {}; v.format_kwarg = None; v.action = "list"
+        codes = set(v.get_queryset().values_list("code", flat=True))
+        self.assertEqual(codes, {"DEMO-P"})
+
     def test_indicator_trends_excludes_demo_in_live(self):
         # The demo indicator has only a training-project aggregate; in live mode
         # its trend series must contain no approved values.
