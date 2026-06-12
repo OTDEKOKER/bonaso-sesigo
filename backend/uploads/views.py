@@ -22,6 +22,7 @@ from .models import Upload, ImportJob, ExportJob
 from .serializers import UploadSerializer, ImportJobSerializer, ExportJobSerializer
 from .jobs import resolve_report_workbook_import_script, run_aggregate_review_import_job
 from organizations.access import is_training_only_request
+from users.permissions import HasModulePermission
 from aggregates import reporting_workbook as agg_rw
 
 
@@ -199,7 +200,8 @@ class UploadViewSet(viewsets.ModelViewSet):
     
     queryset = Upload.objects.all()
     serializer_class = UploadSerializer
-    permission_classes = [IsAuthenticated]
+    required_module = 'uploads'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['file_type', 'organization', 'content_type']

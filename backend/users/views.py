@@ -14,6 +14,7 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids
+from users.permissions import HasModulePermission
 
 from django.db import transaction
 
@@ -231,7 +232,8 @@ class UserViewSet(viewsets.ModelViewSet):
     ordering_fields = ['username', 'created_at', 'last_activity']
     ordering = ['-created_at']
 
-    permission_classes = [IsAuthenticated]
+    required_module = 'users'
+    permission_classes = [IsAuthenticated, HasModulePermission]
 
     SELF_EDITABLE_FIELDS = {
         'first_name',

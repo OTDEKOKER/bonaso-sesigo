@@ -37,6 +37,7 @@ from .services.coordinator_rollups import get_coordinator_performance
 from audit.recording import record_audit_event
 from aggregates.models import Aggregate
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, should_include_training, training_view_mode, is_training_only_request
+from users.permissions import HasModulePermission
 from organizations.models import Organization
 
 
@@ -1006,7 +1007,8 @@ class ReportViewSet(viewsets.ModelViewSet):
     
     queryset = Report.objects.all()
     serializer_class = ReportSerializer
-    permission_classes = [IsAuthenticated]
+    required_module = 'reports'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['report_type', 'organization', 'is_public']
     search_fields = ['name', 'description']

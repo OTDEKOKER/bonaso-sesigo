@@ -14,6 +14,7 @@ from django.db import models
 from django.db import DatabaseError
 from django.db.models import Count, F, Prefetch, Q, Sum
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, assert_project_write_allowed
+from users.permissions import HasModulePermission
 
 
 def _guard_project_write(request, serializer):
@@ -57,7 +58,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
     """ViewSet for managing projects."""
     
     queryset = Project.objects.all()
-    permission_classes = [IsAuthenticated]
+    required_module = 'projects'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['status', 'organizations']
     search_fields = ['name', 'code', 'description', 'funder']

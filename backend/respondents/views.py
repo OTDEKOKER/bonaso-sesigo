@@ -11,6 +11,7 @@ from django.db.models import Count, Max, Prefetch
 from django.http import HttpResponse
 import csv
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from users.permissions import HasModulePermission
 from projects.scope import filter_queryset_by_assigned_projects
 from idempotency.mixins import IdempotentMutationMixin
 from projects.assignment_rules import (
@@ -33,7 +34,8 @@ class RespondentViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     
     queryset = Respondent.objects.all()
     serializer_class = RespondentSerializer
-    permission_classes = [IsAuthenticated]
+    required_module = 'respondents'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['organization', 'gender', 'is_active']
     search_fields = ['unique_id', 'first_name', 'last_name', 'phone', 'email']

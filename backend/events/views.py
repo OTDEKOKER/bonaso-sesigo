@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.db import models
 from django.db.models import Count, Sum, Prefetch
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from users.permissions import HasModulePermission
 from projects.scope import filter_queryset_by_assigned_projects
 
 from .models import Event, Participant, EventPhase
@@ -25,7 +26,8 @@ class EventViewSet(viewsets.ModelViewSet):
     
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    permission_classes = [IsAuthenticated]
+    required_module = 'events'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['type', 'status', 'project', 'organization']
     search_fields = ['title', 'description', 'location']

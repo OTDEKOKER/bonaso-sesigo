@@ -40,6 +40,7 @@ from projects.assignment_rules import (
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
 from respondents.models import Response as InteractionResponse
 from organizations.access import get_user_organization_ids, is_organization_admin, can_review_aggregates, can_approve_aggregates, can_submit_aggregates, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from users.permissions import HasModulePermission
 from projects.scope import filter_queryset_by_assigned_projects
 from idempotency.mixins import IdempotentMutationMixin
 from audit.recording import record_audit_event
@@ -147,7 +148,8 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     queryset = Aggregate.objects.all()
     serializer_class = AggregateSerializer
     pagination_class = AggregatePagination
-    permission_classes = [IsAuthenticated]
+    required_module = 'aggregates'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = AggregateFilterSet
     ordering_fields = ['period_start', 'period_end', 'created_at']

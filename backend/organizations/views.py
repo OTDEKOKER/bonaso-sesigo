@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from users.permissions import HasModulePermission
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -18,7 +19,8 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     
     queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
-    permission_classes = [IsAuthenticated]
+    required_module = 'organizations'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['type', 'parent', 'is_active']
     search_fields = ['name', 'code', 'description']

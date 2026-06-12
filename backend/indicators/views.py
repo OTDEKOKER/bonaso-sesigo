@@ -1,5 +1,6 @@
 ﻿import re
 from difflib import SequenceMatcher
+from users.permissions import HasModulePermission
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -73,7 +74,8 @@ class IndicatorViewSet(viewsets.ModelViewSet):
     
     queryset = Indicator.objects.all()
     serializer_class = IndicatorSerializer
-    permission_classes = [IsAuthenticated]
+    required_module = 'indicators'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     pagination_class = IndicatorPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['type', 'category', 'is_active', 'is_deprecated', 'organizations']
