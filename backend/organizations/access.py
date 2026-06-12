@@ -130,17 +130,18 @@ def is_training_only_request(request) -> bool:
     Return True if the caller is operating inside Sesigo Training Mode and should
     see ONLY training-project data.
 
-    Authority order:
-      1. Signed JWT ``mode`` claim (H1) — tamper-proof, wins when present.
-      2. Legacy ``training_only=true`` / ``mode=training`` query parameter — used
-         only when the token carries no claim (backward compatible).
+    The signed JWT ``mode`` claim is the SOLE source of truth (H1+). Because every
+    token issued after the hardening carries a claim (``live`` or ``training``),
+    a client query parameter can no longer flip the environment:
+
+      • claim == "training"  → training-only view.
+      • claim == "live"      → live view (a ``training_only`` query param is ignored).
+      • no claim (legacy token, pre-hardening) → default to LIVE. This is the safe
+        default: training records stay hidden, and the param can no longer force a
+        training view. Entering Training Mode now requires a training login, which
+        stamps the claim. Old sessions simply see live until their next login.
     """
-    claim = token_mode(request)
-    if claim is not None:
-        return claim == "training"
-    training_only = str(request.query_params.get("training_only") or "").strip().lower()
-    mode = str(request.query_params.get("mode") or "").strip().lower()
-    return training_only in {"1", "true", "yes", "y"} or mode == "training"
+    return token_mode(request) == "training"
 
 
 def training_view_mode(request) -> str:

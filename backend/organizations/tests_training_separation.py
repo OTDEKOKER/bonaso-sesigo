@@ -79,11 +79,11 @@ class TrainingSeparationTests(TestCase):
             assert_project_write_allowed(self._req(""), self.train_proj)
 
     def test_training_write_to_training_allowed(self):
-        assert_project_write_allowed(self._req("?training_only=true"), self.train_proj)
+        assert_project_write_allowed(self._req_token(mode="training"), self.train_proj)
 
     def test_training_write_to_live_rejected(self):
         with self.assertRaises(PermissionDenied):
-            assert_project_write_allowed(self._req("?training_only=true"), self.live_proj)
+            assert_project_write_allowed(self._req_token(mode="training"), self.live_proj)
 
     def test_param_alone_cannot_route_write_to_wrong_scope(self):
         # include_training (admin read-all) must NOT let a live-intent write land
@@ -113,11 +113,21 @@ class TrainingSeparationTests(TestCase):
         with self.assertRaises(PermissionDenied):
             assert_project_write_allowed(self._req_token(mode="training"), self.live_proj)
 
-    def test_no_claim_falls_back_to_param(self):
-        # Backward compatibility: tokens without the claim behave exactly as before.
+    def test_no_claim_defaults_to_live_and_param_cannot_force_training(self):
+        # Hardening: the JWT claim is the sole source of truth. A token with no
+        # claim defaults to LIVE, and a training_only/mode query parameter can no
+        # longer force a training view (the client cannot override the JWT).
         from organizations.access import is_training_only_request
         self.assertFalse(is_training_only_request(self._req_token(qs="", mode=None)))
-        self.assertTrue(is_training_only_request(self._req_token(qs="?training_only=true", mode=None)))
+        self.assertFalse(is_training_only_request(self._req_token(qs="?training_only=true", mode=None)))
+        self.assertFalse(is_training_only_request(self._req("?training_only=true&mode=training")))
+
+    def test_live_claim_ignores_training_param(self):
+        # A live-bound token stays live even if the client appends training_only.
+        from organizations.access import is_training_only_request, training_view_mode
+        r = self._req_token(qs="?training_only=true", mode="live")
+        self.assertFalse(is_training_only_request(r))
+        self.assertEqual(training_view_mode(r), "live")
 
     # ---- read isolation -------------------------------------------------
     def test_aggregates_live_excludes_training(self):
@@ -126,7 +136,7 @@ class TrainingSeparationTests(TestCase):
         self.assertEqual(qs.first().project, self.live_proj)
 
     def test_aggregates_training_excludes_live(self):
-        qs = apply_training_filter(Aggregate.objects.all(), self._req("?training_only=true"), project_lookup="project")
+        qs = apply_training_filter(Aggregate.objects.all(), self._req_token("", mode="training"), project_lookup="project")
         self.assertEqual(qs.count(), 1)
         self.assertEqual(qs.first().project, self.train_proj)
 
@@ -137,7 +147,7 @@ class TrainingSeparationTests(TestCase):
         self.assertNotIn("DEMO-IND-T", codes)
 
     def test_indicators_training_shows_only_demo(self):
-        qs = apply_training_filter_via_projects(Indicator.objects.all(), self._req("?training_only=true"))
+        qs = apply_training_filter_via_projects(Indicator.objects.all(), self._req_token("", mode="training"))
         codes = set(qs.values_list("code", flat=True))
         self.assertEqual(codes, {"DEMO-IND-T"})
 
@@ -148,34 +158,43 @@ class TrainingSeparationTests(TestCase):
         self.assertNotIn("DEMO-ORG-T", codes)
 
     def test_orgs_training_shows_only_demo(self):
-        qs = apply_training_filter_via_projects(Organization.objects.all(), self._req("?training_only=true"))
+        qs = apply_training_filter_via_projects(Organization.objects.all(), self._req_token("", mode="training"))
         self.assertEqual(set(qs.values_list("code", flat=True)), {"DEMO-ORG-T"})
 
     # ---- dashboard totals ----------------------------------------------
-    def _overview(self, qs=""):
+    def _overview(self, qs="", mode=None):
+        from rest_framework_simplejwt.tokens import AccessToken
         r = self.factory.get("/api/analysis/dashboard/overview/" + qs)
-        force_authenticate(r, user=self.admin)
+        token = None
+        if mode is not None:
+            token = AccessToken.for_user(self.admin)
+            token["mode"] = mode
+        force_authenticate(r, user=self.admin, token=token)
         return DashboardView.as_view({"get": "overview"})(r).data
 
     def test_dashboard_live_excludes_training_assessments(self):
         live = self._overview("")
-        train = self._overview("?training_only=true")
+        train = self._overview(mode="training")
         # live active projects counts only the live one; training only the demo one
         self.assertEqual(live["active_projects"], 1)
         self.assertEqual(train["active_projects"], 1)
 
     # ---- endpoint-level (real viewsets) --------------------------------
-    def _vs_codes(self, viewset_cls, qs=""):
+    def _vs_codes(self, viewset_cls, qs="", mode=None):
         from rest_framework.test import APIRequestFactory
         w = APIRequestFactory().get("/api/x/" + qs)
         r = Request(w); r.user = self.admin
+        # Drive training/live via the signed JWT claim (the source of truth),
+        # mirroring _req_token. None = legacy no-claim token (defaults to live).
+        if mode is not None:
+            r._auth = {"mode": mode}
         v = viewset_cls(); v.request = r; v.kwargs = {}; v.format_kwarg = None; v.action = "list"
         return set(v.get_queryset().values_list("code", flat=True))
 
     def test_indicator_viewset_live_hides_demo(self):
         from indicators.views import IndicatorViewSet
         live = self._vs_codes(IndicatorViewSet, "")
-        train = self._vs_codes(IndicatorViewSet, "?training_only=true")
+        train = self._vs_codes(IndicatorViewSet, mode="training")
         self.assertNotIn("DEMO-IND-T", live)
         self.assertIn("LIVE-IND", live)
         self.assertEqual(train, {"DEMO-IND-T"})
@@ -183,7 +202,7 @@ class TrainingSeparationTests(TestCase):
     def test_organization_viewset_live_hides_demo(self):
         from organizations.views import OrganizationViewSet
         live = self._vs_codes(OrganizationViewSet, "")
-        train = self._vs_codes(OrganizationViewSet, "?training_only=true")
+        train = self._vs_codes(OrganizationViewSet, mode="training")
         self.assertNotIn("DEMO-ORG-T", live)
         self.assertIn("LIVE-ORG", live)
         self.assertEqual(train, {"DEMO-ORG-T"})
@@ -199,7 +218,7 @@ class TrainingSeparationTests(TestCase):
 
     def test_project_viewset_admin_training_shows_only_training(self):
         from projects.views import ProjectViewSet
-        train = self._vs_codes(ProjectViewSet, "?training_only=true")
+        train = self._vs_codes(ProjectViewSet, mode="training")
         self.assertEqual(train, {"DEMO-P"})
 
     def test_project_viewset_admin_include_training_shows_all(self):

@@ -45,12 +45,17 @@ class IsPortalAdmin(BasePermission):
 # JWT Token Views
 # ---------------------------
 class TrainingAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Stamp a tamper-proof training/live mode claim onto the token (H1).
+    """Stamp a tamper-proof training/live mode claim onto EVERY token (H1+).
 
-    When the login request carries ``mode=training`` the issued token is bound to
-    Sesigo Training Mode server-side. The claim is set on the refresh token so it
-    survives access-token refresh, and propagates to the access token. Logins
-    without ``mode=training`` are unchanged (no claim → query-param fallback).
+    The login request's ``mode`` field selects the environment the session is
+    bound to: ``mode=training`` (the training login) yields ``mode='training'``,
+    every other login yields ``mode='live'``. The claim is set on the refresh
+    token so it survives access-token refresh and rotation, and propagates to the
+    access token. Because the claim is part of the cryptographically-verified
+    token it cannot be tampered with by the client — the backend treats it as the
+    sole source of truth for environment isolation (see
+    organizations.access.is_training_only_request), so a client query parameter
+    can no longer flip a live session into training or vice versa.
     """
 
     def validate(self, attrs):
@@ -59,11 +64,11 @@ class TrainingAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
         requested_mode = ""
         if request is not None:
             requested_mode = str(request.data.get("mode") or "").strip().lower()
-        if requested_mode == "training":
-            refresh = self.get_token(self.user)
-            refresh["mode"] = "training"
-            data["refresh"] = str(refresh)
-            data["access"] = str(refresh.access_token)
+        mode = "training" if requested_mode == "training" else "live"
+        refresh = self.get_token(self.user)
+        refresh["mode"] = mode
+        data["refresh"] = str(refresh)
+        data["access"] = str(refresh.access_token)
         return data
 
 

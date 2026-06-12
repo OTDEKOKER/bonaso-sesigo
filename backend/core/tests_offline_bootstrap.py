@@ -62,8 +62,12 @@ class OfflineBootstrapTests(APITestCase):
         self.assertTrue(data["projects"][0]["reporting_periods"])  # quarters generated
 
     def test_training_package_only_training(self):
-        self.client.force_authenticate(self.user)
-        data = self.client.get("/api/offline/bootstrap/?training_only=true").json()
+        # Training mode is now bound to the signed JWT claim, not a query param.
+        from rest_framework_simplejwt.tokens import AccessToken
+        token = AccessToken.for_user(self.user)
+        token["mode"] = "training"
+        self.client.force_authenticate(self.user, token=token)
+        data = self.client.get("/api/offline/bootstrap/").json()
         self.assertEqual(data["mode"], "training")
         codes = {p["code"] for p in data["projects"]}
         self.assertEqual(codes, {"TRAIN"})

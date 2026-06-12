@@ -273,9 +273,16 @@ class CoordinatorTargetApiTests(CoordinatorTargetTableMixin, TestCase):
         self.assertIn(live_target.id, ids)
         self.assertNotIn(training_target.id, ids)
 
-        training_resp = self.client.get('/api/analysis/coordinator-targets/', {'mode': 'training'})
+        # Training mode is now driven by the signed JWT claim, not a query param.
+        from rest_framework_simplejwt.tokens import AccessToken
+        train_token = AccessToken.for_user(self.admin)
+        train_token['mode'] = 'training'
+        self.client.force_authenticate(self.admin, token=train_token)
+        training_resp = self.client.get('/api/analysis/coordinator-targets/')
         training_ids = {r['id'] for r in training_resp.data['results']}
         self.assertIn(training_target.id, training_ids)
+        self.assertNotIn(live_target.id, training_ids)
+        self.client.force_authenticate(self.admin)
 
     def test_org_permissions_scope_non_admin(self):
         # A non-admin sees targets within projects their org participates in
