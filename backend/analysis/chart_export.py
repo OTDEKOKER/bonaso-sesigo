@@ -78,13 +78,12 @@ def _apply_series_color(series: Series, hex_color: str, *, line: bool) -> None:
 
 
 def build_chart_workbook(spec: dict[str, Any]) -> bytes:
-    """Render a chart spec to a donor/M&E-style .xlsx workbook.
+    """Render a chart spec to a donor/M&E-grade .xlsx workbook.
 
-    Produces four sheets so the file is useful beyond a single picture:
-      • Chart    — the embedded, editable Excel chart + its category×series table
-      • Pivot    — the category×series matrix with row/column totals
-      • Summary  — grand total, per-series totals, per-category totals
-      • Raw Data — tidy long-format rows (category, series, value) for re-analysis
+    Sheets (in order): Cover, Metadata, Summary, Pivot, Charts, Raw Data, Data
+    Dictionary. Every sheet carries the environment stamp (LIVE/TRAINING) so a
+    training-mode export can never be mistaken for live reporting, plus who
+    exported it and when.
 
     spec = {
         "title": str,
@@ -95,6 +94,10 @@ def build_chart_workbook(spec: dict[str, Any]) -> bytes:
         "source_filters": {"Project": "...", "Period": "...", ...},
         "value_axis_title": str | None,
         "category_axis_title": str | None,
+        # injected server-side by the view (not trusted from the client):
+        "environment": "LIVE"|"TRAINING",
+        "exported_by": str,
+        "exported_at": str (ISO),
     }
     """
     title = str(spec.get("title") or "Chart").strip() or "Chart"
@@ -105,18 +108,131 @@ def build_chart_workbook(spec: dict[str, Any]) -> bytes:
     categories = [str(c) for c in (spec.get("categories") or [])]
     raw_series = spec.get("series") or []
     source_filters = spec.get("source_filters") or {}
+    environment = str(spec.get("environment") or "LIVE").strip().upper()
+    if environment not in {"LIVE", "TRAINING"}:
+        environment = "LIVE"
+    exported_by = str(spec.get("exported_by") or "—")
+    exported_at = str(spec.get("exported_at") or "")
 
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Chart"
-    _write_chart_sheet(ws, title, subtitle, chart_type, categories, raw_series, source_filters, spec)
-    _write_pivot_sheet(wb.create_sheet("Pivot"), title, categories, raw_series)
+    cover = wb.active
+    cover.title = "Cover"
+    _write_cover_sheet(cover, title, subtitle, environment, exported_by, exported_at, source_filters)
+    _write_metadata_sheet(
+        wb.create_sheet("Metadata"), title, subtitle, chart_type, environment,
+        exported_by, exported_at, source_filters, categories, raw_series,
+    )
     _write_summary_sheet(wb.create_sheet("Summary"), title, subtitle, source_filters, categories, raw_series)
+    _write_pivot_sheet(wb.create_sheet("Pivot"), title, categories, raw_series)
+    _write_chart_sheet(wb.create_sheet("Charts"), title, subtitle, chart_type, categories, raw_series, source_filters, spec)
     _write_raw_sheet(wb.create_sheet("Raw Data"), categories, raw_series)
+    _write_data_dictionary_sheet(wb.create_sheet("Data Dictionary"))
 
     output = BytesIO()
     wb.save(output)
     return output.getvalue()
+
+
+# Environment stamp colours.
+_ENV_FILL = {"LIVE": "0FA546", "TRAINING": "F1A100"}
+
+
+def _write_cover_sheet(ws, title, subtitle, environment, exported_by, exported_at, source_filters):
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 60
+
+    badge = ws.cell(row=1, column=1, value=f"{environment} ENVIRONMENT")
+    badge.font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+    badge.fill = PatternFill("solid", fgColor=_ENV_FILL.get(environment, "0FA546"))
+    badge.alignment = Alignment(horizontal="center")
+    ws.merge_cells("A1:B1")
+    if environment == "TRAINING":
+        warn = ws.cell(row=2, column=1, value="Training data — NOT for official reporting.")
+        warn.font = Font(italic=True, bold=True, color="B45309")
+        ws.merge_cells("A2:B2")
+
+    ws["A4"] = title
+    ws["A4"].font = _TITLE_FONT
+    ws.merge_cells("A4:B4")
+    if subtitle:
+        ws["A5"] = subtitle
+        ws["A5"].font = _SUBTITLE_FONT
+        ws.merge_cells("A5:B5")
+
+    rows = [("Sesigo Data Portal", ""), ("Exported by", exported_by), ("Exported at", exported_at)]
+    r = 7
+    for label, value in rows:
+        ws.cell(row=r, column=1, value=label).font = _META_LABEL_FONT
+        ws.cell(row=r, column=2, value=str(value)).font = _META_VALUE_FONT
+        r += 1
+    if source_filters:
+        r += 1
+        ws.cell(row=r, column=1, value="Filters applied").font = _META_LABEL_FONT
+        r += 1
+        for label, value in source_filters.items():
+            if value in (None, "", []):
+                continue
+            ws.cell(row=r, column=1, value=str(label)).font = _META_LABEL_FONT
+            ws.cell(row=r, column=2, value=str(value)).font = _META_VALUE_FONT
+            r += 1
+
+
+def _write_metadata_sheet(ws, title, subtitle, chart_type, environment, exported_by,
+                          exported_at, source_filters, categories, raw_series):
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 24
+    ws.column_dimensions["B"].width = 60
+    _style_header(ws.cell(row=1, column=1, value="Field"))
+    _style_header(ws.cell(row=1, column=2, value="Value"))
+    meta = [
+        ("Report title", title),
+        ("Subtitle", subtitle),
+        ("Environment", environment),
+        ("Exported by", exported_by),
+        ("Exported at", exported_at),
+        ("Chart type", chart_type),
+        ("Categories", len(categories)),
+        ("Series", len(raw_series)),
+        ("Series names", ", ".join(str(s.get("name") or "") for s in raw_series)),
+        ("Source system", "Sesigo Data Portal (powered by BONASO)"),
+    ]
+    for label, value in source_filters.items():
+        meta.append((f"Filter — {label}", value))
+    r = 2
+    for label, value in meta:
+        ws.cell(row=r, column=1, value=str(label)).border = _BORDER
+        ws.cell(row=r, column=2, value="" if value in (None,) else str(value)).border = _BORDER
+        r += 1
+
+
+def _write_data_dictionary_sheet(ws):
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 18
+    ws.column_dimensions["B"].width = 80
+    _style_header(ws.cell(row=1, column=1, value="Sheet / Column"))
+    _style_header(ws.cell(row=1, column=2, value="Description"))
+    entries = [
+        ("Cover", "Title, environment stamp (LIVE/TRAINING), exporter and timestamp, and the filters applied."),
+        ("Metadata", "Machine-readable export context: title, environment, user, time, chart type, series."),
+        ("Summary", "Grand total plus per-series and per-category totals."),
+        ("Pivot", "Category × series matrix with a Total column and a Total row."),
+        ("Charts", "The editable Excel chart with a colour-keyed data table beneath it."),
+        ("Raw Data", "Tidy long-format rows — one row per (Category, Series, Value) — for re-analysis."),
+        ("— Category", "The grouping shown on the chart's category axis (e.g. organization, age band)."),
+        ("— Series", "A measured dimension/series name (e.g. a message type or sex)."),
+        ("— Value", "The numeric value for that category and series."),
+        ("Environment", "LIVE = production reporting data. TRAINING = practice data, not for official use."),
+    ]
+    r = 2
+    for label, value in entries:
+        c = ws.cell(row=r, column=1, value=label)
+        c.font = _META_LABEL_FONT
+        c.border = _BORDER
+        v = ws.cell(row=r, column=2, value=value)
+        v.alignment = Alignment(wrap_text=True, vertical="top")
+        v.border = _BORDER
+        r += 1
 
 
 def _write_chart_sheet(ws, title, subtitle, chart_type, categories, raw_series, source_filters, spec):

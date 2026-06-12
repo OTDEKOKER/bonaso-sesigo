@@ -48,15 +48,15 @@ class ChartWorkbookTests(TestCase):
 
     def test_sheets_present(self):
         wb = self._wb()
-        self.assertEqual(wb.sheetnames, ["Chart", "Pivot", "Summary", "Raw Data"])
+        self.assertEqual(wb.sheetnames, ["Cover", "Metadata", "Summary", "Pivot", "Charts", "Raw Data", "Data Dictionary"])
 
     def test_chart_sheet_has_native_chart(self):
         wb = self._wb()
-        self.assertEqual(len(wb["Chart"]._charts), 1)
+        self.assertEqual(len(wb["Charts"]._charts), 1)
 
     def test_series_colours_match_spec(self):
         wb = self._wb()
-        chart = wb["Chart"]._charts[0]
+        chart = wb["Charts"]._charts[0]
 
         def _hex(fill):
             # openpyxl stores solidFill either as a plain 'RRGGBB' str or a
@@ -100,8 +100,20 @@ class ChartWorkbookTests(TestCase):
 
     def test_pie_colours_each_slice(self):
         spec = dict(SPEC, chart_type="pie", series=[SPEC["series"][0]])
-        chart = self._wb(spec)["Chart"]._charts[0]
+        chart = self._wb(spec)["Charts"]._charts[0]
         self.assertEqual(len(chart.series[0].data_points), 3)
+
+    def test_cover_carries_environment_stamp(self):
+        ws = self._wb(dict(SPEC, environment="TRAINING", exported_by="alice"))["Cover"]
+        self.assertEqual(ws["A1"].value, "TRAINING ENVIRONMENT")
+        # exporter shown somewhere on the cover
+        values = [c.value for row in ws.iter_rows(max_col=2) for c in row]
+        self.assertIn("alice", values)
+
+    def test_data_dictionary_present(self):
+        ws = self._wb()["Data Dictionary"]
+        labels = {ws.cell(row=r, column=1).value for r in range(1, ws.max_row + 1)}
+        self.assertTrue({"Cover", "Charts", "Raw Data", "Environment"} <= labels)
 
 
 class ChartExportEndpointTests(TestCase):
@@ -116,7 +128,8 @@ class ChartExportEndpointTests(TestCase):
         self.assertIn("spreadsheetml", resp["Content-Type"])
         self.assertIn(".xlsx", resp["Content-Disposition"])
         wb = load_workbook(BytesIO(b"".join(resp.streaming_content) if resp.streaming else resp.content))
-        self.assertIn("Chart", wb.sheetnames)
+        self.assertIn("Charts", wb.sheetnames)
+        self.assertIn("Cover", wb.sheetnames)
 
     def test_endpoint_rejects_empty(self):
         resp = self.client.post("/api/analysis/chart-export/", {"title": "x", "categories": [], "series": []}, format="json")
@@ -126,3 +139,15 @@ class ChartExportEndpointTests(TestCase):
         client = APIClient()
         resp = client.post("/api/analysis/chart-export/", SPEC, format="json")
         self.assertIn(resp.status_code, (401, 403))
+
+    def test_endpoint_stamps_environment_from_token(self):
+        from rest_framework_simplejwt.tokens import AccessToken
+        # Training-bound token -> the cover must be stamped TRAINING, server-side.
+        token = AccessToken.for_user(self.admin)
+        token["mode"] = "training"
+        self.client.force_authenticate(self.admin, token=token)
+        resp = self.client.post("/api/analysis/chart-export/", SPEC, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("training", resp["Content-Disposition"])
+        wb = load_workbook(BytesIO(resp.content))
+        self.assertEqual(wb["Cover"]["A1"].value, "TRAINING ENVIRONMENT")

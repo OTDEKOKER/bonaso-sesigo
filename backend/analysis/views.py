@@ -468,7 +468,7 @@ def chart_export_excel(request):
     from django.utils.text import slugify
     from .chart_export import build_chart_workbook
 
-    spec = request.data if isinstance(request.data, dict) else {}
+    spec = dict(request.data) if isinstance(request.data, dict) else {}
     series = spec.get('series') or []
     categories = spec.get('categories') or []
     if not series or not categories:
@@ -477,8 +477,17 @@ def chart_export_excel(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Stamp the workbook server-side (never trust the client for these): the
+    # environment comes from the request's resolved mode, the user from the
+    # authenticated request, and the timestamp from the server clock. This keeps
+    # a training-mode export from ever being mislabelled as live.
+    spec['environment'] = 'TRAINING' if is_training_only_request(request) else 'LIVE'
+    spec['exported_by'] = getattr(request.user, 'username', None) or getattr(request.user, 'email', '') or '—'
+    spec['exported_at'] = timezone.now().strftime('%Y-%m-%d %H:%M:%S %Z') or timezone.now().isoformat()
+
     content = build_chart_workbook(spec)
-    safe_name = slugify(str(spec.get('title') or 'chart')) or 'chart'
+    env_tag = 'training' if spec['environment'] == 'TRAINING' else 'live'
+    safe_name = f"{slugify(str(spec.get('title') or 'chart')) or 'chart'}-{env_tag}"
     response = HttpResponse(
         content,
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
