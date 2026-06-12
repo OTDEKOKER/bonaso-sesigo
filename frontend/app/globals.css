@@ -28,6 +28,11 @@
   --space-lg: 1.5rem;
   --space-xl: 2rem;
 
+  /* Height of the frozen (sticky) main app header. Reused as the sticky offset
+     for module filter bars so they sit directly below the header without
+     overlapping it. Keep in sync with AppHeader's h-16 (4rem). */
+  --app-header-height: 4rem;
+
   --radius: 0.75rem;
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;

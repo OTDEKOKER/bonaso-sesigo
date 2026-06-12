@@ -70,7 +70,7 @@ function DashboardShell({
   }
 
   return (
-    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-hidden bg-background">
+    <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-clip bg-background">
       <Dialog open={showDisclaimer} onOpenChange={handleDisclaimerOpenChange}>
         <DialogContent
           showCloseButton={false}
@@ -159,7 +159,10 @@ function DashboardShell({
       {/* Main content */}
       <div
         className={cn(
-          "min-w-0 flex-1 w-full max-w-full overflow-x-hidden transition-[padding] duration-200 ease-in-out",
+          // overflow-x-clip (not -hidden) prevents horizontal overflow WITHOUT
+          // establishing a scroll container, so the sticky AppHeader and any
+          // sticky module filter bars below it keep working against the viewport.
+          "min-w-0 flex-1 w-full max-w-full overflow-x-clip transition-[padding] duration-200 ease-in-out",
           desktopSidebarOpen ? "lg:pl-64" : "lg:pl-0",
         )}
       >
@@ -173,7 +176,7 @@ function DashboardShell({
           }}
         />
         <TrainingModeBanner />
-        <main className="min-h-[calc(100vh-4rem)] min-w-0 w-full max-w-full overflow-x-hidden p-4 lg:p-6">
+        <main className="min-h-[calc(100vh-var(--app-header-height))] min-w-0 w-full max-w-full overflow-x-clip p-4 lg:p-6">
           {children}
         </main>
       </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { BarChart3, FileSpreadsheet, LayoutDashboard, List } from "lucide-react";
+import { PageHeader } from "@/components/shared/page-header";
 
 const TABS = [
   { href: "/analysis/reports", label: "Reports", icon: FileSpreadsheet },
@@ -17,16 +18,17 @@ export default function AnalysisLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="flex flex-col gap-0">
-      {/* Section header */}
-      <div className="mb-2">
-        <h1 className="text-2xl font-bold text-foreground">Analysis</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Reports, dashboards, ad-hoc visualizations, and row-level line lists for program performance review.
-        </p>
+      {/* Section header — shared PageHeader family, consistent with every other module. */}
+      <div className="mb-4">
+        <PageHeader
+          title="Analysis"
+          description="Reports, dashboards, ad-hoc visualizations, and row-level line lists for program performance review."
+        />
       </div>
 
-      {/* Tab bar */}
-      <div className="mb-6 border-b border-border">
+      {/* Tab bar — sticky directly below the frozen app header so the analysis
+          tabs stay reachable while scrolling long dashboards/reports. */}
+      <div className="sticky top-[var(--app-header-height)] z-20 mb-6 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
         <nav className="-mb-px flex gap-0 overflow-x-auto">
           {TABS.map(({ href, label, icon: Icon }) => {
             const active =
