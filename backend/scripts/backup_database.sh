@@ -57,6 +57,22 @@ if [ -z "$DATABASE_URL" ]; then
   fail "DATABASE_URL is missing from $ENV_FILE"
 fi
 
+# Load optional off-site / alert config from .env so the (minimal) cron
+# environment still picks them up. A real environment variable takes precedence.
+for _v in BONASO_OFFSITE_S3_URI BONASO_OFFSITE_S3_ENDPOINT BONASO_OFFSITE_RCLONE_REMOTE BONASO_OFFSITE_SSH_DEST BONASO_ALERT_WEBHOOK BONASO_ALERT_COMMAND; do
+  if [ -z "${!_v:-}" ]; then
+    _val="$(grep -m1 "^${_v}=" "$ENV_FILE" | cut -d= -f2- || true)"
+    [ -n "$_val" ] && export "${_v}=${_val}"
+  fi
+done
+
+# Media + user-upload archive target (audit H3).
+ASSET_FILE="$BACKUP_DIR/bonasov1_assets_$TIMESTAMP.tar.gz"
+ASSET_DIRS=()
+[ -d "$ROOT_DIR/media" ] && ASSET_DIRS+=("media")
+[ -d "$ROOT_DIR/uploads" ] && ASSET_DIRS+=("uploads")
+ASSET_STATUS="skipped_no_dirs"
+
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 
@@ -100,7 +116,25 @@ JSON
 cp "$MANIFEST_FILE" "$LATEST_FILE"
 chmod 600 "$BACKUP_FILE" "$MANIFEST_FILE" "$LATEST_FILE"
 
-find "$BACKUP_DIR" -type f \( -name 'bonasov1_db_*.dump' -o -name 'bonasov1_db_*.json' \) -mtime "+$RETENTION_DAYS" -delete
+# ---- Media + uploads archive (audit H3) ----
+if [ "${#ASSET_DIRS[@]}" -gt 0 ]; then
+  if tar -czf "$ASSET_FILE" -C "$ROOT_DIR" "${ASSET_DIRS[@]}" 2>/dev/null; then
+    chmod 600 "$ASSET_FILE"
+    ASSET_STATUS="ok"
+    log "Asset backup: $ASSET_FILE ($(stat -c '%s' "$ASSET_FILE") bytes; dirs: ${ASSET_DIRS[*]})"
+  else
+    ASSET_STATUS="tar_failed"
+    log "WARNING: media/uploads archive failed."
+  fi
+else
+  log "WARNING: no media/uploads dirs found under $ROOT_DIR; skipping asset backup."
+fi
+
+# Files to replicate off-site: db dump, manifest, and the asset archive if made.
+PUSH_FILES=("$BACKUP_FILE" "$MANIFEST_FILE")
+[ "$ASSET_STATUS" = "ok" ] && PUSH_FILES+=("$ASSET_FILE")
+
+find "$BACKUP_DIR" -type f \( -name 'bonasov1_db_*.dump' -o -name 'bonasov1_db_*.json' -o -name 'bonasov1_assets_*.tar.gz' \) -mtime "+$RETENTION_DAYS" -delete
 
 log "Backup complete: $BACKUP_FILE"
 log "Manifest: $MANIFEST_FILE"
@@ -128,24 +162,26 @@ push_offsite() {
     command -v aws >/dev/null 2>&1 || { log "ERROR: aws CLI not installed but BONASO_OFFSITE_S3_URI is set."; return 1; }
     local endpoint_args=()
     [ -n "${BONASO_OFFSITE_S3_ENDPOINT:-}" ] && endpoint_args=(--endpoint-url "$BONASO_OFFSITE_S3_ENDPOINT")
-    log "Off-site (s3) -> $OFFSITE_S3_URI"
-    aws s3 cp "${endpoint_args[@]}" "$BACKUP_FILE" "$OFFSITE_S3_URI/" \
-      && aws s3 cp "${endpoint_args[@]}" "$MANIFEST_FILE" "$OFFSITE_S3_URI/" || return 1
+    log "Off-site (s3) -> $OFFSITE_S3_URI (${#PUSH_FILES[@]} files)"
+    for _f in "${PUSH_FILES[@]}"; do
+      aws s3 cp "${endpoint_args[@]}" "$_f" "$OFFSITE_S3_URI/" || return 1
+    done
     OFFSITE_STATUS="s3_ok"
     return 0
   fi
   if [ -n "$OFFSITE_RCLONE_REMOTE" ]; then
     command -v rclone >/dev/null 2>&1 || { log "ERROR: rclone not installed but BONASO_OFFSITE_RCLONE_REMOTE is set."; return 1; }
-    log "Off-site (rclone) -> $OFFSITE_RCLONE_REMOTE"
-    rclone copy "$BACKUP_FILE" "$OFFSITE_RCLONE_REMOTE" \
-      && rclone copy "$MANIFEST_FILE" "$OFFSITE_RCLONE_REMOTE" || return 1
+    log "Off-site (rclone) -> $OFFSITE_RCLONE_REMOTE (${#PUSH_FILES[@]} files)"
+    for _f in "${PUSH_FILES[@]}"; do
+      rclone copy "$_f" "$OFFSITE_RCLONE_REMOTE" || return 1
+    done
     OFFSITE_STATUS="rclone_ok"
     return 0
   fi
   if [ -n "$OFFSITE_SSH_DEST" ]; then
     command -v scp >/dev/null 2>&1 || { log "ERROR: scp not installed but BONASO_OFFSITE_SSH_DEST is set."; return 1; }
-    log "Off-site (scp) -> $OFFSITE_SSH_DEST"
-    scp -q -o BatchMode=yes "$BACKUP_FILE" "$MANIFEST_FILE" "$OFFSITE_SSH_DEST/" || return 1
+    log "Off-site (scp) -> $OFFSITE_SSH_DEST (${#PUSH_FILES[@]} files)"
+    scp -q -o BatchMode=yes "${PUSH_FILES[@]}" "$OFFSITE_SSH_DEST/" || return 1
     OFFSITE_STATUS="scp_ok"
     return 0
   fi
@@ -166,14 +202,18 @@ fi
 
 # Record off-site status into the manifest/latest for the health-check to read.
 if command -v python3 >/dev/null 2>&1; then
-  python3 - "$MANIFEST_FILE" "$LATEST_FILE" "$OFFSITE_STATUS" <<'PY' || true
-import json, sys
-manifest, latest, status = sys.argv[1], sys.argv[2], sys.argv[3]
+  python3 - "$MANIFEST_FILE" "$LATEST_FILE" "$OFFSITE_STATUS" "$ASSET_STATUS" "${ASSET_FILE:-}" <<'PY' || true
+import json, os, sys
+manifest, latest, status, asset_status, asset_file = sys.argv[1:6]
 for path in (manifest, latest):
     try:
         with open(path) as fh:
             data = json.load(fh)
         data["offsite_status"] = status
+        data["asset_status"] = asset_status
+        if asset_status == "ok" and asset_file and os.path.exists(asset_file):
+            data["asset_file"] = asset_file
+            data["asset_size_bytes"] = os.path.getsize(asset_file)
         with open(path, "w") as fh:
             json.dump(data, fh, indent=2)
     except Exception:
