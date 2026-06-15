@@ -1306,7 +1306,9 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
     def _build_indicator_plans(self, *, project, organization, quarter, period_start=None, period_end=None, with_data=False):
         """Resolve assigned indicators + targets (+ existing data) for the form."""
-        from projects.models import ProjectIndicator, ProjectIndicatorOrganizationTarget
+        from projects.models import (
+            ProjectIndicator, ProjectIndicatorOrganizationTarget, ProjectIndicatorAssignment,
+        )
         from projects.assignment_rules import get_assigned_indicator_ids_for_organization
 
         indicator_ids = get_assigned_indicator_ids_for_organization(
@@ -1314,10 +1316,22 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         )
         if not indicator_ids:
             return []
-        indicators = list(
+        # Workbook order follows the org's assignment sort_order (set from the
+        # uploaded targets workbook); indicators without one fall back to name.
+        sort_order = {}
+        for pia in ProjectIndicatorAssignment.objects.filter(
+            project_indicator__project=project,
+            organization_id=organization.id,
+            project_indicator__indicator_id__in=indicator_ids,
+            is_active=True,
+        ).select_related('project_indicator'):
+            order = (pia.assignment_metadata or {}).get('sort_order')
+            if isinstance(order, int):
+                sort_order.setdefault(pia.project_indicator.indicator_id, order)
+        indicators = sorted(
             Indicator.objects.filter(id__in=indicator_ids, is_active=True)
-            .exclude(canonical_indicator__isnull=False)
-            .order_by('name')
+            .exclude(canonical_indicator__isnull=False),
+            key=lambda ind: (sort_order.get(ind.id) is None, sort_order.get(ind.id, 0), ind.name or ''),
         )
         project_indicators = {
             pi.indicator_id: pi
