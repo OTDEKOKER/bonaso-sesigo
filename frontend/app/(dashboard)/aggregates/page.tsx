@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Calendar, Clock3, Download, Filter, Loader2, RefreshCcw, Search, Upload } from "lucide-react";
+import { Calendar, Clock3, Download, Filter, Loader2, RefreshCcw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -53,11 +53,6 @@ import {
   type AggregateValue,
   type AggregateEntryMatrixConfig,
 } from "@/lib/aggregates/aggregate-helpers";
-import {
-  AGGREGATE_IMPORT_REQUIRED_COLUMNS_HINT,
-  buildImportPayloadsFromFile,
-  groupImportPayloadsByScope,
-} from "@/lib/aggregates/aggregate-import";
 import { AggregateEntryDialog } from "@/components/aggregates/AggregateEntryDialog";
 import { AggregateAutoCalcDialog } from "@/components/aggregates/AggregateAutoCalcDialog";
 import { AggregateChartDialog } from "@/components/aggregates/AggregateChartDialog";
@@ -137,7 +132,6 @@ function AggregatesPageContent() {
   // Phase 6: projectFilter lifted out of useAggregateFilters so we can derive filterProjectDetail before the hook call
   const [projectFilter, setProjectFilter] = useState("all");
 
-  const importInputRef = useRef<HTMLInputElement | null>(null);
   const appliedUrlBaseFiltersRef = useRef(false);
   const appliedUrlPeriodFilterRef = useRef(false);
   const [urlBaseFiltersApplied, setUrlBaseFiltersApplied] = useState(false);
@@ -995,85 +989,6 @@ function AggregatesPageContent() {
     }
   };
 
-  const handleImport = async (file: File) => {
-    try {
-      const { payloads, failedCount: parseFailedCount, errors } =
-        await buildImportPayloadsFromFile({
-          file,
-          organizations,
-          projects,
-          indicators,
-          templates,
-          canReportAcrossOrganizations,
-          writableOrganizationIds,
-        });
-
-      if (errors.length > 0) {
-        const preview = errors.slice(0, 3).join(" ");
-        const moreIssues =
-          errors.length > 3 ? ` ${errors.length - 3} more issue(s) found.` : "";
-        const isReportWorkbookFormat = errors.some((message) =>
-          message.toLowerCase().includes("report-workbook") ||
-          message.toLowerCase().includes("report-style"),
-        );
-        toast({
-          title: "Import blocked",
-          description: isReportWorkbookFormat
-            ? `${preview}${moreIssues}`
-            : `${preview}${moreIssues} Required columns: ` +
-              `${AGGREGATE_IMPORT_REQUIRED_COLUMNS_HINT}. ` +
-              `Use Export to download a valid import template.`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (payloads.length === 0) {
-        toast({
-          title: "Invalid file",
-          description: "No rows found. Use Export to download the expected import template.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const grouped = groupImportPayloadsByScope(payloads);
-      let success = 0;
-      let failed = parseFailedCount;
-      const saveErrors: string[] = [];
-
-      for (const group of grouped) {
-        try {
-          const result = await aggregatesService.bulkCreate(group);
-          success += result.length;
-        } catch (error) {
-          failed += group.data.length;
-          if (saveErrors.length < 3) {
-            saveErrors.push(
-              error instanceof Error ? error.message : "One or more rows could not be saved.",
-            );
-          }
-        }
-      }
-
-      await mutate();
-      toast({
-        title: "Import complete",
-        description:
-          saveErrors.length > 0
-            ? `Imported ${success} rows. ${failed} failed. ${saveErrors.join(" ")}`
-            : `Imported ${success} rows. ${failed} failed.`,
-        variant: failed ? "destructive" : "default",
-      });
-    } catch (err) {
-      console.error("Failed to import aggregates", err);
-      toast({
-        title: "Import failed",
-        description: "Unable to import aggregate file.",
-        variant: "destructive",
-      });
-    }
-  };
 
   const createIndicatorDraft = (indicatorId: string): AggregateEntryDraft => {
     const config = indicatorConfigs[indicatorId] || getAggregateEntryMatrixConfig();
@@ -1382,32 +1297,11 @@ function AggregatesPageContent() {
                 onImported={() => { void mutate(); }}
               />
             ) : null}
-            {can("aggregates", "create") ? (
-              <Button variant="outline" onClick={() => importInputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" /> Import (CSV)
-              </Button>
-            ) : null}
             {can("aggregates", "export") ? (
               <Button variant="outline" onClick={handleExport}>
                 <Download className="mr-2 h-4 w-4" /> Export
               </Button>
             ) : null}
-
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void handleImport(file);
-                }
-                if (importInputRef.current) {
-                  importInputRef.current.value = "";
-                }
-              }}
-            />
 
             {autoCalcAvailable ? (
               <AggregateAutoCalcDialog
