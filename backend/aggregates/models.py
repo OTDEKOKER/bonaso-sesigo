@@ -115,9 +115,11 @@ class AggregateFact(models.Model):
     status = models.CharField(max_length=20, db_index=True)
     is_training = models.BooleanField(default=False)
 
-    primary = models.CharField(max_length=128, default=ALL)    # key population / category
-    secondary = models.CharField(max_length=64, default=ALL)   # sex
-    band = models.CharField(max_length=64, default=TOTAL_BAND)  # raw age band
+    # Generous lengths: disaggregate labels can be long free-text (e.g. full
+    # message/category names). Not indexed individually, so width is cheap.
+    primary = models.CharField(max_length=512, default=ALL)     # key population / category
+    secondary = models.CharField(max_length=255, default=ALL)   # sex / second dimension
+    band = models.CharField(max_length=255, default=TOTAL_BAND)  # raw age band
     value = models.DecimalField(max_digits=20, decimal_places=4, default=0)
 
     class Meta:

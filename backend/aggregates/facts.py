@@ -97,9 +97,11 @@ def build_facts_for_aggregate(aggregate) -> list[AggregateFact]:
             period_end=aggregate.period_end,
             status=aggregate.status,
             is_training=is_training,
-            primary=primary,
-            secondary=secondary,
-            band=band,
+            # Truncate defensively so a pathologically long label can never
+            # break the sync/backfill (matches the model column widths).
+            primary=primary[:512],
+            secondary=secondary[:255],
+            band=band[:255],
             value=amount,
         ))
     return rows
