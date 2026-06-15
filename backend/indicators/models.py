@@ -2,6 +2,35 @@ import re
 
 from django.db import models
 
+# Single-year ages (e.g. "12") are no longer a supported disaggregation —
+# only group ranges ("10-14"), the open band ("65+") and labels (e.g. "AYP").
+_SINGLE_YEAR_AGE = re.compile(r"^\s*\d{1,2}\s*$")
+
+
+def _is_age_dimension(dim) -> bool:
+    if not isinstance(dim, dict):
+        return False
+    tokens = re.split(r"[^a-z0-9]+", f"{dim.get('key','')} {dim.get('label','')}".lower())
+    return "age" in tokens
+
+
+def strip_single_year_age_values(config):
+    """Remove single-year age values from any age dimension of a disaggregation
+    config (groups-only policy). Never empties an age dimension by stripping
+    alone. Returns the (possibly mutated) config; safe on non-dict input."""
+    if not isinstance(config, dict):
+        return config
+    for dim in (config.get("dimensions") or []):
+        if not _is_age_dimension(dim):
+            continue
+        values = dim.get("values")
+        if not isinstance(values, list):
+            continue
+        kept = [v for v in values if not _SINGLE_YEAR_AGE.match(str(v))]
+        if kept and len(kept) != len(values):
+            dim["values"] = kept
+    return config
+
 
 class Indicator(models.Model):
     """Indicator model for tracking metrics."""
@@ -91,6 +120,14 @@ class Indicator(models.Model):
 
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        # Guard: single-year ages are no longer supported; strip them from the
+        # disaggregation config on every save (UI, API, admin, scripts, imports).
+        self.aggregate_disaggregation_config = strip_single_year_age_values(
+            self.aggregate_disaggregation_config
+        )
+        super().save(*args, **kwargs)
 
     @property
     def canonical_id(self) -> int:
