@@ -176,6 +176,12 @@ def resolve_matrix_config(indicator) -> MatrixConfig:
     primary (and possibly secondary) axes, the sex dimension is preferred as the
     secondary axis, and the age dimension becomes the band (column) axis.
     """
+    # Percentage indicators are a single rate, not a sex/age count breakdown:
+    # summing disaggregate cells into a total is meaningless and would breach the
+    # "percentage cannot exceed 100" rule. Render a single value cell.
+    if getattr(indicator, "type", "") == "percentage":
+        return MatrixConfig(False, "Indicator", [], "Category", [], "Value", [])
+
     config = getattr(indicator, "aggregate_disaggregation_config", None) or {}
     dimensions = config.get("dimensions") if isinstance(config, dict) else None
     enabled = bool(config.get("enabled", True)) if isinstance(config, dict) else False
