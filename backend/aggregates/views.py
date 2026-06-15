@@ -765,6 +765,54 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             })
         return Response(results)
 
+    @action(detail=False, methods=['get'])
+    def rollup(self, request):
+        """Server-side aggregation over the AggregateFact table (SQL GROUP BY).
+
+        Query params:
+          group_by   csv of indicator,sex,age,kp,organization,project (default: indicator)
+          status     csv (default: approved)
+          fold_ages  fold single-year ages into 5-year groups (default: true when age grouped)
+          project, organization, indicator, date_from, date_to  optional filters
+        Returns the compact grouped totals instead of every aggregate row.
+        """
+        from . import rollups
+
+        qs = rollups.scoped_fact_queryset(self, request)
+
+        status_param = request.query_params.get('status', 'approved')
+        statuses = [s.strip() for s in str(status_param).split(',') if s.strip()]
+        if statuses and 'all' not in statuses:
+            qs = qs.filter(status__in=statuses)
+
+        project_id = request.query_params.get('project')
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        organization_id = request.query_params.get('organization')
+        if organization_id:
+            qs = qs.filter(organization_id=organization_id)
+        indicator_id = request.query_params.get('indicator')
+        if indicator_id:
+            qs = qs.filter(canonical_indicator_id=indicator_id)
+        date_from = request.query_params.get('date_from')
+        if date_from:
+            qs = qs.filter(period_start__gte=date_from)
+        date_to = request.query_params.get('date_to')
+        if date_to:
+            qs = qs.filter(period_end__lte=date_to)
+
+        group_by = [g.strip() for g in str(request.query_params.get('group_by', 'indicator')).split(',') if g.strip()]
+        fold_ages_param = request.query_params.get('fold_ages')
+        fold_ages = _is_truthy(fold_ages_param) if fold_ages_param is not None else True
+
+        rows = rollups.rollup_facts(qs, group_by=group_by, fold_ages=fold_ages)
+        # Decimals -> JSON-friendly numbers.
+        for row in rows:
+            if 'value' in row and row['value'] is not None:
+                num = float(row['value'])
+                row['value'] = int(num) if num.is_integer() else num
+        return Response({'group_by': group_by, 'count': len(rows), 'results': rows})
+
     def _note_template_metadata(self, notes: str):
         text = str(notes or "").strip()
         if not text:

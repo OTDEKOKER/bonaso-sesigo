@@ -69,3 +69,63 @@ class Aggregate(models.Model):
     
     def __str__(self):
         return f"{self.indicator.code} - {self.organization.name} ({self.period_start})"
+
+
+class AggregateFact(models.Model):
+    """Flattened, query-optimised projection of one Aggregate's ``value``.
+
+    Each ``Aggregate.value`` (free-form JSON) is exploded into one row per
+    numeric disaggregate leaf — ``(primary, secondary, band, value)`` — so
+    rollups become a pure SQL ``GROUP BY`` with indexes instead of pulling every
+    row to the client and summing in JavaScript.
+
+    Invariant: the fact rows for an aggregate sum to that aggregate's
+    disaggregated total (disaggregates preferred, else male/female, else the
+    scalar total) — never both, so leaves never double-count.
+
+    This table is *derived* and fully rebuildable from ``Aggregate`` (see
+    ``aggregates.facts.sync_facts_for_aggregate`` + the post_save/delete signals
+    and the ``backfill_aggregate_facts`` command). It is safe to truncate and
+    rebuild. Columns are denormalised so rollup queries need no joins and can
+    reuse the same project/org scope filters as the main viewset.
+    """
+
+    TOTAL_BAND = "Total"
+    ALL = "All"
+
+    aggregate = models.ForeignKey(
+        Aggregate, on_delete=models.CASCADE, related_name="facts"
+    )
+    # Denormalised dimensions (no joins needed at rollup time).
+    indicator = models.ForeignKey(
+        'indicators.Indicator', on_delete=models.CASCADE, related_name='+'
+    )
+    # Alias-safe rollup key: the canonical indicator (self when not a duplicate).
+    canonical_indicator = models.ForeignKey(
+        'indicators.Indicator', on_delete=models.CASCADE, related_name='+'
+    )
+    project = models.ForeignKey(
+        'projects.Project', on_delete=models.CASCADE, related_name='+'
+    )
+    organization = models.ForeignKey(
+        'organizations.Organization', on_delete=models.CASCADE, related_name='+'
+    )
+    period_start = models.DateField()
+    period_end = models.DateField()
+    status = models.CharField(max_length=20, db_index=True)
+    is_training = models.BooleanField(default=False)
+
+    primary = models.CharField(max_length=128, default=ALL)    # key population / category
+    secondary = models.CharField(max_length=64, default=ALL)   # sex
+    band = models.CharField(max_length=64, default=TOTAL_BAND)  # raw age band
+    value = models.DecimalField(max_digits=20, decimal_places=4, default=0)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['canonical_indicator', 'status', 'is_training'], name='aggfact_ind_status_idx'),
+            models.Index(fields=['project', 'organization', 'period_start'], name='aggfact_scope_period_idx'),
+            models.Index(fields=['status', 'is_training', 'period_start'], name='aggfact_status_period_idx'),
+        ]
+
+    def __str__(self):
+        return f"fact[{self.aggregate_id}] {self.primary}/{self.secondary}/{self.band}={self.value}"
