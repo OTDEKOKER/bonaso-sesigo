@@ -1,5 +1,29 @@
 # BONASO / SESIGO — Full System Audit (2026-06-16)
 
+> **2026-06-16 remediation update (commits `fe919d32`, `3e2679b2`).** Built and
+> committed on branch `rollout-blockers-remediation-2026-06-05`:
+>
+> - **Backup management + compliance** (admin-only): `/api/system/backups/{status,
+>   generate,download}` — secure streaming download (no FS paths exposed), audit-
+>   logged (`backup_generated`/`backup_downloaded` with user, IP, time, filename).
+>   System Status "Backups" card + admin overdue banner; 7/14-day green/amber/red
+>   compliance derived from the audit stream; weekly `send_backup_download_reminder`
+>   command (reminder only — never emails the dump).
+> - **Bulk-delete safety** (Aggregate Review Queue): flagged rows excluded from bulk
+>   delete (BE+FE); modal states "Flagged records will not be deleted."
+> - **Disaster recovery / restore** (`recovery` app): validate-on-web, apply-on-
+>   server. Supervised `manage.py restore_backup` enforces validation → LIVE/TRAINING
+>   contamination guard (`--override OVERRIDE`, audited) → typed `--confirm RESTORE` →
+>   mandatory pre-restore safety backup → auto-rollback on failure. `RestoreHistory`
+>   table + `/api/system/restore/{validate,history}` (super-admin, never applies).
+> - **Edge/DNS** documented in `EDGE_DNS_OFFSITE_REMEDIATION_2026-06-16.md`: host
+>   nginx clean; `:445` is an upstream device; `www` DNS record missing; offsite is
+>   env-gated and needs a destination + creds.
+> - **Validation:** `manage.py check` clean, no migration drift, **301 backend tests
+>   pass**, `tsc` clean, lint 0 errors, `npm run build` success.
+> - **Still non-code:** activate offsite target, remove upstream `:445`, add `www`
+>   DNS. Restore apply is intentionally CLI-only (operator-supervised).
+
 **Auditor:** Principal architecture / security / QA pass
 **Scope:** Module map, automated validation, and targeted verification of the 5
 known priority risk areas from the prior production audit.
