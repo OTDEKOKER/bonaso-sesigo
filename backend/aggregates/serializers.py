@@ -31,6 +31,20 @@ class AggregateSerializer(serializers.ModelSerializer):
             'updated_at',
             'created_by',
         ]
+        # Drop DRF's auto-generated UniqueTogetherValidator for
+        # (indicator, project, organization, period_start, period_end).
+        #
+        # Every write path (single create, bulk_create, workbook import) routes
+        # through ``_upsert_pending_aggregate`` which does an ``update_or_create``
+        # on exactly this natural key, and the model carries a DB-level unique
+        # constraint as the hard backstop. The serializer-level validator is not
+        # only redundant — it is actively harmful: it makes ``is_valid()`` reject
+        # any row whose natural key already exists, so a re-submission/re-upload
+        # (the idempotent "update existing" case) fails with a confusing 400 and
+        # the upsert never runs. Removing it lets re-uploads update in place
+        # while the DB constraint still guarantees no duplicate rows. See
+        # IMP-1 / WorkbookDuplicatePreventionTests.
+        validators = []
 
     def validate(self, attrs):
         """Server-side data-quality guards (readiness blocker C4 / risk R1).

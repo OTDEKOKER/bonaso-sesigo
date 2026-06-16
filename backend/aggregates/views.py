@@ -144,7 +144,21 @@ class AggregateFilterSet(django_filters.FilterSet):
 
 class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     """ViewSet for managing aggregate data."""
-    
+
+    # Outcome labels returned by :meth:`_upsert_pending_aggregate`. They drive
+    # the create/update/skip/reject feedback surfaced to uploaders (IMP-1) and
+    # let the upsert avoid pointless writes on identical re-submissions.
+    OUTCOME_CREATED = 'created'
+    OUTCOME_UPDATED = 'updated'
+    OUTCOME_UNCHANGED = 'unchanged'
+    OUTCOME_RESET_FROM_REVIEW = 'reset_from_review'
+    # Statuses that represent human review work already done on a record. An
+    # identical re-upload must NOT knock these back to ``pending`` (that would
+    # discard the reviewer's decision and spam re-review notifications); a
+    # *changed* re-upload still resets them but is reported separately so a
+    # reviewer knows a previously-signed-off record moved.
+    REVIEW_LOCKED_STATUSES = {'reviewed', 'approved'}
+
     queryset = Aggregate.objects.all()
     serializer_class = AggregateSerializer
     pagination_class = AggregatePagination
@@ -199,7 +213,41 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             submitter=aggregate.created_by,
             status_value=status_value,
         )
-    
+
+    def _record_aggregate_change(self, aggregate, *, outcome, previous_status, old_value, source):
+        """Append one audit row for a programme-data write (IMP-1 audit trail).
+
+        Records the full before/after picture every reporting investigation
+        needs — old value, new value, previous status, new status, the acting
+        user (via ``request``), the timestamp (``AuditEvent.created_at``) and the
+        ``source`` of the change (single edit, bulk, workbook import, …) — so the
+        Pending→Reviewed→Approved→(change)→Pending lifecycle of approved data is
+        fully reconstructable. No row is written for a no-op ``unchanged`` write.
+        """
+        if outcome == self.OUTCOME_UNCHANGED:
+            return
+        record_audit_event(
+            action='create' if outcome == self.OUTCOME_CREATED else 'update',
+            request=self.request,
+            object_type='aggregate',
+            object_id=aggregate.id,
+            organization=aggregate.organization,
+            project=aggregate.project,
+            description=(
+                f'Aggregate {aggregate.id} {outcome} via {source} '
+                f'(status {previous_status or "new"} → {aggregate.status}).'
+            ),
+            metadata={
+                'indicator_id': aggregate.indicator_id,
+                'outcome': outcome,
+                'source': source,
+                'previous_status': previous_status,
+                'new_status': aggregate.status,
+                'old_value': old_value,
+                'new_value': aggregate.value,
+            },
+        )
+
     def get_queryset(self):
         queryset = Aggregate.objects.select_related(
             'indicator', 'project', 'organization', 'created_by', 'reviewed_by'
@@ -257,6 +305,36 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied('Selected indicator is not assigned to this organization for the project.')
     
+    @staticmethod
+    def _values_equal(a, b) -> bool:
+        """Order-insensitive equality for aggregate JSON ``value`` payloads.
+
+        The capture UI, workbook import and validator all normalise values
+        (whole floats → int), so a canonical JSON dump is a reliable identity
+        check for "did this re-submission actually change anything".
+        """
+        try:
+            return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
+        except TypeError:
+            return a == b
+
+    def classify_upsert(self, *, indicator, project, organization, period_start, period_end, value, notes=""):
+        """Predict the outcome of an upsert without writing — powers dry-run.
+
+        Returns one of the ``OUTCOME_*`` labels.
+        """
+        existing = Aggregate.objects.filter(
+            indicator=indicator, project=project, organization=organization,
+            period_start=period_start, period_end=period_end,
+        ).first()
+        if existing is None:
+            return self.OUTCOME_CREATED
+        if self._values_equal(existing.value, value) and (notes or "") == (existing.notes or ""):
+            return self.OUTCOME_UNCHANGED
+        if existing.status in self.REVIEW_LOCKED_STATUSES:
+            return self.OUTCOME_RESET_FROM_REVIEW
+        return self.OUTCOME_UPDATED
+
     def _upsert_pending_aggregate(
         self,
         *,
@@ -267,7 +345,23 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         period_end,
         value,
         notes,
+        source='api',
+        skip_unchanged=True,
     ):
+        """Idempotent upsert of one pending aggregate on its natural key.
+
+        Returns ``(aggregate, outcome)`` where ``outcome`` is an ``OUTCOME_*``
+        label. When ``skip_unchanged`` and the incoming payload is byte-identical
+        to the stored record, the write is skipped entirely so an identical
+        re-upload (offline replay, double-click, re-sent file) never resets the
+        review status, re-fires notifications or churns the derived fact rows.
+
+        Permanent best-practice rule (IMP-1): a *real* change to an existing
+        record always returns it to ``pending`` — the prior approval applied to
+        the prior value only — and an audit row capturing the before/after is
+        written here so every write path (single, bulk, workbook import, future
+        importers) is consistent without each caller re-implementing it.
+        """
         existing = Aggregate.objects.filter(
             indicator=indicator,
             project=project,
@@ -275,7 +369,17 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             period_start=period_start,
             period_end=period_end,
         ).first()
+
+        if (
+            existing is not None
+            and skip_unchanged
+            and self._values_equal(existing.value, value)
+            and (notes or "") == (existing.notes or "")
+        ):
+            return existing, self.OUTCOME_UNCHANGED
+
         previous_status = existing.status if existing else None
+        old_value = existing.value if existing else None
         aggregate, created = Aggregate.objects.update_or_create(
             indicator=indicator,
             project=project,
@@ -293,7 +397,19 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         )
         if previous_status == 'approved':
             sync_project_indicator_total(aggregate.project_id, aggregate.indicator_id)
-        return aggregate, created
+
+        if created:
+            outcome = self.OUTCOME_CREATED
+        elif previous_status in self.REVIEW_LOCKED_STATUSES:
+            outcome = self.OUTCOME_RESET_FROM_REVIEW
+        else:
+            outcome = self.OUTCOME_UPDATED
+
+        self._record_aggregate_change(
+            aggregate, outcome=outcome, previous_status=previous_status,
+            old_value=old_value, source=source,
+        )
+        return aggregate, outcome
 
     def perform_create(self, serializer):
         validated = serializer.validated_data
@@ -302,7 +418,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             organization=validated['organization'],
             indicator=validated['indicator'],
         )
-        aggregate, _created = self._upsert_pending_aggregate(
+        aggregate, outcome = self._upsert_pending_aggregate(
             indicator=validated['indicator'],
             project=validated['project'],
             organization=validated['organization'],
@@ -310,36 +426,63 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             period_end=validated['period_end'],
             value=validated.get('value'),
             notes=validated.get('notes'),
+            source='single_create',
         )
         serializer.instance = aggregate
-        self._notify_pending_submission(aggregate)
-        record_audit_event(
-            action='create' if _created else 'update',
-            request=self.request,
-            object_type='aggregate',
-            object_id=aggregate.id,
-            organization=aggregate.organization,
-            project=aggregate.project,
-            description=f'Aggregate {aggregate.id} submitted for review.',
-            metadata={'indicator_id': aggregate.indicator_id},
-        )
+        # An identical re-submission is a no-op: don't re-notify reviewers (the
+        # audit row is skipped inside the upsert). A real change always landed
+        # the record back in ``pending`` for re-review.
+        if outcome != self.OUTCOME_UNCHANGED:
+            self._notify_pending_submission(aggregate)
 
     def perform_update(self, serializer):
-        next_project = serializer.validated_data.get('project', serializer.instance.project)
-        next_organization = serializer.validated_data.get('organization', serializer.instance.organization)
-        next_indicator = serializer.validated_data.get('indicator', serializer.instance.indicator)
+        instance = serializer.instance
+        validated = serializer.validated_data
+        next_project = validated.get('project', instance.project)
+        next_organization = validated.get('organization', instance.organization)
+        next_indicator = validated.get('indicator', instance.indicator)
         self._assert_write_scope(
             project=next_project,
             organization=next_organization,
             indicator=next_indicator,
         )
-        previous_status = serializer.instance.status
-        aggregate = serializer.save(
-            status='pending',
-            reviewed_at=None,
-            reviewed_by=None,
+        previous_status = instance.status
+        old_value = instance.value
+
+        # Permanent best-practice rule (IMP-1): a *real* change to programme data
+        # invalidates any prior review/approval — the approval applied to the
+        # prior value only — so the record returns to ``pending`` for re-review.
+        # A no-op edit (e.g. notes only, identical value) preserves the existing
+        # status so an approved record is not pointlessly bounced. This mirrors
+        # _upsert_pending_aggregate so direct edit and import behave identically.
+        new_value = validated.get('value', instance.value)
+        key_changed = (
+            next_project.id != instance.project_id
+            or next_organization.id != instance.organization_id
+            or next_indicator.id != instance.indicator_id
+            or validated.get('period_start', instance.period_start) != instance.period_start
+            or validated.get('period_end', instance.period_end) != instance.period_end
         )
-        self._notify_pending_submission(aggregate)
+        needs_rereview = key_changed or not self._values_equal(old_value, new_value)
+
+        if needs_rereview:
+            aggregate = serializer.save(status='pending', reviewed_at=None, reviewed_by=None)
+        else:
+            aggregate = serializer.save()
+
+        if needs_rereview:
+            self._notify_pending_submission(aggregate)
+            if previous_status in self.REVIEW_LOCKED_STATUSES:
+                outcome = self.OUTCOME_RESET_FROM_REVIEW
+            else:
+                outcome = self.OUTCOME_UPDATED
+        else:
+            outcome = self.OUTCOME_UNCHANGED
+
+        self._record_aggregate_change(
+            aggregate, outcome=outcome, previous_status=previous_status,
+            old_value=old_value, source='direct_edit',
+        )
         if previous_status == 'approved' or aggregate.status == 'approved':
             sync_project_indicator_total(aggregate.project_id, aggregate.indicator_id)
 
@@ -547,7 +690,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             )
 
         if save_aggregate:
-            aggregate, _created = self._upsert_pending_aggregate(
+            aggregate, outcome = self._upsert_pending_aggregate(
                 indicator=output_indicator,
                 project=project,
                 organization=organization,
@@ -558,8 +701,11 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                     f"Auto-calculated from source indicator {source_indicator_id} "
                     f"using operator '{operator}' and distinct-by '{count_distinct}'."
                 ),
+                source='interaction_recompute',
             )
-            self._notify_pending_submission(aggregate)
+            # Skip re-notifying when the recompute produced the identical value.
+            if outcome != self.OUTCOME_UNCHANGED:
+                self._notify_pending_submission(aggregate)
             aggregate_payload = AggregateSerializer(aggregate).data
 
         return Response(
@@ -618,9 +764,22 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         results = []
         created_count = 0
         updated_count = 0
+        unchanged_count = 0
+        reset_from_review_count = 0
+        # Detect indicators sent more than once in the same payload. update_or_create
+        # makes the later row silently win; we still process them (last value
+        # wins, as the user most likely intends) but report the collision so a
+        # duplicated row in the source is never swallowed without a trace.
+        seen_indicators = set()
+        duplicate_indicators = []
         try:
             with transaction.atomic():
                 for item in data:
+                    raw_indicator = item.get('indicator')
+                    if raw_indicator in seen_indicators:
+                        duplicate_indicators.append(raw_indicator)
+                    else:
+                        seen_indicators.add(raw_indicator)
                     serializer = AggregateSerializer(data={
                         'indicator': item.get('indicator'),
                         'project': project_id,
@@ -640,7 +799,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                         organization=validated['organization'],
                         indicator=validated['indicator'],
                     )
-                    aggregate, created = self._upsert_pending_aggregate(
+                    aggregate, outcome = self._upsert_pending_aggregate(
                         indicator=validated['indicator'],
                         project=validated['project'],
                         organization=validated['organization'],
@@ -648,12 +807,20 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                         period_end=validated['period_end'],
                         value=validated.get('value'),
                         notes=validated.get('notes'),
+                        source='bulk_create',
                     )
-                    if created:
+                    if outcome == self.OUTCOME_CREATED:
                         created_count += 1
+                    elif outcome == self.OUTCOME_UNCHANGED:
+                        unchanged_count += 1
+                    elif outcome == self.OUTCOME_RESET_FROM_REVIEW:
+                        reset_from_review_count += 1
+                        updated_count += 1
                     else:
                         updated_count += 1
-                    self._notify_pending_submission(aggregate)
+                    # Only ping reviewers when something actually changed.
+                    if outcome != self.OUTCOME_UNCHANGED:
+                        self._notify_pending_submission(aggregate)
                     results.append(AggregateSerializer(aggregate).data)
         except APIException:
             # DRF exceptions carry their own correct status (PermissionDenied →
@@ -669,6 +836,9 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             {
                 'created': created_count,
                 'updated': updated_count,
+                'unchanged': unchanged_count,
+                'reset_from_review': reset_from_review_count,
+                'duplicate_indicators_in_payload': duplicate_indicators,
                 'results': results,
             },
             status=status.HTTP_201_CREATED,
@@ -1498,26 +1668,61 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             'indicators_failed': len(errors),
         }
 
+        def _label(validated):
+            ind = validated['indicator']
+            return getattr(ind, 'code', None) or getattr(ind, 'name', None) or f'Indicator {ind.id}'
+
         if dry_run:
-            return Response({'dry_run': True, 'summary': summary, 'errors': errors},
+            # Preview the exact effect of importing — created vs updated vs
+            # unchanged vs records that would be knocked back from a reviewed/
+            # approved state — so the user can decide before committing (IMP-1).
+            planned = {self.OUTCOME_CREATED: 0, self.OUTCOME_UPDATED: 0,
+                       self.OUTCOME_UNCHANGED: 0, self.OUTCOME_RESET_FROM_REVIEW: 0}
+            preview = []
+            for validated in to_write:
+                outcome = self.classify_upsert(
+                    indicator=validated['indicator'], project=validated['project'],
+                    organization=validated['organization'], period_start=validated['period_start'],
+                    period_end=validated['period_end'], value=validated.get('value'), notes='',
+                )
+                planned[outcome] += 1
+                preview.append({'indicator': _label(validated), 'outcome': outcome})
+            summary.update({
+                'to_create': planned[self.OUTCOME_CREATED],
+                'to_update': planned[self.OUTCOME_UPDATED],
+                'unchanged': planned[self.OUTCOME_UNCHANGED],
+                'to_reset_from_review': planned[self.OUTCOME_RESET_FROM_REVIEW],
+            })
+            return Response({'dry_run': True, 'summary': summary, 'errors': errors, 'preview': preview},
                             status=status.HTTP_200_OK)
         if errors and not to_write:
             return Response({'error': 'No rows could be imported.', 'summary': summary, 'errors': errors},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        created = updated = 0
+        counts = {self.OUTCOME_CREATED: 0, self.OUTCOME_UPDATED: 0,
+                  self.OUTCOME_UNCHANGED: 0, self.OUTCOME_RESET_FROM_REVIEW: 0}
+        reset_indicators = []
         with transaction.atomic():
             for validated in to_write:
-                aggregate, was_created = self._upsert_pending_aggregate(
+                aggregate, outcome = self._upsert_pending_aggregate(
                     indicator=validated['indicator'], project=validated['project'],
                     organization=validated['organization'], period_start=validated['period_start'],
                     period_end=validated['period_end'], value=validated.get('value'), notes='',
+                    source='workbook_import',
                 )
-                created += int(was_created)
-                updated += int(not was_created)
-                self._notify_pending_submission(aggregate)
-        summary['created'] = created
-        summary['updated'] = updated
+                counts[outcome] += 1
+                if outcome == self.OUTCOME_RESET_FROM_REVIEW:
+                    reset_indicators.append(_label(validated))
+                # Identical re-uploads are no-ops; don't re-notify reviewers.
+                if outcome != self.OUTCOME_UNCHANGED:
+                    self._notify_pending_submission(aggregate)
+        # ``updated`` keeps its historical meaning (every existing row touched),
+        # with the review-reset subset broken out so reviewers are alerted.
+        summary['created'] = counts[self.OUTCOME_CREATED]
+        summary['updated'] = counts[self.OUTCOME_UPDATED] + counts[self.OUTCOME_RESET_FROM_REVIEW]
+        summary['unchanged'] = counts[self.OUTCOME_UNCHANGED]
+        summary['reset_from_review'] = counts[self.OUTCOME_RESET_FROM_REVIEW]
+        summary['reset_from_review_indicators'] = reset_indicators
         return Response({'dry_run': False, 'summary': summary, 'errors': errors},
                         status=status.HTTP_201_CREATED)
 

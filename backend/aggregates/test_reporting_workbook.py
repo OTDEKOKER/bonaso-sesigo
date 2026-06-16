@@ -357,3 +357,275 @@ class WorkbookRoundTripTests(_BaseSetup):
             expected = entered[(int(iid), kind, primary, secondary, band)]
             self.assertEqual(form2[cell].value, expected,
                              f"cell {cell} for indicator {iid} did not round-trip")
+
+
+class WorkbookDuplicatePreventionTests(_BaseSetup):
+    """Idempotency + duplicate safeguards for the reporting-workbook importer
+    (IMP-1): re-uploading the same file must not create duplicate rows, inflate
+    analytics, or silently discard a reviewer's sign-off, and the preview must
+    tell the user exactly what an import will create/update/skip."""
+
+    def _filled_workbook_bytes(self, value=7):
+        """A SESIGO workbook with ``value`` typed into every input cell."""
+        blank = self._download_blank().content
+        wb = load_workbook(BytesIO(blank))
+        cellmap, form = wb[rw.SHEET_CELLMAP], wb[rw.SHEET_FORM]
+        for r in cellmap.iter_rows(min_row=2, values_only=True):
+            if r[0] is None:
+                continue
+            form[r[6].split("!", 1)[1]] = value
+        out = BytesIO()
+        wb.save(out)
+        return out.getvalue()
+
+    def _import(self, content, name="filled.xlsx", **extra):
+        self.client.force_authenticate(self.officer)
+        upload = BytesIO(content)
+        upload.name = name
+        data = {"file": upload}
+        data.update(extra)
+        return self.client.post(IMPORT_URL, data, format="multipart")
+
+    def test_reupload_is_idempotent_no_duplicate_rows(self):
+        content = self._filled_workbook_bytes()
+
+        first = self._import(content)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertEqual(first.data["summary"]["created"], 2)
+        rows_after_first = Aggregate.objects.count()
+
+        # Re-upload the identical file: no new rows, everything "unchanged".
+        second = self._import(content)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED, second.data)
+        self.assertEqual(Aggregate.objects.count(), rows_after_first)
+        self.assertEqual(second.data["summary"]["created"], 0)
+        self.assertEqual(second.data["summary"]["updated"], 0)
+        self.assertEqual(second.data["summary"]["unchanged"], 2)
+
+    def test_reupload_preserves_approved_status(self):
+        content = self._filled_workbook_bytes()
+        self._import(content)
+
+        # A manager approves one of the imported records.
+        agg = Aggregate.objects.get(indicator=self.matrix, project=self.project, organization=self.org)
+        agg.status = "approved"
+        agg.save(update_fields=["status"])
+
+        # Re-uploading the *same* numbers must not knock the approval back.
+        second = self._import(content)
+        self.assertEqual(second.data["summary"]["unchanged"], 2)
+        agg.refresh_from_db()
+        self.assertEqual(agg.status, "approved")
+
+    def test_changed_reupload_resets_reviewed_record_and_reports_it(self):
+        content = self._filled_workbook_bytes(value=7)
+        self._import(content)
+        agg = Aggregate.objects.get(indicator=self.matrix, project=self.project, organization=self.org)
+        agg.status = "approved"
+        agg.save(update_fields=["status"])
+
+        # Different numbers => the approved record is legitimately re-opened for
+        # review, but the import reports it so reviewers are not surprised.
+        changed = self._import(self._filled_workbook_bytes(value=9))
+        summary = changed.data["summary"]
+        self.assertEqual(summary["reset_from_review"], 1)
+        self.assertIn(self.matrix.code, summary["reset_from_review_indicators"])
+        agg.refresh_from_db()
+        self.assertEqual(agg.status, "pending")
+
+    def test_dry_run_preview_classifies_each_indicator(self):
+        content = self._filled_workbook_bytes(value=7)
+        # First import the plain indicator's record so the dry-run sees a mix of
+        # create (matrix) and unchanged (plain)… by importing everything first.
+        self._import(content)
+
+        preview = self._import(content, dry_run="true")
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertTrue(preview.data["dry_run"])
+        summary = preview.data["summary"]
+        # Nothing changed since the prior import: all unchanged, no writes.
+        self.assertEqual(summary["unchanged"], 2)
+        self.assertEqual(summary["to_create"], 0)
+        self.assertEqual(summary["to_update"], 0)
+        outcomes = {p["outcome"] for p in preview.data["preview"]}
+        self.assertEqual(outcomes, {"unchanged"})
+        # Dry-run must not have written anything.
+        self.assertEqual(Aggregate.objects.count(), 2)
+
+
+class BulkCreateDuplicateTests(_BaseSetup):
+    """The bulk_create endpoint must upsert (never duplicate) and report when
+    the same indicator is sent twice in one payload."""
+
+    BULK_URL = "/api/aggregates/bulk_create/"
+
+    def _payload(self, rows):
+        return {
+            "project": self.project.id, "organization": self.org.id,
+            "period_start": Q3_START.isoformat(), "period_end": Q3_END.isoformat(),
+            "data": rows,
+        }
+
+    def test_duplicate_indicator_in_payload_is_reported(self):
+        self.client.force_authenticate(self.officer)
+        resp = self.client.post(self.BULK_URL, self._payload([
+            {"indicator": self.plain.id, "value": 5},
+            {"indicator": self.plain.id, "value": 8},  # duplicate row, last wins
+        ]), format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        # Only one row exists for the indicator despite two payload entries.
+        self.assertEqual(
+            Aggregate.objects.filter(indicator=self.plain, project=self.project, organization=self.org).count(),
+            1,
+        )
+        self.assertIn(self.plain.id, resp.data["duplicate_indicators_in_payload"])
+
+    def test_identical_resubmit_counts_as_unchanged(self):
+        self.client.force_authenticate(self.officer)
+        rows = [{"indicator": self.plain.id, "value": 5}]
+        first = self.client.post(self.BULK_URL, self._payload(rows), format="json")
+        self.assertEqual(first.data["created"], 1)
+        second = self.client.post(self.BULK_URL, self._payload(rows), format="json")
+        self.assertEqual(second.data["created"], 0)
+        self.assertEqual(second.data["unchanged"], 1)
+        self.assertEqual(Aggregate.objects.count(), 1)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class UploadFingerprintTests(_BaseSetup):
+    """Uploads carry a SHA-256 fingerprint so repeated uploads of the same file
+    are detectable (and the smart-import response flags them)."""
+
+    def _filled_workbook_bytes(self, value=4):
+        plans = [rw.IndicatorPlan(indicator=self.matrix, config=rw.resolve_matrix_config(self.matrix), target=None)]
+        buf = rw.generate_workbook(project=self.project, organization=self.org,
+                                   quarter=3, fiscal_start_year=2025, indicator_plans=plans)
+        wb = load_workbook(buf)
+        for r in wb[rw.SHEET_CELLMAP].iter_rows(min_row=2, values_only=True):
+            if r[0] is None:
+                continue
+            wb[rw.SHEET_FORM][r[6].split("!", 1)[1]] = value
+        out = BytesIO()
+        wb.save(out)
+        return out.getvalue()
+
+    def test_save_populates_file_hash(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from uploads.models import Upload
+
+        content = b"hello fingerprint"
+        upload = Upload.objects.create(
+            name="a.txt", file=SimpleUploadedFile("a.txt", content),
+            organization=self.org, created_by=self.officer,
+        )
+        import hashlib
+        self.assertEqual(upload.file_hash, hashlib.sha256(content).hexdigest())
+
+    def test_duplicate_file_flagged_on_reimport(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from uploads.models import Upload
+
+        content = self._filled_workbook_bytes()
+        self.client.force_authenticate(self.officer)
+
+        first_upload = Upload.objects.create(
+            name="filled.xlsx", file=SimpleUploadedFile("filled.xlsx", content),
+            organization=self.org, created_by=self.officer,
+        )
+        first = self.client.post(f"/api/uploads/{first_upload.id}/start_import/", {}, format="multipart")
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertFalse(first.data.get("duplicate_file", False))
+
+        # Same bytes uploaded again -> same fingerprint -> flagged as duplicate.
+        second_upload = Upload.objects.create(
+            name="filled-again.xlsx", file=SimpleUploadedFile("filled-again.xlsx", content),
+            organization=self.org, created_by=self.officer,
+        )
+        self.assertEqual(second_upload.file_hash, first_upload.file_hash)
+        second = self.client.post(f"/api/uploads/{second_upload.id}/start_import/", {}, format="multipart")
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED, second.data)
+        self.assertTrue(second.data.get("duplicate_file"))
+        self.assertEqual(second.data.get("previous_upload_id"), first_upload.id)
+
+
+class ApprovedDataLifecycleTests(_BaseSetup):
+    """Permanent best-practice rule (IMP-1): any *real* change to approved data
+    returns it to Pending — even for an admin — and every write keeps a full
+    before/after audit trail (old/new value, prev/new status, user, source)."""
+
+    DETAIL = "/api/aggregates/{}/"
+
+    def _approved(self, value=10):
+        return Aggregate.objects.create(
+            indicator=self.plain, project=self.project, organization=self.org,
+            period_start=Q3_START, period_end=Q3_END, value={"total": value},
+            status="approved", created_by=self.officer,
+        )
+
+    def _last_event(self, agg):
+        from audit.models import AuditEvent
+        return (
+            AuditEvent.objects.filter(object_type="aggregate", object_id=str(agg.id))
+            .order_by("-created_at").first()
+        )
+
+    def test_admin_value_change_resets_to_pending_with_audit(self):
+        agg = self._approved(10)
+        self.client.force_authenticate(self.admin)
+        resp = self.client.patch(self.DETAIL.format(agg.id), {"value": {"total": 20}}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        agg.refresh_from_db()
+        self.assertEqual(agg.status, "pending")
+        self.assertIsNone(agg.reviewed_by)
+
+        event = self._last_event(agg)
+        self.assertIsNotNone(event)
+        self.assertEqual(event.actor_id, self.admin.id)
+        self.assertEqual(event.metadata["source"], "direct_edit")
+        self.assertEqual(event.metadata["previous_status"], "approved")
+        self.assertEqual(event.metadata["new_status"], "pending")
+        self.assertEqual(event.metadata["old_value"], {"total": 10})
+        self.assertEqual(event.metadata["new_value"], {"total": 20})
+        self.assertEqual(event.metadata["outcome"], "reset_from_review")
+
+    def test_no_value_change_preserves_approval(self):
+        agg = self._approved(10)
+        self.client.force_authenticate(self.admin)
+        resp = self.client.patch(self.DETAIL.format(agg.id), {"notes": "context only"}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        agg.refresh_from_db()
+        self.assertEqual(agg.status, "approved")
+
+    def test_admin_can_reapprove_after_correction(self):
+        agg = self._approved(10)
+        self.client.force_authenticate(self.admin)
+        self.client.patch(self.DETAIL.format(agg.id), {"value": {"total": 20}}, format="json")
+        # Pending → re-approve closes the lifecycle.
+        resp = self.client.post(f"/api/aggregates/{agg.id}/approve/", {}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        agg.refresh_from_db()
+        self.assertEqual(agg.status, "approved")
+        self.assertEqual(agg.reviewed_by_id, self.admin.id)
+
+    def test_workbook_import_writes_audit_with_source(self):
+        from audit.models import AuditEvent
+
+        blank = self._download_blank().content
+        wb = load_workbook(BytesIO(blank))
+        for r in wb[rw.SHEET_CELLMAP].iter_rows(min_row=2, values_only=True):
+            if r[0] is None:
+                continue
+            wb[rw.SHEET_FORM][r[6].split("!", 1)[1]] = 3
+        out = BytesIO(); wb.save(out)
+
+        self.client.force_authenticate(self.officer)
+        upload = BytesIO(out.getvalue()); upload.name = "filled.xlsx"
+        resp = self.client.post(IMPORT_URL, {"file": upload}, format="multipart")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        created = resp.data["summary"]["created"]
+        self.assertEqual(
+            AuditEvent.objects.filter(
+                object_type="aggregate", action="create", metadata__source="workbook_import",
+            ).count(),
+            created,
+        )

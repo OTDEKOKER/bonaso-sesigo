@@ -436,6 +436,20 @@ class UploadViewSet(viewsets.ModelViewSet):
         job.failed_rows = int(summary.get("indicators_failed", 0) or 0)
         job.status = "validated" if dry_run else "imported"
         job.completed_at = timezone.now()
+
+        # Surface repeated uploads of the same file (idempotency safeguard
+        # IMP-1). The import itself is already idempotent (update_or_create on
+        # the natural key), so this is informational — it lets the UI warn that
+        # the file was processed before and explains an all-"unchanged" result.
+        prior = upload.prior_imported_upload()
+        if isinstance(result, dict) and prior is not None:
+            result = {
+                **result,
+                "duplicate_file": True,
+                "previous_upload_id": prior.id,
+                "previous_upload_name": prior.name,
+            }
+
         job.result = result
         job.errors = []
         job.save(update_fields=[
