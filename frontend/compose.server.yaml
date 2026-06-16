@@ -20,6 +20,10 @@ services:
       - ../backend/media:/app/media
       - ../backend/reports:/app/reports
       - ../backend/staticfiles:/app/staticfiles
+      # Share the host's backup directory so the on-demand "Generate backup"
+      # and download/restore endpoints operate on the SAME files the nightly
+      # host cron writes (otherwise the container would see a stale baked copy).
+      - ../backend/backups:/app/backups
       - ../frontend/scripts:/app/workbook-imports:ro
 
   frontend:

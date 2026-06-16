@@ -16,3 +16,6 @@ staticfiles/
 media/
 dist/
 build/
+
+# Don't bake DB backups (PII) into the image; they are bind-mounted at runtime.
+backups/
