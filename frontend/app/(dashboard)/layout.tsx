@@ -2,7 +2,10 @@
 
 import React, { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
+import Link from "next/link"
 import { AuthProvider, useAuth } from "@/lib/contexts/auth-context"
+import { isPlatformAdmin } from "@/lib/permissions"
+import { systemService } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -29,6 +32,58 @@ function TrainingModeBanner() {
     <div className="flex items-center gap-3 bg-amber-400 px-4 py-2 text-sm font-semibold text-amber-900">
       <span>⚠</span>
       <span>SESIGO TRAINING MODE — DEMO DATA ONLY — NOT FOR OFFICIAL REPORTING</span>
+    </div>
+  )
+}
+
+function BackupReminderBanner() {
+  const { user } = useAuth()
+  const { isTrainingMode } = useSessionMode()
+  const [due, setDue] = useState<null | { level: "amber" | "red"; message: string | null }>(null)
+
+  const isAdmin = isPlatformAdmin(user)
+
+  useEffect(() => {
+    // Admin-only compliance nudge; never in training mode (live data only).
+    if (!isAdmin || isTrainingMode) {
+      setDue(null)
+      return
+    }
+    let cancelled = false
+    systemService
+      .getBackupStatus()
+      .then((status) => {
+        if (cancelled) return
+        if (status.download.due && status.download.level !== "green") {
+          setDue({ level: status.download.level, message: status.download.message })
+        } else {
+          setDue(null)
+        }
+      })
+      .catch(() => setDue(null))
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin, isTrainingMode])
+
+  if (!due) return null
+  const critical = due.level === "red"
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-3 px-4 py-2 text-sm font-semibold",
+        critical ? "bg-destructive text-destructive-foreground" : "bg-amber-400 text-amber-900",
+      )}
+    >
+      <span>⚠</span>
+      <span>
+        {critical
+          ? "No backup has been downloaded in over 14 days."
+          : "Weekly backup download is due. Download latest backup now."}
+      </span>
+      <Link href="/system-status" className="underline underline-offset-2">
+        Go to System Status
+      </Link>
     </div>
   )
 }
@@ -177,6 +232,7 @@ function DashboardShell({
           }}
         />
         <TrainingModeBanner />
+        <BackupReminderBanner />
         <main className="min-h-[calc(100vh-var(--app-header-height))] min-w-0 w-full max-w-full overflow-x-clip p-4 lg:p-6">
           {children}
         </main>

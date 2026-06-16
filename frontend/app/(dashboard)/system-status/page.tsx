@@ -8,8 +8,12 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  DatabaseBackup,
+  Download,
   DownloadCloud,
   HardDrive,
+  Loader2,
+  Lock,
   RefreshCcw,
   Server,
   ShieldCheck,
@@ -21,7 +25,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/shared/page-header";
-import { systemService, type SystemHealthStatus, type SystemStatusResponse } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import {
+  systemService,
+  type BackupManagementStatus,
+  type SystemHealthStatus,
+  type SystemStatusResponse,
+} from "@/lib/api";
 
 function formatBytes(value?: number | null) {
   if (!value || value <= 0) return "0 B";
@@ -114,6 +124,159 @@ function ServiceCard({
         <StatusBadge status={status} />
       </CardHeader>
       <CardContent className="space-y-3 text-sm">{children}</CardContent>
+    </Card>
+  );
+}
+
+function levelClasses(level: BackupManagementStatus["download"]["level"]) {
+  if (level === "green") return "border-emerald-500/30 bg-emerald-500/5";
+  if (level === "amber") return "border-amber-500/40 bg-amber-500/5";
+  return "border-destructive/40 bg-destructive/5";
+}
+
+function levelBadge(level: BackupManagementStatus["download"]["level"]) {
+  if (level === "green") return <Badge className="bg-emerald-600 hover:bg-emerald-600">On track</Badge>;
+  if (level === "amber") return <Badge variant="secondary">Download due</Badge>;
+  return <Badge variant="destructive">Overdue</Badge>;
+}
+
+function BackupRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+function BackupsCard() {
+  const { toast } = useToast();
+  const [data, setData] = useState<BackupManagementStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setData(await systemService.getBackupStatus());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load backup status.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const onGenerate = async () => {
+    setIsGenerating(true);
+    try {
+      const next = await systemService.generateBackup();
+      setData(next);
+      toast({ title: "Backup generated", description: "A fresh verified backup is ready to download." });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Backup failed",
+        description: err instanceof Error ? err.message : "The backup could not be generated.",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const onDownload = async () => {
+    setIsDownloading(true);
+    try {
+      const filename = await systemService.downloadBackup();
+      toast({ title: "Download started", description: `Saving ${filename}. Store it on an encrypted drive.` });
+      await load(); // refresh "last downloaded" / compliance level
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: err instanceof Error ? err.message : "The backup could not be downloaded.",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const download = data?.download;
+  const latest = data?.latest;
+
+  return (
+    <Card className={download ? levelClasses(download.level) : undefined}>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <DatabaseBackup className="h-4 w-4" />
+          Backups
+        </CardTitle>
+        {download ? levelBadge(download.level) : null}
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {download?.due ? (
+          <Alert variant={download.level === "red" ? "destructive" : "default"}>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>
+              {download.level === "red"
+                ? "No backup has been downloaded in over 14 days."
+                : "Weekly backup download is due."}
+            </AlertTitle>
+            <AlertDescription>{download.message}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="grid gap-2">
+          <BackupRow label="Latest backup" value={formatDate(latest?.created_at_utc)} />
+          <BackupRow label="Size" value={formatBytes(latest?.size_bytes)} />
+          <BackupRow
+            label="Verification"
+            value={latest?.verify_status === "pg_restore_list_ok" ? "Verified (pg_restore)" : latest?.verify_status ?? "Unknown"}
+          />
+          <BackupRow label="Off-site replication" value={latest?.offsite_status ?? "Unknown"} />
+          <BackupRow label="Last downloaded" value={formatDate(download?.last_downloaded_at)} />
+          <BackupRow
+            label="Days since download"
+            value={download?.days_since_download ?? "Never"}
+          />
+          {download?.last_downloaded_by ? (
+            <BackupRow label="Downloaded by" value={download.last_downloaded_by} />
+          ) : null}
+        </div>
+
+        <Alert>
+          <Lock className="h-4 w-4" />
+          <AlertDescription>{data?.warning_text}</AlertDescription>
+        </Alert>
+
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => void onGenerate()} disabled={isGenerating || isLoading}>
+            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DatabaseBackup className="mr-2 h-4 w-4" />}
+            Generate backup now
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void onDownload()}
+            disabled={isDownloading || isLoading || !latest?.available}
+          >
+            {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Download latest backup
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   );
 }
@@ -284,6 +447,8 @@ export default function SystemStatusPage() {
               </div>
             </ServiceCard>
           </div>
+
+          <BackupsCard />
 
           <Card>
             <CardHeader>

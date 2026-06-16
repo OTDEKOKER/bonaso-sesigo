@@ -1790,6 +1790,83 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=False, methods=['post'])
+    def bulk_delete(self, request):
+        """Delete multiple queued aggregates at once."""
+        if not can_approve_aggregates(request.user):
+            return Response({'error': 'admin or manager access required'}, status=status.HTTP_403_FORBIDDEN)
+
+        raw_ids = request.data.get('ids', [])
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return Response({'error': 'ids list required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        aggregate_ids = []
+        for value in raw_ids:
+            try:
+                aggregate_ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+        if not aggregate_ids:
+            return Response({'error': 'ids list required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        affected_pairs = set()
+        deletable_rows = []
+        flagged_skipped = 0
+        with transaction.atomic():
+            aggregate_rows = list(
+                self.get_queryset().filter(id__in=aggregate_ids).values(
+                    'id',
+                    'project_id',
+                    'indicator_id',
+                    'organization_id',
+                    'status',
+                )
+            )
+            found_ids = {row['id'] for row in aggregate_rows}
+            # Safety: flagged rows are under data-quality review and must never be
+            # swept up by a bulk delete. Skip them and report the count back so the
+            # UI can surface it. (Single-record delete is unaffected.)
+            deletable_rows = [row for row in aggregate_rows if row['status'] != 'flagged']
+            flagged_skipped = len(aggregate_rows) - len(deletable_rows)
+            deletable_ids = {row['id'] for row in deletable_rows}
+            # Only re-sync project/indicator totals for rows that were already
+            # approved (mirrors perform_destroy).
+            affected_pairs = {
+                (row['project_id'], row['indicator_id'])
+                for row in deletable_rows
+                if row['status'] == 'approved'
+            }
+
+            if deletable_ids:
+                Aggregate.objects.filter(id__in=deletable_ids).delete()
+
+        for project_id, indicator_id in affected_pairs:
+            sync_project_indicator_total(project_id, indicator_id)
+
+        for row in deletable_rows:
+            record_audit_event(
+                action='delete',
+                request=request,
+                object_type='aggregate',
+                object_id=row['id'],
+                description=f"Aggregate {row['id']} deleted (bulk).",
+                metadata={
+                    'organization_id': row.get('organization_id'),
+                    'project_id': row.get('project_id'),
+                    'bulk': True,
+                },
+            )
+
+        skipped = len(set(aggregate_ids) - found_ids)
+        return Response(
+            {
+                'deleted': len(deletable_rows),
+                'skipped': skipped,
+                'flagged_skipped': flagged_skipped,
+            }
+        )
+
     @action(detail=True, methods=['post'])
     def flag(self, request, pk=None):
         """Flag an aggregate for data quality review."""

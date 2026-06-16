@@ -26,6 +26,9 @@ class AuditEvent(models.Model):
         ('assign', 'Assign'),
         ('login', 'Login'),
         ('logout', 'Logout'),
+        ('backup_generated', 'Backup generated'),
+        ('backup_downloaded', 'Backup downloaded'),
+        ('backup_download_reminder_sent', 'Backup download reminder sent'),
     ]
 
     actor = models.ForeignKey(

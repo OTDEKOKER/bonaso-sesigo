@@ -70,6 +70,7 @@ type AggregateReviewQueueProps = {
     },
   ) => Promise<void>;
   onApproveAll: (aggregateIds: string[]) => Promise<void>;
+  onDeleteAll: (aggregateIds: string[]) => Promise<void>;
   onUpdate: (
     aggregateId: string,
     payload: {
@@ -84,7 +85,7 @@ type AggregateReviewQueueProps = {
   ) => Promise<Aggregate>;
   onDelete: (aggregateId: string) => Promise<void>;
   actingAggregateId: string | null;
-  actingReviewAction: "review" | "approve" | "bulk_approve" | "flag" | "delete" | null;
+  actingReviewAction: "review" | "approve" | "bulk_approve" | "flag" | "delete" | "bulk_delete" | null;
   mode?: "review" | "correction";
   embedded?: boolean;
   initialReviewAggregateId?: string | null;
@@ -212,6 +213,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     onReview,
     onApprove,
     onApproveAll,
+    onDeleteAll,
     onFlag,
     onUpdate,
     onDelete,
@@ -238,6 +240,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
   const [reviewingAggregate, setReviewingAggregate] = useState<Aggregate | null>(initialReviewAggregate);
   const [isManualEditMode, setIsManualEditMode] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
   const [reviewNotes, setReviewNotes] = useState("");
   const [flaggingAggregate, setFlaggingAggregate] = useState<Aggregate | null>(null);
   const [correctionTotal, setCorrectionTotal] = useState(initialCorrectionDraft.total);
@@ -315,8 +318,14 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
   const bulkApproveableItems = filteredItems.filter(
     (item) => item.status === "pending" || item.status === "reviewed",
   );
+  // Flagged rows are under data-quality review and are excluded from bulk delete
+  // (the backend skips them too). Only non-flagged rows are deletable.
+  const bulkDeletableItems = filteredItems.filter((item) => item.status !== "flagged");
+  const bulkFlaggedSkippedCount = filteredItems.length - bulkDeletableItems.length;
   const canShowBulkApproveAll =
     canApproveRows && Boolean(canBulkApproveAll) && mode === "review" && bulkApproveableItems.length > 0;
+  const canShowBulkDeleteAll =
+    canApproveRows && Boolean(canBulkApproveAll) && mode === "review" && bulkDeletableItems.length > 0;
 
   const activeCorrectionConfig = useMemo(() => {
     if (!reviewingAggregate) return null;
@@ -791,6 +800,20 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                     {actingReviewAction === "bulk_approve"
                       ? "Approving..."
                       : `Approve all (${bulkApproveableItems.length})`}
+                  </Button>
+                ) : null}
+
+                {canShowBulkDeleteAll ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-8 px-3"
+                    disabled={Boolean(actingAggregateId)}
+                    onClick={() => setIsBulkDeleteConfirmOpen(true)}
+                  >
+                    {actingReviewAction === "bulk_delete"
+                      ? "Deleting..."
+                      : `Delete all (${bulkDeletableItems.length})`}
                   </Button>
                 ) : null}
 
@@ -1335,6 +1358,30 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
           setReviewingAggregate(null);
           setIsManualEditMode(false);
           setReviewNotes("");
+        }}
+      />
+
+      <ConfirmDelete
+        isOpen={isBulkDeleteConfirmOpen}
+        name={`${bulkDeletableItems.length} filtered record${bulkDeletableItems.length === 1 ? "" : "s"}`}
+        requireConfirmText
+        confirmText="delete"
+        title="Delete All Queued Aggregates"
+        description={`This will permanently delete ${bulkDeletableItems.length} filtered record${
+          bulkDeletableItems.length === 1 ? "" : "s"
+        }.${
+          bulkFlaggedSkippedCount > 0
+            ? ` Flagged records will not be deleted (${bulkFlaggedSkippedCount} flagged record${
+                bulkFlaggedSkippedCount === 1 ? "" : "s"
+              } skipped).`
+            : " Flagged records will not be deleted."
+        } Type delete to confirm. This action cannot be undone.`}
+        destructiveText="Delete All"
+        onCancel={() => setIsBulkDeleteConfirmOpen(false)}
+        onConfirm={async () => {
+          const ids = bulkDeletableItems.map((item) => String(item.id));
+          await onDeleteAll(ids);
+          setIsBulkDeleteConfirmOpen(false);
         }}
       />
     </>

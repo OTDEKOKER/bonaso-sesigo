@@ -826,6 +826,7 @@ function AggregatesPageContent() {
     actingReviewAction,
     handleApproveAggregate,
     handleBulkApproveAggregates,
+    handleBulkDeleteAggregates,
     handleDeleteAggregate,
     handleFlagAggregate,
     handleReviewAggregate,
@@ -1404,6 +1405,7 @@ function AggregatesPageContent() {
                 onReview={handleReviewAggregate}
                 onApprove={handleApproveAggregate}
                 onApproveAll={handleBulkApproveAggregates}
+                onDeleteAll={handleBulkDeleteAggregates}
                 onFlag={handleFlagAggregate}
                 onUpdate={handleUpdateAggregate}
                 onDelete={handleDeleteAggregate}
@@ -1447,6 +1449,7 @@ function AggregatesPageContent() {
           onReview={handleReviewAggregate}
           onApprove={handleApproveAggregate}
           onApproveAll={handleBulkApproveAggregates}
+          onDeleteAll={handleBulkDeleteAggregates}
           onFlag={handleFlagAggregate}
           onUpdate={handleUpdateAggregate}
           onDelete={handleDeleteAggregate}

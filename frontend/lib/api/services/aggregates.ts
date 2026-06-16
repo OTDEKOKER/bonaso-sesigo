@@ -142,6 +142,11 @@ export interface BulkApproveResponse {
   results: Aggregate[];
 }
 
+export interface BulkDeleteResponse {
+  deleted: number;
+  skipped: number;
+}
+
 export interface AggregateFlagRequest {
   reason: 'duplicate' | 'incorrect_data' | 'suspicious' | 'incomplete' | 'other';
   description?: string;
@@ -380,6 +385,15 @@ export const aggregatesService = {
       ...data,
       results: normalizeAggregateList(data.results),
     };
+  },
+
+  async bulkDelete(ids: number[]): Promise<BulkDeleteResponse> {
+    const { data } = await api.post<BulkDeleteResponse>(
+      '/aggregates/bulk_delete/',
+      { ids },
+      { timeoutMs: 120_000 },
+    );
+    return data;
   },
 
   async flag(id: number, request: AggregateFlagRequest): Promise<Aggregate> {

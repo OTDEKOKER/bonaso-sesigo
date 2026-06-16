@@ -565,7 +565,7 @@ type AggregateReviewActionsArgs = {
 export function useAggregateReviewActions(args: AggregateReviewActionsArgs) {
   const { mutate, mutateQueue, toast } = args;
   const [actingAggregateId, setActingAggregateId] = useState<string | null>(null);
-  const [actingReviewAction, setActingReviewAction] = useState<"review" | "approve" | "bulk_approve" | "flag" | "delete" | null>(null);
+  const [actingReviewAction, setActingReviewAction] = useState<"review" | "approve" | "bulk_approve" | "flag" | "delete" | "bulk_delete" | null>(null);
 
   const requireOnlineReviewAction = useCallback((actionLabel: string) => {
     if (typeof navigator === "undefined" || navigator.onLine) return true;
@@ -660,6 +660,43 @@ export function useAggregateReviewActions(args: AggregateReviewActionsArgs) {
         toast({
           title: "Bulk approval failed",
           description: error instanceof Error ? error.message : "Unable to approve these aggregates.",
+          variant: "destructive",
+        });
+      } finally {
+        setActingAggregateId(null);
+        setActingReviewAction(null);
+      }
+    },
+    [mutate, mutateQueue, requireOnlineReviewAction, toast],
+  );
+
+  const handleBulkDeleteAggregates = useCallback(
+    async (aggregateIds: string[]) => {
+      if (!requireOnlineReviewAction("Bulk delete")) return;
+      const ids = aggregateIds
+        .map((aggregateId) => Number(aggregateId))
+        .filter((aggregateId) => Number.isFinite(aggregateId));
+
+      if (ids.length === 0) return;
+
+      setActingAggregateId("bulk");
+      setActingReviewAction("bulk_delete");
+      try {
+        const result = await aggregatesService.bulkDelete(ids);
+        await mutate();
+        void mutateQueue?.();
+        toast({
+          title: "Aggregates deleted",
+          description:
+            result.skipped > 0
+              ? `${result.deleted} aggregate(s) deleted. ${result.skipped} skipped.`
+              : `${result.deleted} aggregate(s) deleted successfully.`,
+        });
+      } catch (error) {
+        console.error("Failed to bulk delete aggregates", error);
+        toast({
+          title: "Bulk delete failed",
+          description: error instanceof Error ? error.message : "Unable to delete these aggregates.",
           variant: "destructive",
         });
       } finally {
@@ -779,6 +816,7 @@ export function useAggregateReviewActions(args: AggregateReviewActionsArgs) {
     actingReviewAction,
     handleApproveAggregate,
     handleBulkApproveAggregates,
+    handleBulkDeleteAggregates,
     handleDeleteAggregate,
     handleFlagAggregate,
     handleReviewAggregate,

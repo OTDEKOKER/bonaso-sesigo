@@ -17,11 +17,13 @@ assignment gate is a no-op and pure organization scope governs (see
 ``projects.scope.filter_queryset_by_assigned_projects``).
 """
 from datetime import date
+from unittest.mock import patch
 
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from aggregates.models import Aggregate
+from audit.models import AuditEvent
 from indicators.models import Indicator
 from organizations.models import Organization
 from projects.models import Project, ProjectIndicator
@@ -250,3 +252,97 @@ class AggregateHierarchyPermissionTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    # --- bulk_delete safety ------------------------------------------------
+
+    def test_bulk_delete_requires_approver(self):
+        """A non-approver (officer) must never bulk-delete; rows survive."""
+        agg = self._aggregate(self.sub1)
+        self.client.force_authenticate(self.sub1_officer)
+        response = self.client.post(
+            "/api/aggregates/bulk_delete/", {"ids": [agg.id]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Aggregate.objects.filter(id=agg.id).exists())
+
+    def test_bulk_delete_skips_out_of_scope_rows(self):
+        """Approver can only delete within their org-scoped queryset; an id for an
+        org outside scope is silently skipped, not deleted."""
+        outside_org = Organization.objects.create(
+            name="Outside", code="PERM_OUTSIDE", type="cso"
+        )
+        outside_agg = Aggregate.objects.create(
+            indicator=self.indicator, project=self.project, organization=outside_org,
+            period_start=date(2026, 1, 1), period_end=date(2026, 3, 31),
+            value={"total": 5}, status="reviewed", created_by=self.admin,
+        )
+        in_scope = self._aggregate(self.sub1)
+        self.client.force_authenticate(self.coordinator)
+        response = self.client.post(
+            "/api/aggregates/bulk_delete/",
+            {"ids": [in_scope.id, outside_agg.id]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["deleted"], 1)
+        self.assertEqual(response.data["skipped"], 1)
+        self.assertFalse(Aggregate.objects.filter(id=in_scope.id).exists())
+        self.assertTrue(Aggregate.objects.filter(id=outside_agg.id).exists())
+
+    def _aggregate_period(self, organization, status_value, period_start, period_end):
+        return Aggregate.objects.create(
+            indicator=self.indicator, project=self.project, organization=organization,
+            period_start=period_start, period_end=period_end,
+            value={"total": 5}, status=status_value, created_by=self.sub1_officer,
+        )
+
+    def test_bulk_delete_skips_flagged_rows(self):
+        """Flagged rows are under review and must never be bulk-deleted."""
+        flagged = self._aggregate_period(
+            self.sub1, "flagged", date(2026, 1, 1), date(2026, 3, 31)
+        )
+        approved = self._aggregate_period(
+            self.sub1, "approved", date(2026, 4, 1), date(2026, 6, 30)
+        )
+        self.client.force_authenticate(self.coordinator)
+        response = self.client.post(
+            "/api/aggregates/bulk_delete/",
+            {"ids": [flagged.id, approved.id]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["deleted"], 1)
+        self.assertEqual(response.data["flagged_skipped"], 1)
+        self.assertTrue(Aggregate.objects.filter(id=flagged.id).exists())
+        self.assertFalse(Aggregate.objects.filter(id=approved.id).exists())
+
+    def test_bulk_delete_resyncs_totals_only_for_approved(self):
+        """Approved rows trigger project/indicator total re-sync; flagged rows are
+        skipped entirely and never trigger a re-sync."""
+        approved = self._aggregate_period(
+            self.sub1, "approved", date(2026, 4, 1), date(2026, 6, 30)
+        )
+        flagged = self._aggregate_period(
+            self.sub1, "flagged", date(2026, 1, 1), date(2026, 3, 31)
+        )
+        self.client.force_authenticate(self.coordinator)
+        with patch("aggregates.views.sync_project_indicator_total") as mock_sync:
+            response = self.client.post(
+                "/api/aggregates/bulk_delete/",
+                {"ids": [approved.id, flagged.id]},
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_sync.assert_called_once_with(self.project.id, self.indicator.id)
+
+    def test_bulk_delete_writes_audit_events(self):
+        approved = self._aggregate(self.sub1, status_value="approved")
+        self.client.force_authenticate(self.coordinator)
+        self.client.post(
+            "/api/aggregates/bulk_delete/", {"ids": [approved.id]}, format="json"
+        )
+        event = AuditEvent.objects.filter(
+            action="delete", object_type="aggregate", object_id=str(approved.id)
+        ).first()
+        self.assertIsNotNone(event)
+        self.assertTrue(event.metadata.get("bulk"))
