@@ -120,8 +120,19 @@ class ExportJob(models.Model):
         ('failed', 'Failed'),
     ]
 
+    MODE_CHOICES = [
+        ('live', 'Live'),
+        ('training', 'Training'),
+    ]
+
     job_type = models.CharField(max_length=50, default='aggregate_export')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    # Environment the export belongs to (audit S-1). The background worker rebuilds
+    # the request with force_authenticate(user=...) and therefore carries no JWT, so
+    # the signed training/live ``mode`` claim is lost. We persist the caller's mode
+    # at create time and replay it to the worker so a training export can never
+    # silently run against — and leak — live data. See run_aggregate_export_job.
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='live', db_index=True)
     parameters = models.JSONField(default=dict, blank=True)
     result = models.JSONField(default=dict, blank=True)
     output_file = models.CharField(max_length=500, blank=True)

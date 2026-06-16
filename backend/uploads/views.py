@@ -648,10 +648,15 @@ class ExportJobViewSet(viewsets.ModelViewSet):
         if not isinstance(parameters, dict):
             return Response({"error": "parameters must be an object."}, status=status.HTTP_400_BAD_REQUEST)
 
+        from organizations.access import request_mode_value
+
         job = ExportJob.objects.create(
             job_type=job_type,
             status="pending",
             parameters=parameters,
+            # Bind the export to the caller's environment so the tokenless
+            # background worker re-enters the same training/live mode (audit S-1).
+            mode=request_mode_value(request),
             created_by=request.user,
         )
 

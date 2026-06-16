@@ -26,16 +26,23 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from django.db.models import Q
+        from organizations.access import apply_training_filter
         user = self.request.user
         qs = Announcement.objects.select_related('created_by', 'organization', 'project')
-        if getattr(user, 'role', None) == 'admin':
-            return qs
-        # Non-admins see global announcements + those scoped to their org
-        org_id = getattr(user, 'organization_id', None)
-        return qs.filter(
-            Q(scope='global') |
-            Q(scope='organization', organization_id=org_id)
-        )
+        if getattr(user, 'role', None) != 'admin':
+            # Non-admins see global announcements + those scoped to their org
+            org_id = getattr(user, 'organization_id', None)
+            qs = qs.filter(
+                Q(scope='global') |
+                Q(scope='organization', organization_id=org_id)
+            )
+        # Keep training and live announcements isolated on read (audit S-2). The
+        # write path is already boundary-checked (H4), but without this a
+        # project-scoped training announcement leaked into live views (and vice
+        # versa). Mirrors every other project-scoped surface; project-less
+        # (global/org) announcements stay visible in live as before, and the
+        # admin include_training=true opt-in still works.
+        return apply_training_filter(qs, self.request, project_lookup='project')
 
     def perform_create(self, serializer):
         # Keep project-scoped announcements on the correct side of the

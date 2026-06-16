@@ -189,7 +189,15 @@ def run_aggregate_export_job(job_id):
         return job
 
     request = APIRequestFactory().get("/api/aggregates/export/", data=query)
-    force_authenticate(request, user=user)
+    # Replay the caller's environment to the export view (audit S-1). The signed
+    # JWT mode claim is the sole source of truth for training/live isolation, but
+    # a force_authenticate'd request carries no JWT. DRF's ForcedAuthentication
+    # exposes the ``token`` arg as ``request._auth``, which is exactly where
+    # organizations.access.token_mode() reads the claim — so passing a
+    # ``{"mode": ...}`` token makes the export honour the job's environment
+    # instead of silently defaulting to live.
+    mode = job.mode if job.mode in {"live", "training"} else "live"
+    force_authenticate(request, user=user, token={"mode": mode})
     response = AggregateViewSet.as_view({"get": "export"})(request)
 
     if getattr(response, "status_code", 500) >= 400:
