@@ -109,8 +109,13 @@ def get_role_defaults(role: str | None) -> dict[str, list[str]]:
     return {module: list(actions) for module, actions in ROLE_MODULE_DEFAULTS.get(role or '', {}).items()}
 
 
-def resolve_user_module_permissions(user) -> dict[str, list[str]]:
-    """Effective module->actions for a user (custom overrides on role defaults)."""
+def resolve_user_module_permissions(user, rows=None) -> dict[str, list[str]]:
+    """Effective module->actions for a user (custom overrides on role defaults).
+
+    ``rows`` may be a pre-fetched list of the user's ``UserModulePermission``
+    rows; pass it to avoid a redundant query when the caller already has them
+    (e.g. ``/api/users/me/`` also needs them to compute the ``enforced`` flag).
+    """
     if user is None or not getattr(user, 'pk', None):
         return {}
     if _is_admin(user):
@@ -119,10 +124,11 @@ def resolve_user_module_permissions(user) -> dict[str, list[str]]:
     defaults = get_role_defaults(getattr(user, 'role', None))
 
     custom: dict[str, list[str]] = {}
-    try:
-        rows = list(user.module_permissions.all())
-    except Exception:
-        rows = []
+    if rows is None:
+        try:
+            rows = list(user.module_permissions.all())
+        except Exception:
+            rows = []
     for row in rows:
         if not row.is_enabled:
             custom[row.module] = []  # explicit denial

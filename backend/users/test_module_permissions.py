@@ -141,3 +141,48 @@ class ModulePermissionApiTests(APITestCase):
         body = response.json()
         self.assertIn('module_permissions', body)
         self.assertIn('aggregates', body['module_permissions'])
+
+    def test_current_user_reports_enforced_only_when_configured(self):
+        # Un-configured officer: full role experience, NOT enforced.
+        self.client.force_authenticate(self.officer)
+        body = self.client.get('/api/users/me/').json()
+        self.assertFalse(body['module_permissions_enforced'])
+
+        # Once an admin pins a custom row, the officer becomes enforced.
+        UserModulePermission.objects.create(
+            user=self.officer, module='aggregates', actions=['view'], is_enabled=True,
+        )
+        body = self.client.get('/api/users/me/').json()
+        self.assertTrue(body['module_permissions_enforced'])
+        self.assertEqual(body['module_permissions']['aggregates'], ['view'])
+
+    def test_current_user_does_not_n_plus_one(self):
+        # The dashboard shell blocks on this single request, so guard its query
+        # budget. Give the officer relations (org, group, custom module row,
+        # assigned project) so the prefetch path is exercised, then assert the
+        # endpoint stays within a small, constant query budget regardless.
+        from django.contrib.auth.models import Group
+        from projects.models import Project
+
+        self.officer.groups.add(Group.objects.create(name='mp-grp'))
+        UserModulePermission.objects.create(
+            user=self.officer, module='aggregates', actions=['view'], is_enabled=True,
+        )
+        project = Project.objects.create(
+            name='MP Proj', status='active', start_date='2026-01-01', end_date='2026-12-31',
+        )
+        self.officer.assigned_projects.add(project)
+
+        self.client.force_authenticate(self.officer)
+        with self.assertNumQueries(self.CURRENT_USER_QUERY_BUDGET):
+            response = self.client.get('/api/users/me/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # Exact query count for GET /api/users/me/ — the request the whole dashboard
+    # shell blocks on. Constant regardless of how many groups / projects / module
+    # rows the user has; a bump here means an N+1 crept back in.
+    #   1 user (select_related organization)
+    #   2 module_permissions prefetch        5 groups values_list
+    #   3 assigned_projects prefetch         6 assigned_projects ids (default proj)
+    #   4 user_permissions values_list       7 default project lookup
+    CURRENT_USER_QUERY_BUDGET = 7

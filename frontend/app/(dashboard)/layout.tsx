@@ -244,15 +244,18 @@ function DashboardShell({
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, accessLoadFailed } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true)
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    // Don't redirect while showing the access-load failure screen: there the
+    // token is still valid and the user can retry, so bouncing to /login would
+    // be wrong.
+    if (!isLoading && !isAuthenticated && !accessLoadFailed) {
       router.replace("/login")
     }
-  }, [isAuthenticated, isLoading, router])
+  }, [isAuthenticated, isLoading, accessLoadFailed, router])
 
   // Training-session guard: if the user logged in through Training Mode,
   // any live route they visit must redirect them to the /training equivalent.
@@ -280,10 +283,30 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, pathname, router])
 
+  // Hard failure: no cached session AND the profile/permission fetch failed.
+  // Give the user a clear, actionable message instead of a blank shell.
+  if (accessLoadFailed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="max-w-md space-y-3 text-center">
+          <p className="text-sm font-medium text-foreground">
+            Unable to load your module access.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Please refresh the page or contact an administrator if this keeps happening.
+          </p>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            Refresh
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-6">
-        <div className="text-sm text-muted-foreground">Loading...</div>
+        <div className="text-sm text-muted-foreground">Loading your access…</div>
       </div>
     )
   }

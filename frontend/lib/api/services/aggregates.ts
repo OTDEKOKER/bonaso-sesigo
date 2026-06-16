@@ -294,6 +294,40 @@ export const aggregatesService = {
       return results;
     }
 
+    // The first page tells us the total count, so we can resolve the remaining
+    // page numbers up front and fetch them in PARALLEL (bounded concurrency)
+    // instead of one-at-a-time. On slow links this turns a chain of blocking
+    // round trips into a single fan-out — the dominant win for the aggregates
+    // page and the dashboard analytics pull. If the count is unavailable we fall
+    // back to walking `next` links sequentially.
+    const pageSize = Math.max(1, Number(baseFilters.page_size) || Number(LIST_ALL_PAGE_SIZE));
+    const totalCount = Number(firstPage.count);
+
+    if (Number.isFinite(totalCount) && totalCount > firstPageResults.length) {
+      const totalPages = Math.ceil(totalCount / pageSize);
+      const lastPage = Math.min(startPage + LIST_ALL_MAX_PAGES - 1, totalPages);
+      const remainingPages: number[] = [];
+      for (let page = startPage + 1; page <= lastPage; page += 1) {
+        remainingPages.push(page);
+      }
+
+      // Cap simultaneous in-flight requests so we don't overwhelm the single
+      // backend host; pages within a batch run concurrently.
+      const CONCURRENCY = 4;
+      for (let i = 0; i < remainingPages.length; i += CONCURRENCY) {
+        const batch = remainingPages.slice(i, i + CONCURRENCY);
+        const pages = await Promise.all(
+          batch.map((page) => fetchListAllPage(baseFilters, String(page))),
+        );
+        for (const data of pages) {
+          results.push(...normalizeAggregateList(data.results));
+        }
+      }
+
+      return results;
+    }
+
+    // Fallback: no usable count — walk the `next` links sequentially.
     let nextUrl: string | null = firstPage.next;
     let pagesFetched = 1;
 

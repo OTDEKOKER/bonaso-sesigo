@@ -714,7 +714,11 @@ function DashboardPageContent({
     let isActive = true;
     setPreferencesSourceReady(false);
 
-    const loadDashboardPreferences = async () => {
+    const loadDashboardPreferences = () => {
+      // The auth context already fetched (and revalidates) /api/users/me/, and
+      // the user object carries home_dashboard_preferences — so read it from
+      // there instead of firing a second, duplicate /me/ request on every
+      // dashboard load.
       if (!user?.id) {
         if (!isActive) return;
         lastServerSavedPreferences.current = JSON.stringify(initialPreferences);
@@ -723,8 +727,7 @@ function DashboardPageContent({
       }
 
       try {
-        const currentUser = await usersService.getCurrentUser();
-        const serverPreferencesRaw = (currentUser as { home_dashboard_preferences?: unknown })
+        const serverPreferencesRaw = (user as { home_dashboard_preferences?: unknown })
           .home_dashboard_preferences;
 
         if (
@@ -745,7 +748,7 @@ function DashboardPageContent({
           lastServerSavedPreferences.current = JSON.stringify(initialPreferences);
         }
       } catch (error) {
-        console.error("Failed to load dashboard preferences from API", error);
+        console.error("Failed to read dashboard preferences", error);
         if (isActive) {
           lastServerSavedPreferences.current = JSON.stringify(initialPreferences);
         }
@@ -756,7 +759,7 @@ function DashboardPageContent({
       }
     };
 
-    void loadDashboardPreferences();
+    loadDashboardPreferences();
 
     return () => {
       isActive = false;

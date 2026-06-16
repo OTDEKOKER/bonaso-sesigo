@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import Image from "next/image"
 import { usePathname, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -283,27 +283,48 @@ export function AppSidebar() {
   const canViewSystemStatus = user?.role === "admin"
   // A nav entry is visible when its route has no module gate, or the user may
   // view that module. (No-op for users an admin hasn't explicitly configured.)
-  const isNavVisible = (href: string) => {
-    const activeModule = moduleForPath(href)
-    return !activeModule || canView(activeModule)
-  }
+  // Memoized on `canView` (stable per-user) so it isn't reallocated each render.
+  const isNavVisible = useMemo(
+    () => (href: string) => {
+      const activeModule = moduleForPath(href)
+      return !activeModule || canView(activeModule)
+    },
+    [canView],
+  )
 
-  const parentOrganizations = (organizationTree ?? [])
-    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")))
+  // Rebuild the nav tree only when its real inputs change (org tree / mode),
+  // not on every parent re-render (e.g. route changes, header counters, …).
+  const navigation = useMemo(() => {
+    const parentOrganizations = (organizationTree ?? [])
+      .slice()
+      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")))
 
-  const aggregateChildren: SidebarSubItem[] = [
-    { title: "All Aggregates", href: toTrainingHref("/aggregates", isTrainingMode) },
-    ...parentOrganizations.map((parent) => ({
-      title: String(parent.name || "Parent"),
-      href: toTrainingHref(`/aggregates?orgId=${encodeURIComponent(String(parent.id))}`, isTrainingMode),
-    })),
-  ]
+    const aggregateChildren: SidebarSubItem[] = [
+      { title: "All Aggregates", href: toTrainingHref("/aggregates", isTrainingMode) },
+      ...parentOrganizations.map((parent) => ({
+        title: String(parent.name || "Parent"),
+        href: toTrainingHref(`/aggregates?orgId=${encodeURIComponent(String(parent.id))}`, isTrainingMode),
+      })),
+    ]
 
-  const navigation = applyTrainingHrefs(
-    baseNavigation.map((item) =>
-      item.title === "Aggregates" ? { ...item, children: aggregateChildren } : item,
-    ),
-    isTrainingMode,
+    return applyTrainingHrefs(
+      baseNavigation.map((item) =>
+        item.title === "Aggregates" ? { ...item, children: aggregateChildren } : item,
+      ),
+      isTrainingMode,
+    )
+  }, [organizationTree, isTrainingMode])
+
+  // Filter to visible items (and visible children) once per permission/nav change.
+  const visibleNavigation = useMemo(
+    () =>
+      navigation
+        .filter((item) => isNavVisible(item.href))
+        .map((item) => ({
+          ...item,
+          children: item.children?.filter((child) => isNavVisible(child.href)),
+        })),
+    [navigation, isNavVisible],
   )
 
   const handleSignOut = async () => {
@@ -337,19 +358,17 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {navigation
-          .filter((item) => isNavVisible(item.href))
-          .map((item) => (
-            <NavItem
-              key={item.href}
-              title={item.title}
-              href={item.href}
-              icon={item.icon}
-              badge={item.badge}
-              isActive={pathname === item.href || pathname?.startsWith(item.href + "/")}
-              subItems={item.children?.filter((child) => isNavVisible(child.href))}
-            />
-          ))}
+        {visibleNavigation.map((item) => (
+          <NavItem
+            key={item.href}
+            title={item.title}
+            href={item.href}
+            icon={item.icon}
+            badge={item.badge}
+            isActive={pathname === item.href || pathname?.startsWith(item.href + "/")}
+            subItems={item.children}
+          />
+        ))}
       </nav>
 
       {/* Bottom section */}

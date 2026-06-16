@@ -145,24 +145,44 @@ def current_user(request):
 
     from users.module_permissions import resolve_user_module_permissions
 
-    response_serializer = UserSerializer(request.user)
+    # The whole dashboard shell (sidebar, route guards, module gating) blocks on
+    # this single request, so keep it cheap. Re-fetch the authenticated user once
+    # with its relations joined/prefetched so the serializer's organization /
+    # groups / permissions / assigned_projects access does not fan out into a
+    # series of lazy per-field queries.
+    # Only ``organization`` (select_related, consumed as a relation) and
+    # ``module_permissions`` / ``assigned_projects`` (prefetch, consumed via the
+    # related manager's cache) pay off here. ``groups`` / ``user_permissions``
+    # are serialized through ``.values_list(...)`` which bypasses the prefetch
+    # cache, so prefetching them would just add wasted queries.
+    user = (
+        User.objects
+        .select_related('organization')
+        .prefetch_related('module_permissions', 'assigned_projects')
+        .get(pk=request.user.pk)
+    )
+
+    response_serializer = UserSerializer(user)
     data = dict(response_serializer.data)
     # The dashboard always needs a selected project; expose the user's current /
     # default project so the frontend can preselect it on load.
     data['default_project_id'] = get_default_project_id(
-        request.user,
+        user,
         include_training=is_training_only_request(request),
     )
+    # Resolve the module rows ONCE and reuse them for both the effective map and
+    # the enforced flag (previously this fetched module_permissions twice).
+    module_rows = list(user.module_permissions.all())
     # Effective module permissions so the frontend can gate the sidebar, routes
     # and in-module actions. Backend remains the source of truth — this payload
     # only mirrors what the server already enforces.
-    data['module_permissions'] = resolve_user_module_permissions(request.user)
+    data['module_permissions'] = resolve_user_module_permissions(user, rows=module_rows)
     # Whether an admin has explicitly configured this user. The frontend only
     # *restricts* the UI when this is true; un-configured users keep their full
     # role-based experience so existing users are never silently locked out.
     data['module_permissions_enforced'] = (
-        not is_organization_admin(request.user)
-        and request.user.module_permissions.exists()
+        not is_organization_admin(user)
+        and bool(module_rows)
     )
     return Response(data)
 

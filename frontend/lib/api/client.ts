@@ -418,6 +418,9 @@ export function clearAuthTokens(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    // Drop the cached current-user profile (module permissions etc.) so the next
+    // session never hydrates the UI from the previous user's access state.
+    localStorage.removeItem('cached_user');
     // Clear the Sesigo Training Mode marker so a subsequent login in the same
     // tab/browser does not inherit a stale training session.
     localStorage.removeItem('sesigo_mode');
