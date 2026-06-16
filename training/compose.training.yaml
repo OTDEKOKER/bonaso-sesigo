@@ -50,6 +50,9 @@ services:
       SECURE_HSTS_INCLUDE_SUBDOMAINS: "False"
       SECURE_HSTS_PRELOAD: "False"
       BONASO_DJANGO_ROOT: "/app"
+      # Stamp backups as TRAINING so the restore contamination guard blocks a
+      # training backup from ever being restored into the LIVE system.
+      BONASO_ENVIRONMENT: "TRAINING"
     volumes:
       - ./state/backend/uploads:/app/uploads
       - ./state/backend/media:/app/media
