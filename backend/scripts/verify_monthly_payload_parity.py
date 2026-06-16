@@ -130,12 +130,39 @@ def to_decimal(value: Any) -> Decimal:
         return Decimal("0")
 
 
+def _is_age_band_leaf_key(key: Any) -> bool:
+    """True for an innermost age-band leaf key (or the non-age ``Value`` sentinel).
+
+    Count-by-category indicators (e.g. "Number of ... activities conducted") are
+    not age-disaggregated, so the importer stores their breakdown under a generic
+    ``"Value"`` leaf, while this script's workbook reconstruction labels the same
+    count under the organisation's single age band (e.g. ``"18-24"``). Both are
+    legitimate representations of the identical number. A key qualifies as an
+    age-band leaf when it is the ``Value`` sentinel or contains a digit
+    (``18-24``, ``50+``, ``<18`` …). Service categories ("Mall Activations") and
+    sex buckets ("Male"/"Female") contain no digits and are never collapsed.
+    """
+    text = str(key).strip().lower()
+    return text == "value" or any(ch.isdigit() for ch in text)
+
+
 def normalize_for_compare(value: Any) -> Any:
     if isinstance(value, dict):
-        return {
+        normalized = {
             key: normalize_for_compare(item)
             for key, item in sorted(value.items(), key=lambda pair: pair[0])
         }
+        # Collapse a *singleton* innermost age-band leaf so that a non-age count
+        # stored as ``{"Value": n}`` compares equal to the same count
+        # reconstructed under one age band ``{"18-24": n}`` (parity false
+        # positive for count-by-category indicators). Multi-band leaves — genuine
+        # age disaggregation, e.g. ``{"18-24": 5, "25-49": 3}`` — keep their keys,
+        # so a real age-band mismatch still surfaces.
+        if len(normalized) == 1:
+            (only_key, only_value), = normalized.items()
+            if isinstance(only_value, (int, float)) and _is_age_band_leaf_key(only_key):
+                return {"__age_band_leaf__": only_value}
+        return normalized
     if isinstance(value, list):
         return [normalize_for_compare(item) for item in value]
     if value is None or isinstance(value, bool):
