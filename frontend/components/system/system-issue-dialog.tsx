@@ -130,7 +130,12 @@ export function SystemIssueDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent
+        className="max-h-[85vh] max-w-2xl overflow-y-auto"
+        // Don't let Radix auto-focus a deep element (e.g. the "Technical details"
+        // disclosure) on open — that scrolls the dialog past its own header.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={SEVERITY_TONE[current.severity] ?? "bg-muted-foreground"}>{current.severity}</Badge>
