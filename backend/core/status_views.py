@@ -80,14 +80,14 @@ def _count_model(label, model_path):
         return {label: None}
 
 
-class SystemStatusView(APIView):
-    required_module = 'system_status'
-    permission_classes = [IsAuthenticated, HasModulePermission]
+def collect_status_payload(request):
+    """Build the raw System Status payload (component health + warnings).
 
-    def get(self, request):
-        if not _is_admin_user(request.user):
-            return Response({"detail": "You do not have permission to view system status."}, status=403)
-
+    Extracted so the issue drill-down endpoints can derive structured issues
+    from exactly the same data the summary view returns. Assumes the caller has
+    already enforced admin access.
+    """
+    if True:
         warnings = []
         backup_dir = settings.BASE_DIR / "backups" / "database"
         backup_manifest = _safe_read_json(backup_dir / "latest.json")
@@ -169,7 +169,7 @@ class SystemStatusView(APIView):
         elif warnings:
             overall_status = "warning"
 
-        return Response(
+        return (
             {
                 "status": overall_status,
                 "checked_at": timezone.now().isoformat(),
@@ -195,3 +195,24 @@ class SystemStatusView(APIView):
                 "warnings": warnings,
             }
         )
+
+
+class SystemStatusView(APIView):
+    required_module = 'system_status'
+    permission_classes = [IsAuthenticated, HasModulePermission]
+
+    def get(self, request):
+        if not _is_admin_user(request.user):
+            return Response({"detail": "You do not have permission to view system status."}, status=403)
+
+        from system_status.checks import build_issues, overall_from_issues
+
+        payload = collect_status_payload(request)
+        issues = build_issues(payload, request)
+        payload["issues"] = issues
+        # Overall status now reflects only issues that are still open/needs-review
+        # (resolved/ignored acknowledgements clear the page).
+        payload["status"] = overall_from_issues(issues, payload["status"])
+        # Operational checks are server-level (Sesigo Live System).
+        payload["environment"] = "live"
+        return Response(payload)

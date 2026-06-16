@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     'idempotency',
     'audit',
     'recovery',
+    'system_status',
 ]
 
 MIDDLEWARE = [

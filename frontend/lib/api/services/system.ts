@@ -44,6 +44,41 @@ export interface SystemStatusResponse {
   counts: Record<string, number | null>;
   import_jobs: Record<string, number>;
   warnings: string[];
+  environment?: string;
+  issues?: SystemIssue[];
+}
+
+export type IssueSeverity = "info" | "warning" | "problem" | "critical";
+export type IssueStatus = "open" | "needs_review" | "reviewed" | "resolved" | "ignored";
+
+export interface SystemIssue {
+  id: string;
+  title: string;
+  severity: IssueSeverity;
+  component: string;
+  environment: string;
+  status: IssueStatus;
+  message: string;
+  explanation: string;
+  technical_details: string;
+  evidence: Record<string, unknown>;
+  metrics: Record<string, unknown>;
+  detail: {
+    affected_organizations?: Array<Record<string, unknown>>;
+    affected_indicators?: Array<{ id: number; name: string }>;
+    mismatch_rows?: Array<Record<string, unknown>>;
+  };
+  recommended_fix: string[];
+  related_module: string | null;
+  fingerprint: string;
+  note?: string;
+  acknowledged_by?: string | null;
+  links: {
+    details: string;
+    rerun: string;
+    ack: string;
+    download_csv: string | null;
+  };
 }
 
 export type BackupReminderLevel = "green" | "amber" | "red";
@@ -130,6 +165,33 @@ export const systemService = {
     api
       .get<{ count: number; results: RestoreHistoryEntry[] }>("/system/restore/history/")
       .then((response) => response.data),
+
+  getIssue: (id: string) =>
+    api.get<SystemIssue>(`/system/status/issues/${encodeURIComponent(id)}/`).then((r) => r.data),
+
+  rerunIssue: (id: string) =>
+    api
+      .post<{ returncode: number; ok: boolean; issue: SystemIssue | null; stderr: string }>(
+        `/system/status/issues/${encodeURIComponent(id)}/rerun/`,
+        {},
+        { timeoutMs: BACKUP_OP_TIMEOUT_MS },
+      )
+      .then((r) => r.data),
+
+  ackIssue: (id: string, status: IssueStatus, note?: string) =>
+    api
+      .post<SystemIssue>(`/system/status/issues/${encodeURIComponent(id)}/ack/`, { status, note })
+      .then((r) => r.data),
+
+  downloadIssueReport: async (id: string): Promise<string> => {
+    const response = await fetchWithAuth(`/system/status/issues/${encodeURIComponent(id)}/download/`);
+    if (!response.ok) {
+      throw normalizeApiError({ status: response.status, payload: await response.text(), fallbackMessage: "Failed to download report" });
+    }
+    const filename = `${id}_mismatches.csv`;
+    triggerBrowserDownload(await response.blob(), filename);
+    return filename;
+  },
 
   getBackupStatus: () =>
     api.get<BackupManagementStatus>("/system/backups/status/").then((response) => response.data),

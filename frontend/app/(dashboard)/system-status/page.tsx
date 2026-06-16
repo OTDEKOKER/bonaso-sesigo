@@ -26,13 +26,32 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/shared/page-header";
 import { DisasterRecoveryCard } from "@/components/system/disaster-recovery-card";
+import { SystemIssueDialog } from "@/components/system/system-issue-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   systemService,
   type BackupManagementStatus,
   type SystemHealthStatus,
+  type SystemIssue,
   type SystemStatusResponse,
 } from "@/lib/api";
+
+const SEVERITY_TONE: Record<string, string> = {
+  info: "bg-sky-600",
+  warning: "bg-amber-500",
+  problem: "bg-destructive",
+  critical: "bg-destructive",
+};
+
+function overallHeadline(status: SystemHealthStatus) {
+  if (status === "ok") return "Overall system is healthy";
+  if (status === "warning") return "Overall system needs attention";
+  return "Overall system has a problem";
+}
+
+function statusChip(status: string) {
+  return status.replaceAll("_", " ");
+}
 
 function formatBytes(value?: number | null) {
   if (!value || value <= 0) return "0 B";
@@ -286,6 +305,8 @@ export default function SystemStatusPage() {
   const [status, setStatus] = useState<SystemStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<SystemIssue | null>(null);
+  const issues = status?.issues ?? [];
 
   const loadStatus = async () => {
     setIsLoading(true);
@@ -353,7 +374,7 @@ export default function SystemStatusPage() {
                   ) : (
                     <AlertTriangle className="h-6 w-6 text-destructive" />
                   )}
-                  <h2 className="text-xl font-semibold">Overall system is {statusLabel(status.status).toLowerCase()}</h2>
+                  <h2 className="text-xl font-semibold">{overallHeadline(status.status)}</h2>
                   <StatusBadge status={status.status} />
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -361,19 +382,48 @@ export default function SystemStatusPage() {
                 </p>
               </div>
               <div className="rounded-xl bg-muted p-4 text-sm">
-                <p className="font-medium">Warnings</p>
-                {status.warnings.length ? (
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                    {status.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-muted-foreground">No active warnings.</p>
-                )}
+                <p className="font-medium">Scope</p>
+                <p className="mt-2 text-muted-foreground">
+                  These are <strong>{status.environment === "training" ? "Sesigo Training Mode" : "Sesigo Live System"}</strong> operational
+                  checks (server-level: backups, parity, database, disk, imports). They are not affected by training mode.
+                </p>
+                <p className="mt-2 text-muted-foreground">
+                  {issues.length
+                    ? `${issues.length} open issue${issues.length === 1 ? "" : "s"} — click any below for details.`
+                    : "No open issues."}
+                </p>
               </div>
             </CardContent>
           </Card>
+
+          {issues.length ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Issues</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {issues.map((issue) => (
+                  <button
+                    key={issue.id}
+                    type="button"
+                    onClick={() => setSelectedIssue(issue)}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <div className="flex items-start gap-3">
+                      <Badge className={SEVERITY_TONE[issue.severity] ?? "bg-muted-foreground"}>{issue.severity}</Badge>
+                      <div>
+                        <p className="font-medium">{issue.title}</p>
+                        <p className="text-sm text-muted-foreground">{issue.message}</p>
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {issue.status !== "open" ? statusChip(issue.status) : null} ›
+                    </span>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard title="Aggregates" value={status.counts.aggregates ?? 0} detail="Rows in aggregate table" icon={<Activity className="h-5 w-5" />} />
@@ -474,6 +524,13 @@ export default function SystemStatusPage() {
           </Card>
         </>
       ) : null}
+
+      <SystemIssueDialog
+        issue={selectedIssue}
+        isOpen={selectedIssue !== null}
+        onClose={() => setSelectedIssue(null)}
+        onChanged={() => void loadStatus()}
+      />
     </div>
   );
 }

@@ -38,6 +38,7 @@ urlpatterns = [
     path('api/messages/', include('messaging.urls')),
     path('api/audit/', include('audit.urls')),
     path('api/system/status/', SystemStatusView.as_view(), name='system_status'),
+    path('api/system/status/', include('system_status.urls')),
     path('api/system/backups/status/', BackupStatusView.as_view(), name='backup_status'),
     path('api/system/backups/generate/', BackupGenerateView.as_view(), name='backup_generate'),
     path('api/system/backups/download/', BackupDownloadView.as_view(), name='backup_download'),
