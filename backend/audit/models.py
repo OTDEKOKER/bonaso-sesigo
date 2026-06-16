@@ -29,6 +29,10 @@ class AuditEvent(models.Model):
         ('backup_generated', 'Backup generated'),
         ('backup_downloaded', 'Backup downloaded'),
         ('backup_download_reminder_sent', 'Backup download reminder sent'),
+        ('backup_uploaded', 'Backup uploaded'),
+        ('backup_restored', 'Backup restored'),
+        ('restore_failed', 'Restore failed'),
+        ('environment_override', 'Environment override'),
     ]
 
     actor = models.ForeignKey(

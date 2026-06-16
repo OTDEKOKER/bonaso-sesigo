@@ -41,6 +41,7 @@ urlpatterns = [
     path('api/system/backups/status/', BackupStatusView.as_view(), name='backup_status'),
     path('api/system/backups/generate/', BackupGenerateView.as_view(), name='backup_generate'),
     path('api/system/backups/download/', BackupDownloadView.as_view(), name='backup_download'),
+    path('api/system/restore/', include('recovery.urls')),
 
     # Offline sync-down package for field data capture
     path('api/offline/bootstrap/', OfflineBootstrapView.as_view(), name='offline_bootstrap'),

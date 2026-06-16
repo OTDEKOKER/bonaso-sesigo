@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'messaging',
     'idempotency',
     'audit',
+    'recovery',
 ]
 
 MIDDLEWARE = [
@@ -288,6 +289,10 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
+
+# Deployment environment label (LIVE / TRAINING). Used to stamp backups and to
+# block cross-environment restores (training data must never overwrite live).
+BONASO_ENVIRONMENT = os.getenv('BONASO_ENVIRONMENT', 'LIVE').strip().upper() or 'LIVE'
 
 # Email (used by the weekly backup-download reminder and password reset). Left
 # at the SMTP-localhost default so nothing sends silently to the wrong place;

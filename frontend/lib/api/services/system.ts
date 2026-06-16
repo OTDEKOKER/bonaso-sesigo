@@ -75,8 +75,53 @@ function triggerBrowserDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+export interface RestoreValidationResult {
+  valid: boolean;
+  errors: string[];
+  archive_ok: boolean;
+  checksum_ok: boolean | null;
+  source_environment: string;
+  target_environment: string;
+  environment_conflict: boolean;
+  created_at: string | null;
+  size_bytes: number | null;
+  filename: string | null;
+  staged_path: string;
+  apply_command: string;
+  note: string;
+}
+
+export interface RestoreHistoryEntry {
+  id: number;
+  created_at: string;
+  restored_by: string;
+  backup_name: string;
+  source_environment: string;
+  target_environment: string;
+  environment_override: boolean;
+  result: string;
+  notes: string;
+}
+
 export const systemService = {
   getStatus: () => api.get<SystemStatusResponse>("/system/status/").then((response) => response.data),
+
+  validateRestore: async (file: File): Promise<RestoreValidationResult> => {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetchWithAuth("/system/restore/validate/", { method: "POST", body: form });
+    const contentType = response.headers.get("content-type");
+    const payload = contentType?.includes("application/json") ? await response.json() : await response.text();
+    if (!response.ok) {
+      throw normalizeApiError({ status: response.status, payload, fallbackMessage: "Failed to validate backup" });
+    }
+    return payload as RestoreValidationResult;
+  },
+
+  getRestoreHistory: () =>
+    api
+      .get<{ count: number; results: RestoreHistoryEntry[] }>("/system/restore/history/")
+      .then((response) => response.data),
 
   getBackupStatus: () =>
     api.get<BackupManagementStatus>("/system/backups/status/").then((response) => response.data),

@@ -196,4 +196,4 @@ export type { NotificationFilters, MessageFilters, CreateMessageRequest, Announc
 
 // System operations
 export { systemService } from './services/system';
-export type { SystemHealthStatus, SystemStatusResponse, BackupManagementStatus, BackupReminderLevel } from './services/system';
+export type { SystemHealthStatus, SystemStatusResponse, BackupManagementStatus, BackupReminderLevel, RestoreValidationResult, RestoreHistoryEntry } from './services/system';

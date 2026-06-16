@@ -102,6 +102,9 @@ else
   VERIFY_STATUS="pg_restore_not_available"
 fi
 
+# Environment stamp (LIVE/TRAINING) for restore contamination protection.
+BACKUP_ENVIRONMENT="${BONASO_ENVIRONMENT:-LIVE}"
+
 cat >"$MANIFEST_FILE" <<JSON
 {
   "created_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -109,6 +112,7 @@ cat >"$MANIFEST_FILE" <<JSON
   "size_bytes": $BACKUP_SIZE_BYTES,
   "sha256": "$BACKUP_SHA256",
   "verify_status": "$VERIFY_STATUS",
+  "environment": "$BACKUP_ENVIRONMENT",
   "retention_days": $RETENTION_DAYS
 }
 JSON

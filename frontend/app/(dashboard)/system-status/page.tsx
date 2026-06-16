@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/shared/page-header";
+import { DisasterRecoveryCard } from "@/components/system/disaster-recovery-card";
 import { useToast } from "@/hooks/use-toast";
 import {
   systemService,
@@ -449,6 +450,8 @@ export default function SystemStatusPage() {
           </div>
 
           <BackupsCard />
+
+          <DisasterRecoveryCard />
 
           <Card>
             <CardHeader>
