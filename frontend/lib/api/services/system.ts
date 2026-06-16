@@ -1,5 +1,9 @@
 import { api, fetchWithAuth, normalizeApiError } from "../client";
 
+// Backup generate/download/restore-upload are long-running and run over
+// potentially slow links; the default 15s API timeout is far too short.
+const BACKUP_OP_TIMEOUT_MS = 10 * 60 * 1000;
+
 export type SystemHealthStatus = "ok" | "warning" | "error" | "missing";
 
 export interface SystemStatusResponse {
@@ -109,7 +113,11 @@ export const systemService = {
   validateRestore: async (file: File): Promise<RestoreValidationResult> => {
     const form = new FormData();
     form.append("file", file);
-    const response = await fetchWithAuth("/system/restore/validate/", { method: "POST", body: form });
+    const response = await fetchWithAuth("/system/restore/validate/", {
+      method: "POST",
+      body: form,
+      timeoutMs: BACKUP_OP_TIMEOUT_MS,
+    });
     const contentType = response.headers.get("content-type");
     const payload = contentType?.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
@@ -127,12 +135,16 @@ export const systemService = {
     api.get<BackupManagementStatus>("/system/backups/status/").then((response) => response.data),
 
   generateBackup: () =>
-    api.post<BackupManagementStatus>("/system/backups/generate/", {}).then((response) => response.data),
+    api
+      .post<BackupManagementStatus>("/system/backups/generate/", {}, { timeoutMs: BACKUP_OP_TIMEOUT_MS })
+      .then((response) => response.data),
 
   // Streams the latest dump and triggers a browser download. Returns the
   // server-suggested filename so the UI can confirm what was saved.
   downloadBackup: async (): Promise<string> => {
-    const response = await fetchWithAuth("/system/backups/download/");
+    // Backups can be large and operators may be on slow links — never use the
+    // default 15s request timeout for a streamed download.
+    const response = await fetchWithAuth("/system/backups/download/", { timeoutMs: BACKUP_OP_TIMEOUT_MS });
     if (!response.ok) {
       const contentType = response.headers.get("content-type");
       const payload = contentType?.includes("application/json")
