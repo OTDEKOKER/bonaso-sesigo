@@ -72,6 +72,7 @@ export function SystemIssueDialog({
   const m = current.metrics as Record<string, unknown>;
   const orgs = (current.detail?.affected_organizations ?? []) as Array<Record<string, unknown>>;
   const rows = (current.detail?.mismatch_rows ?? []) as Array<Record<string, unknown>>;
+  const errorRows = (current.detail?.error_rows ?? []) as Array<Record<string, unknown>>;
 
   const act = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -133,6 +134,7 @@ export function SystemIssueDialog({
         <DialogHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={SEVERITY_TONE[current.severity] ?? "bg-muted-foreground"}>{current.severity}</Badge>
+            <Badge variant="outline" className="font-mono text-[10px]">{current.issue_type}</Badge>
             <Badge variant="outline">{current.component.replaceAll("_", " ")}</Badge>
             <Badge variant="secondary">{current.environment === "training" ? "Sesigo Training Mode" : "Sesigo Live System"}</Badge>
             <Badge variant={current.status === "resolved" || current.status === "ignored" ? "secondary" : "outline"}>
@@ -209,6 +211,17 @@ export function SystemIssueDialog({
             </section>
           ) : null}
 
+          {errorRows.length ? (
+            <section>
+              <p className="mb-1 font-medium">Rejected rows ({errorRows.length})</p>
+              <div className="max-h-48 overflow-auto rounded-lg border bg-muted/40 p-2">
+                {errorRows.slice(0, 50).map((r, i) => (
+                  <pre key={i} className="whitespace-pre-wrap break-words text-[11px] text-muted-foreground">{JSON.stringify(r)}</pre>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section>
             <p className="mb-1 font-medium">Recommended fix</p>
             <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
@@ -227,13 +240,25 @@ export function SystemIssueDialog({
 
           <Separator />
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => void onRerun()} disabled={busy !== null}>
-              {busy === "rerun" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-              Re-run check
-            </Button>
+            {current.rerunnable ? (
+              <Button size="sm" variant="outline" onClick={() => void onRerun()} disabled={busy !== null}>
+                {busy === "rerun" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                Re-run check
+              </Button>
+            ) : null}
             {current.links.download_csv ? (
               <Button size="sm" variant="outline" onClick={() => void onDownload()} disabled={busy !== null}>
                 <Download className="mr-2 h-4 w-4" />Download report
+              </Button>
+            ) : null}
+            {current.related_import_job_id ? (
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/uploads/imports"><ExternalLink className="mr-2 h-4 w-4" />Open import job</Link>
+              </Button>
+            ) : null}
+            {current.related_upload_id && !current.related_import_job_id ? (
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/uploads"><ExternalLink className="mr-2 h-4 w-4" />Open upload</Link>
               </Button>
             ) : null}
             {current.related_module ? (

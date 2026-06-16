@@ -53,6 +53,7 @@ export type IssueStatus = "open" | "needs_review" | "reviewed" | "resolved" | "i
 
 export interface SystemIssue {
   id: string;
+  issue_type: string;
   title: string;
   severity: IssueSeverity;
   component: string;
@@ -65,17 +66,27 @@ export interface SystemIssue {
   metrics: Record<string, unknown>;
   detail: {
     affected_organizations?: Array<Record<string, unknown>>;
-    affected_indicators?: Array<{ id: number; name: string }>;
+    affected_indicators?: Array<{ id: number | null; name: string }>;
     mismatch_rows?: Array<Record<string, unknown>>;
+    error_rows?: Array<Record<string, unknown>>;
+    duplicate_indicators?: unknown[];
   };
   recommended_fix: string[];
   related_module: string | null;
+  related_upload_id: number | null;
+  related_import_job_id: number | null;
+  related_project_id: number | null;
+  related_period_start: string | null;
+  related_period_end: string | null;
+  created_at: string;
+  last_checked_at: string;
+  rerunnable: boolean;
   fingerprint: string;
   note?: string;
   acknowledged_by?: string | null;
   links: {
     details: string;
-    rerun: string;
+    rerun: string | null;
     ack: string;
     download_csv: string | null;
   };

@@ -18,7 +18,7 @@ from audit.recording import record_audit_event
 from core.status_views import _is_admin_user
 from users.permissions import HasModulePermission
 
-from .checks import find_issue, parity_csv_rows
+from .checks import find_issue, issue_csv_rows, issue_has_download
 from .models import SystemIssueAck
 
 # Map an issue to the check command that regenerates it.
@@ -57,10 +57,10 @@ class IssueDownloadView(_AdminView):
         issue = find_issue(issue_id, request)
         if issue is None:
             return Response({"detail": "Issue not found or already cleared."}, status=404)
-        if issue["component"] != "parity_checks":
+        if not issue_has_download(issue):
             return Response({"detail": "No downloadable report for this issue."}, status=400)
 
-        header, rows = parity_csv_rows(issue)
+        header, rows = issue_csv_rows(issue)
         response = HttpResponse(content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="{issue_id}_mismatches.csv"'
         writer = csv.writer(response)

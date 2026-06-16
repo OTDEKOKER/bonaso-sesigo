@@ -27,6 +27,7 @@ import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/shared/page-header";
 import { DisasterRecoveryCard } from "@/components/system/disaster-recovery-card";
 import { SystemIssueDialog } from "@/components/system/system-issue-dialog";
+import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import { useToast } from "@/hooks/use-toast";
 import {
   systemService,
@@ -306,6 +307,7 @@ export default function SystemStatusPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIssue, setSelectedIssue] = useState<SystemIssue | null>(null);
+  const { isTrainingMode } = useSessionMode();
   const issues = status?.issues ?? [];
 
   const loadStatus = async () => {
@@ -345,6 +347,17 @@ export default function SystemStatusPage() {
           </Button>
         }
       />
+
+      {isTrainingMode ? (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>You are using Sesigo Training Mode</AlertTitle>
+          <AlertDescription>
+            System Status shows operational checks for the <strong>Sesigo Live System</strong> (server-level: backups,
+            parity, database, disk, imports). These are not training-mode data.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {error ? (
         <Alert variant="destructive">
@@ -414,6 +427,10 @@ export default function SystemStatusPage() {
                       <div>
                         <p className="font-medium">{issue.title}</p>
                         <p className="text-sm text-muted-foreground">{issue.message}</p>
+                        <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {issue.component.replaceAll("_", " ")} ·{" "}
+                          {issue.environment === "training" ? "Training" : "Live"}
+                        </p>
                       </div>
                     </div>
                     <span className="shrink-0 text-xs text-muted-foreground">

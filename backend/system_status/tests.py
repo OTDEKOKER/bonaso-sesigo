@@ -1,6 +1,8 @@
 """Tests for the System Status issue drill-down."""
+import tempfile
 from unittest.mock import patch
 
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from organizations.models import Organization
@@ -160,3 +162,69 @@ class IssueEndpointTests(APITestCase):
         self.client.force_authenticate(self.admin)
         resp = self.client.post("/api/system/status/issues/disk-usage/rerun/")
         self.assertEqual(resp.status_code, 400)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ImportIssuesTests(APITestCase):
+    """IMP-1 import/upload issue types derived from ImportJob/Upload."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name="HQ", code="II_HQ", type="district")
+        cls.admin = User.objects.create_user(
+            username="ii_admin", email="ii@example.com", password="TestPass123!",
+            role="admin", organization=cls.org,
+        )
+
+    def _upload(self, content=b"data", name="wb.xlsx"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from uploads.models import Upload
+        return Upload.objects.create(
+            name=name, file=SimpleUploadedFile(name, content), created_by=self.admin,
+        )
+
+    def _job(self, **kwargs):
+        from uploads.models import ImportJob
+        up = kwargs.pop("upload", None) or self._upload()
+        return ImportJob.objects.create(upload=up, created_by=self.admin, **kwargs)
+
+    def _ids(self):
+        return {i["issue_type"]: i for i in checks.build_issues({"parity": {"status": "ok"}})}
+
+    def test_rejected_rows_issue(self):
+        self._job(status="failed", errors=[{"row": 2, "reason": "bad indicator"}])
+        issue = self._ids().get("IMPORT_REJECTED_ROWS")
+        self.assertIsNotNone(issue)
+        self.assertEqual(issue["severity"], "warning")
+        self.assertTrue(issue["links"]["download_csv"])
+        self.assertEqual(issue["related_import_job_id"], issue["related_import_job_id"])
+
+    def test_reset_from_review_issue(self):
+        self._job(status="imported", result={"reset_from_review": 3, "reset_from_review_indicators": ["Foo"]})
+        issue = self._ids().get("RESET_FROM_REVIEW")
+        self.assertIsNotNone(issue)
+        self.assertEqual(issue["metrics"]["records_reset"], 3)
+        self.assertEqual(issue["component"], "aggregates")
+
+    def test_all_unchanged_is_info(self):
+        self._job(status="imported", result={"created": 0, "updated": 0, "unchanged": 7})
+        issue = self._ids().get("IMPORT_ALL_UNCHANGED")
+        self.assertIsNotNone(issue)
+        self.assertEqual(issue["severity"], "info")
+        # info issues must not flip overall to a problem
+        self.assertEqual(checks.overall_from_issues([issue], "x"), "ok")
+
+    def test_duplicate_indicators_issue(self):
+        self._job(status="imported", result={"created": 1, "duplicate_indicators_in_payload": ["A", "B"]})
+        issue = self._ids().get("DUPLICATE_INDICATORS_IN_PAYLOAD")
+        self.assertIsNotNone(issue)
+        self.assertEqual(issue["detail"]["duplicate_indicators"], ["A", "B"])
+
+    def test_duplicate_file_issue(self):
+        first = self._upload(content=b"identical-bytes", name="first.xlsx")
+        self._job(upload=first, status="imported")
+        self._upload(content=b"identical-bytes", name="second.xlsx")  # same hash
+        issue = self._ids().get("DUPLICATE_FILE_UPLOADED")
+        self.assertIsNotNone(issue)
+        self.assertEqual(issue["severity"], "info")
+        self.assertEqual(issue["metrics"]["previous_upload_id"], first.id)
