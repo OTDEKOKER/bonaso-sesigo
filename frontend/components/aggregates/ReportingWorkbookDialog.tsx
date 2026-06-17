@@ -224,8 +224,8 @@ export function ReportingWorkbookDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
             <Label>Project</Label>
             <Select value={project} onValueChange={setProject}>
               <SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger>
@@ -236,7 +236,7 @@ export function ReportingWorkbookDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
+          <div className="space-y-1.5">
             <Label>Organization</Label>
             <Select value={organization} onValueChange={setOrganization}>
               <SelectTrigger><SelectValue placeholder="Select an organization" /></SelectTrigger>
@@ -247,49 +247,47 @@ export function ReportingWorkbookDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>Period type</Label>
-            <Select value={periodType} onValueChange={(v) => setPeriodType(v as "quarter" | "year" | "month")}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="year">Yearly</SelectItem>
-                <SelectItem value="quarter">Quarterly</SelectItem>
-                <SelectItem value="month">Monthly</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {periodType === "quarter" && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label>Quarter</Label>
-              <Select value={quarter} onValueChange={setQuarter}>
+              <Label>Period type</Label>
+              <Select value={periodType} onValueChange={(v) => setPeriodType(v as "quarter" | "year" | "month")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {QUARTERS.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                  <SelectItem value="year">Yearly</SelectItem>
+                  <SelectItem value="quarter">Quarterly</SelectItem>
+                  <SelectItem value="month">Monthly</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          )}
-          {periodType === "month" && (
             <div className="space-y-1.5">
-              <Label>Month</Label>
-              <Select value={month} onValueChange={setMonth}>
+              <Label>{periodType === "month" ? "Month" : "Quarter"}</Label>
+              {periodType === "month" ? (
+                <Select value={month} onValueChange={setMonth}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {MONTHS.map(([v, name]) => <SelectItem key={v} value={v}>{name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={quarter} onValueChange={setQuarter} disabled={periodType === "year"}>
+                  <SelectTrigger><SelectValue placeholder={periodType === "year" ? "Full year" : undefined} /></SelectTrigger>
+                  <SelectContent>
+                    {QUARTERS.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>{periodType === "month" ? "Calendar Year" : "Fiscal Year"}</Label>
+              <Select value={fiscalYear} onValueChange={setFiscalYear}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {MONTHS.map(([v, name]) => <SelectItem key={v} value={v}>{name}</SelectItem>)}
+                  {fiscalYears.map((y) => (
+                    <SelectItem key={y} value={String(y)}>{periodType === "month" ? String(y) : fyLabel(y)}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-          )}
-          <div className="space-y-1.5">
-            <Label>{periodType === "month" ? "Calendar Year" : "Fiscal Year"}</Label>
-            <Select value={fiscalYear} onValueChange={setFiscalYear}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {fiscalYears.map((y) => (
-                  <SelectItem key={y} value={String(y)}>{periodType === "month" ? String(y) : fyLabel(y)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
