@@ -13,6 +13,9 @@ const MODULE_BY_PATH: Record<string, string> = {
   "/respondents": "respondents",
   "/aggregates": "aggregates",
   "/events": "events",
+  "/social": "social",
+  // Client organizations are org-management; gate them with the orgs module.
+  "/clients": "organizations",
   "/batch-record": "batch_record",
   "/uploads": "uploads",
   "/analysis": "analytics",
@@ -20,7 +23,10 @@ const MODULE_BY_PATH: Record<string, string> = {
   "/messages": "messages",
   "/announcements": "notifications",
   "/system-status": "system_status",
-  "/settings": "settings",
+  // NOTE: /settings is intentionally NOT gated — it is the user's own profile /
+  // password / appearance page that every role needs. No role default grants the
+  // `settings` module, so mapping it here would lock non-admins out of their own
+  // account page. Admin-only system settings are gated elsewhere if needed.
 }
 
 /** Resolve the permission module for a route, or null when the route is ungated. */
