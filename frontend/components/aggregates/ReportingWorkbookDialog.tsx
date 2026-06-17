@@ -21,15 +21,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useProject } from "@/lib/hooks/use-api";
 import {
   aggregatesService,
   type ReportingWorkbookImportResult,
 } from "@/lib/api/services/aggregates";
 
 type Option = { id: string | number; name?: string; code?: string };
+/** Project options carry dates so the dialog can show only projects active in the chosen period. */
+type ProjectOption = Option & { start_date?: string; end_date?: string; status?: string };
 
 type ReportingWorkbookDialogProps = {
-  projects: Option[];
+  projects: ProjectOption[];
   organizations: Option[];
   /** Permission-scoped coordinator organizations (parents). */
   coordinators?: Option[];
@@ -52,6 +55,55 @@ function currentFiscal(): { quarter: string; fiscalYear: number } {
   if (month >= 7 && month <= 9) return { quarter: "Q2", fiscalYear: year };
   if (month >= 10 && month <= 12) return { quarter: "Q3", fiscalYear: year };
   return { quarter: "Q4", fiscalYear: year - 1 }; // Jan-Mar belongs to prior FY start
+}
+
+const iso = (y: number, m: number, d: number) =>
+  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+const monthEnd = (y: number, m: number) => new Date(y, m, 0).getDate(); // m is 1-12
+
+/**
+ * Inclusive [start, end] ISO range for the selected period. Botswana FY starts in
+ * April. Year = whole FY; quarter = that quarter; month = that calendar month.
+ */
+function periodRange(
+  periodType: "quarter" | "year" | "month",
+  quarter: string,
+  month: string,
+  fiscalYear: string,
+): { start: string; end: string } | null {
+  const fy = Number(fiscalYear);
+  if (!Number.isFinite(fy)) return null;
+  if (periodType === "year") {
+    return { start: iso(fy, 4, 1), end: iso(fy + 1, 3, 31) };
+  }
+  if (periodType === "month") {
+    const m = Number(month);
+    if (!m) return null;
+    return { start: iso(fy, m, 1), end: iso(fy, m, monthEnd(fy, m)) };
+  }
+  // quarter
+  switch (quarter) {
+    case "Q1": return { start: iso(fy, 4, 1), end: iso(fy, 6, 30) };
+    case "Q2": return { start: iso(fy, 7, 1), end: iso(fy, 9, 30) };
+    case "Q3": return { start: iso(fy, 10, 1), end: iso(fy, 12, 31) };
+    case "Q4": return { start: iso(fy + 1, 1, 1), end: iso(fy + 1, 3, 31) };
+    default: return null;
+  }
+}
+
+/** BFS over a parent→children adjacency map; the returned set includes the root. */
+function collectSubtree(rootId: string, childrenByParent: Map<string, string[]>): Set<string> {
+  const visited = new Set<string>();
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || visited.has(current)) continue;
+    visited.add(current);
+    for (const childId of childrenByParent.get(current) || []) {
+      if (!visited.has(childId)) queue.push(childId);
+    }
+  }
+  return visited;
 }
 
 export function ReportingWorkbookDialog({
@@ -86,16 +138,99 @@ export function ReportingWorkbookDialog({
   const [periodType, setPeriodType] = useState<"quarter" | "year" | "month">("quarter");
   const [month, setMonth] = useState<string>("4"); // April = FY start
 
+  // ── Cascade: Period → Project → Coordinator → Organization ──────────────────
+  //
+  // 1) Period (fiscal/calendar year + quarter/month) filters which projects show.
+  // 2) The chosen project's hierarchy determines the coordinator options.
+  // 3) The chosen coordinator determines which organizations (its subtree) show.
+
+  // (1) Projects active during the selected period (date-range overlap).
+  const visibleProjects = useMemo(() => {
+    const range = periodRange(periodType, quarter, month, fiscalYear);
+    if (!range) return projects;
+    return projects.filter((p) => {
+      const start = p.start_date;
+      const end = p.end_date;
+      if (!start || !end) return true; // keep projects without a defined range
+      return start <= range.end && end >= range.start;
+    });
+  }, [projects, periodType, quarter, month, fiscalYear]);
+
+  // (2) Fetch the selected project's detail for its hierarchy links.
+  const { data: projectDetail } = useProject(project ? Number(project) : null, {
+    keepPreviousData: false,
+  });
+  const activeLinks = useMemo(() => {
+    if (!project || String(projectDetail?.id) !== project) return [];
+    return (projectDetail?.project_hierarchy_links ?? []).filter((link) => link.is_active);
+  }, [project, projectDetail]);
+
+  // Permission universe the page is allowed to act on (writable orgs + coordinators).
+  const allowedOrgIds = useMemo(() => {
+    const ids = new Set<string>();
+    organizations.forEach((o) => ids.add(String(o.id)));
+    coordinators.forEach((o) => ids.add(String(o.id)));
+    return ids;
+  }, [organizations, coordinators]);
+
+  // Coordinator options = hierarchy parents in the selected project (∩ permission scope).
+  // Falls back to the page-supplied list when the project has no hierarchy links yet.
+  const coordinatorOptions = useMemo<Option[]>(() => {
+    if (activeLinks.length === 0) return coordinators;
+    const byId = new Map<string, Option>();
+    activeLinks.forEach((link) => {
+      const id = String(link.parent_organization);
+      if (allowedOrgIds.size > 0 && !allowedOrgIds.has(id)) return;
+      if (!byId.has(id)) byId.set(id, { id, name: link.parent_organization_name });
+    });
+    return Array.from(byId.values()).sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || "")),
+    );
+  }, [activeLinks, coordinators, allowedOrgIds]);
+
+  // (3) Coordinator → its subtree of organizations, derived from the project hierarchy.
+  const orgsByCoordinator = useMemo<Record<string, Option[]>>(() => {
+    if (activeLinks.length === 0) return organizationsByCoordinator;
+    const childrenByParent = new Map<string, string[]>();
+    const nameById = new Map<string, string | undefined>();
+    activeLinks.forEach((link) => {
+      const parentId = String(link.parent_organization);
+      const childId = String(link.child_organization);
+      childrenByParent.set(parentId, [...(childrenByParent.get(parentId) || []), childId]);
+      nameById.set(parentId, link.parent_organization_name);
+      nameById.set(childId, link.child_organization_name);
+    });
+    const result: Record<string, Option[]> = {};
+    coordinatorOptions.forEach((coord) => {
+      const ids = collectSubtree(String(coord.id), childrenByParent);
+      result[String(coord.id)] = Array.from(ids)
+        .filter((id) => allowedOrgIds.size === 0 || allowedOrgIds.has(id))
+        .map((id) => ({ id, name: nameById.get(id) }))
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    });
+    return result;
+  }, [activeLinks, coordinatorOptions, organizationsByCoordinator, allowedOrgIds]);
+
   // The Organization picker follows the chosen Coordinator: only orgs that report
   // under it (self + descendants). With no coordinator selected, show all writable orgs.
   const scopedOrganizations = useMemo(() => {
-    if (coordinator && organizationsByCoordinator[coordinator]?.length) {
-      return organizationsByCoordinator[coordinator];
+    if (coordinator && orgsByCoordinator[coordinator]?.length) {
+      return orgsByCoordinator[coordinator];
     }
     return organizations;
-  }, [coordinator, organizationsByCoordinator, organizations]);
+  }, [coordinator, orgsByCoordinator, organizations]);
 
-  // If the selected organization no longer belongs to the chosen coordinator, clear it.
+  // Keep the cascade consistent: clear downstream selections that fall out of scope.
+  React.useEffect(() => {
+    if (project && !visibleProjects.some((p) => String(p.id) === project)) {
+      setProject("");
+    }
+  }, [project, visibleProjects]);
+  React.useEffect(() => {
+    if (coordinator && !coordinatorOptions.some((o) => String(o.id) === coordinator)) {
+      setCoordinator("");
+    }
+  }, [coordinator, coordinatorOptions]);
   React.useEffect(() => {
     if (organization && !scopedOrganizations.some((o) => String(o.id) === organization)) {
       setOrganization("");
@@ -178,9 +313,8 @@ export function ReportingWorkbookDialog({
         periodType,
         month,
       });
-      const orgName = coordinators.find((o) => String(o.id) === coordinator)?.code
-        || coordinators.find((o) => String(o.id) === coordinator)?.name
-        || "coordinator";
+      const selectedCoord = coordinatorOptions.find((o) => String(o.id) === coordinator);
+      const orgName = selectedCoord?.code || selectedCoord?.name || "coordinator";
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -253,49 +387,7 @@ export function ReportingWorkbookDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Project</Label>
-            <Select value={project} onValueChange={setProject}>
-              <SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger>
-              <SelectContent>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name || `Project ${p.id}`}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Coordinator</Label>
-              <Select value={coordinator} onValueChange={setCoordinator}>
-                <SelectTrigger><SelectValue placeholder="Select a coordinator" /></SelectTrigger>
-                <SelectContent>
-                  {coordinators.map((o) => (
-                    <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">For the coordinator rollup download.</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Organization</Label>
-              <Select value={organization} onValueChange={setOrganization}>
-                <SelectTrigger>
-                  <SelectValue placeholder={coordinator ? "Select a sub-grantee" : "Select an organization"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {scopedOrganizations.map((o) => (
-                    <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
-                {coordinator
-                  ? "Scoped to the selected coordinator. For the single-organisation download."
-                  : "For the single-organisation download."}
-              </p>
-            </div>
-          </div>
+          {/* Step 1 — Period. Drives which projects are shown. */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label>Period type</Label>
@@ -336,6 +428,61 @@ export function ReportingWorkbookDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Step 2 — Project (only those active in the selected period). */}
+          <div className="space-y-1.5">
+            <Label>Project</Label>
+            <Select value={project} onValueChange={setProject}>
+              <SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger>
+              <SelectContent>
+                {visibleProjects.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">No projects active in this period.</div>
+                ) : (
+                  visibleProjects.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name || `Project ${p.id}`}</SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Step 3 — Coordinator (project hierarchy) → Organization (its subtree). */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Coordinator</Label>
+              <Select value={coordinator} onValueChange={setCoordinator} disabled={!project}>
+                <SelectTrigger><SelectValue placeholder={project ? "Select a coordinator" : "Select a project first"} /></SelectTrigger>
+                <SelectContent>
+                  {coordinatorOptions.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">No coordinators in this project.</div>
+                  ) : (
+                    coordinatorOptions.map((o) => (
+                      <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">For the coordinator rollup download.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Organization</Label>
+              <Select value={organization} onValueChange={setOrganization} disabled={!project}>
+                <SelectTrigger>
+                  <SelectValue placeholder={!project ? "Select a project first" : coordinator ? "Select a sub-grantee" : "Select an organization"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopedOrganizations.map((o) => (
+                    <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {coordinator
+                  ? "Scoped to the selected coordinator. For the single-organisation download."
+                  : "For the single-organisation download."}
+              </p>
             </div>
           </div>
         </div>
