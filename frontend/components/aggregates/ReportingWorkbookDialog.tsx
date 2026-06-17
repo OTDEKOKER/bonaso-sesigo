@@ -33,6 +33,8 @@ type ReportingWorkbookDialogProps = {
   organizations: Option[];
   /** Permission-scoped coordinator organizations (parents). */
   coordinators?: Option[];
+  /** Coordinator id → organizations that report under it (self + descendants). */
+  organizationsByCoordinator?: Record<string, Option[]>;
   defaultProject?: string;
   defaultOrganization?: string;
   defaultCoordinator?: string;
@@ -56,6 +58,7 @@ export function ReportingWorkbookDialog({
   projects,
   organizations,
   coordinators = [],
+  organizationsByCoordinator = {},
   defaultProject,
   defaultOrganization,
   defaultCoordinator,
@@ -82,6 +85,22 @@ export function ReportingWorkbookDialog({
   const [fiscalYear, setFiscalYear] = useState<string>(String(initial.fiscalYear));
   const [periodType, setPeriodType] = useState<"quarter" | "year" | "month">("quarter");
   const [month, setMonth] = useState<string>("4"); // April = FY start
+
+  // The Organization picker follows the chosen Coordinator: only orgs that report
+  // under it (self + descendants). With no coordinator selected, show all writable orgs.
+  const scopedOrganizations = useMemo(() => {
+    if (coordinator && organizationsByCoordinator[coordinator]?.length) {
+      return organizationsByCoordinator[coordinator];
+    }
+    return organizations;
+  }, [coordinator, organizationsByCoordinator, organizations]);
+
+  // If the selected organization no longer belongs to the chosen coordinator, clear it.
+  React.useEffect(() => {
+    if (organization && !scopedOrganizations.some((o) => String(o.id) === organization)) {
+      setOrganization("");
+    }
+  }, [organization, scopedOrganizations]);
 
   const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "upload" | "confirm">(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -129,9 +148,8 @@ export function ReportingWorkbookDialog({
         periodType,
         month,
       });
-      const orgName = organizations.find((o) => String(o.id) === organization)?.code
-        || organizations.find((o) => String(o.id) === organization)?.name
-        || "org";
+      const selectedOrg = scopedOrganizations.find((o) => String(o.id) === organization);
+      const orgName = selectedOrg?.code || selectedOrg?.name || "org";
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -262,14 +280,20 @@ export function ReportingWorkbookDialog({
             <div className="space-y-1.5">
               <Label>Organization</Label>
               <Select value={organization} onValueChange={setOrganization}>
-                <SelectTrigger><SelectValue placeholder="Select an organization" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder={coordinator ? "Select a sub-grantee" : "Select an organization"} />
+                </SelectTrigger>
                 <SelectContent>
-                  {organizations.map((o) => (
+                  {scopedOrganizations.map((o) => (
                     <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">For the single-organisation download.</p>
+              <p className="text-[11px] text-muted-foreground">
+                {coordinator
+                  ? "Scoped to the selected coordinator. For the single-organisation download."
+                  : "For the single-organisation download."}
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

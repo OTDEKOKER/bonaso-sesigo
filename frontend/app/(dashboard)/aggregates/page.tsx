@@ -50,6 +50,7 @@ import {
   groupAggregatesByIndicator,
   isValidDateRange,
   parseNumberInput,
+  resolveParentOrganizationId,
   type AggregateValue,
   type AggregateEntryMatrixConfig,
 } from "@/lib/aggregates/aggregate-helpers";
@@ -335,6 +336,52 @@ function AggregatesPageContent() {
         : availableCoordinatorOrganizations,
     [availableCoordinatorOrganizations, effectiveCoordinatorOrganizationIds, organizations],
   );
+
+  // Map each coordinator → the organizations that report under it (self + descendants),
+  // so the workbook dialog's Organization picker can follow the chosen Coordinator.
+  const organizationsByCoordinator = useMemo(() => {
+    const childrenByParent = new Map<string, string[]>();
+    if (effectiveProjectHierarchyLinks.length > 0) {
+      effectiveProjectHierarchyLinks.forEach((link) => {
+        const parentId = String(link.parent_organization);
+        const childId = String(link.child_organization);
+        childrenByParent.set(parentId, [...(childrenByParent.get(parentId) || []), childId]);
+      });
+    } else {
+      writableOrganizations.forEach((organization) => {
+        const parentId = resolveParentOrganizationId(organization);
+        if (!parentId) return;
+        childrenByParent.set(parentId, [
+          ...(childrenByParent.get(parentId) || []),
+          String(organization.id),
+        ]);
+      });
+    }
+
+    const collectSubtree = (rootId: string) => {
+      const visited = new Set<string>();
+      const queue = [rootId];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || visited.has(current)) continue;
+        visited.add(current);
+        for (const childId of childrenByParent.get(current) || []) {
+          if (!visited.has(childId)) queue.push(childId);
+        }
+      }
+      return visited;
+    };
+
+    const result: Record<string, typeof writableOrganizations> = {};
+    effectiveCoordinatorOrganizations.forEach((coordinator) => {
+      const ids = collectSubtree(String(coordinator.id));
+      result[String(coordinator.id)] = writableOrganizations
+        .filter((organization) => ids.has(String(organization.id)))
+        .slice()
+        .sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")));
+    });
+    return result;
+  }, [effectiveCoordinatorOrganizations, effectiveProjectHierarchyLinks, writableOrganizations]);
 
   const {
     parentOrgFilter,
@@ -1295,6 +1342,7 @@ function AggregatesPageContent() {
                 projects={projects}
                 organizations={writableOrganizations}
                 coordinators={effectiveCoordinatorOrganizations}
+                organizationsByCoordinator={organizationsByCoordinator}
                 defaultProject={projectFilter}
                 defaultCoordinator={parentOrgFilter}
                 onImported={() => { void mutate(); }}
