@@ -144,6 +144,24 @@ def _norm(value) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
+def normalize_band_label(label) -> str:
+    """Canonicalise an age-band label's *whitespace* without changing its range.
+
+    Partner workbooks sometimes store the same age band under inconsistent
+    spellings — ``"0 - 4"``/``"0-4"``, ``"5- 10"``/``"5-10"``, ``"30 -39"``/
+    ``"30-39"`` — which makes one band render as two near-identical columns in the
+    reporting workbook. This collapses the spaces *around the hyphen* and any
+    repeated internal whitespace so those spellings map to a single band. It does
+    NOT alter the numbers in a band or the band boundaries (e.g. ``"65+"`` stays
+    ``"65+"``, ``"18-24"`` stays ``"18-24"``), so intentionally different age
+    ranges (e.g. an indicator using social-media age ranges) are untouched.
+    """
+    text = str(label or "").strip()
+    text = re.sub(r"\s*-\s*", "-", text)  # "0 - 4" / "5- 10" / "30 -39" -> "0-4" / "5-10" / "30-39"
+    text = re.sub(r"\s+", " ", text)       # collapse any other doubled spaces
+    return text
+
+
 def _dim_tokens(dim: dict) -> set[str]:
     # Token-based so "messages" never matches "age", etc.
     return set(_norm(dim.get("key")).split()) | set(_norm(dim.get("label")).split())
@@ -208,7 +226,9 @@ def resolve_matrix_config(indicator) -> MatrixConfig:
         secondary_values = _values(secondary_dim, list(MATRIX_SEXES))
     else:
         secondary_values = _values(secondary_dim, [ALL_PRIMARY])
-    band_values = _values(age_dim, [NO_BAND])
+    # Normalise band-label whitespace and drop the duplicates it produces so a
+    # band stored as both "0 - 4" and "0-4" renders as one column (not two).
+    band_values = list(dict.fromkeys(normalize_band_label(b) for b in _values(age_dim, [NO_BAND])))
 
     return MatrixConfig(
         has_disaggregates=True,
@@ -300,7 +320,15 @@ def extract_cells_from_value(value, cfg: MatrixConfig) -> dict[tuple[str, str, s
             for secondary, band_map in secondary_map.items():
                 if isinstance(band_map, dict):
                     for band, amount in band_map.items():
-                        cells[(str(primary), str(secondary), str(band))] = amount
+                        # Normalise band whitespace and merge duplicates (e.g. a
+                        # value stored under "0 - 4" lands in the same "0-4" cell
+                        # as one stored under "0-4"), summing to preserve totals.
+                        key = (str(primary), str(secondary), normalize_band_label(band))
+                        existing = cells.get(key)
+                        if isinstance(existing, (int, float)) and isinstance(amount, (int, float)):
+                            cells[key] = existing + amount
+                        else:
+                            cells[key] = amount
                 else:
                     cells[(str(primary), str(secondary), NO_BAND)] = band_map
 
