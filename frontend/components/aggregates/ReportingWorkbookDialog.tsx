@@ -31,8 +31,11 @@ type Option = { id: string | number; name?: string; code?: string };
 type ReportingWorkbookDialogProps = {
   projects: Option[];
   organizations: Option[];
+  /** Permission-scoped coordinator organizations (parents). */
+  coordinators?: Option[];
   defaultProject?: string;
   defaultOrganization?: string;
+  defaultCoordinator?: string;
   onImported?: () => void;
 };
 
@@ -52,8 +55,10 @@ function currentFiscal(): { quarter: string; fiscalYear: number } {
 export function ReportingWorkbookDialog({
   projects,
   organizations,
+  coordinators = [],
   defaultProject,
   defaultOrganization,
+  defaultCoordinator,
   onImported,
 }: ReportingWorkbookDialogProps) {
   const { toast } = useToast();
@@ -69,6 +74,9 @@ export function ReportingWorkbookDialog({
   const [project, setProject] = useState(defaultProject && defaultProject !== "all" ? defaultProject : "");
   const [organization, setOrganization] = useState(
     defaultOrganization && defaultOrganization !== "all" ? defaultOrganization : "",
+  );
+  const [coordinator, setCoordinator] = useState(
+    defaultCoordinator && defaultCoordinator !== "all" ? defaultCoordinator : "",
   );
   const [quarter, setQuarter] = useState<string>(initial.quarter);
   const [fiscalYear, setFiscalYear] = useState<string>(String(initial.fiscalYear));
@@ -90,10 +98,12 @@ export function ReportingWorkbookDialog({
     ["9", "September"], ["10", "October"], ["11", "November"], ["12", "December"],
   ] as const;
 
-  const ready = Boolean(
-    project && organization && fiscalYear &&
+  const periodReady = Boolean(
+    project && fiscalYear &&
     (periodType === "year" || (periodType === "quarter" && quarter) || (periodType === "month" && month)),
   );
+  const singleReady = periodReady && Boolean(organization);
+  const coordinatorReady = periodReady && Boolean(coordinator);
 
   const triggerFriendlyError = (err: unknown, fallback: string) => {
     const payload = (err as { payload?: ReportingWorkbookImportResult })?.payload;
@@ -104,8 +114,8 @@ export function ReportingWorkbookDialog({
   };
 
   const handleDownload = async (withData: boolean) => {
-    if (!ready) {
-      toast({ title: "Select project, organization and quarter first.", variant: "destructive" });
+    if (!singleReady) {
+      toast({ title: "Select project, organization and period first.", variant: "destructive" });
       return;
     }
     setBusy(withData ? "data" : "blank");
@@ -136,22 +146,22 @@ export function ReportingWorkbookDialog({
   };
 
   const handleCoordinatorDownload = async () => {
-    if (!ready) {
-      toast({ title: "Select project, coordinator organization and quarter first.", variant: "destructive" });
+    if (!coordinatorReady) {
+      toast({ title: "Select project, coordinator and period first.", variant: "destructive" });
       return;
     }
     setBusy("coordinator");
     try {
       const blob = await aggregatesService.downloadCoordinatorWorkbook({
         project,
-        coordinator: organization,
+        coordinator,
         quarter,
         fiscal_year: fiscalYear,
         periodType,
         month,
       });
-      const orgName = organizations.find((o) => String(o.id) === organization)?.code
-        || organizations.find((o) => String(o.id) === organization)?.name
+      const orgName = coordinators.find((o) => String(o.id) === coordinator)?.code
+        || coordinators.find((o) => String(o.id) === coordinator)?.name
         || "coordinator";
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -236,16 +246,31 @@ export function ReportingWorkbookDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>Organization</Label>
-            <Select value={organization} onValueChange={setOrganization}>
-              <SelectTrigger><SelectValue placeholder="Select an organization" /></SelectTrigger>
-              <SelectContent>
-                {organizations.map((o) => (
-                  <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Coordinator</Label>
+              <Select value={coordinator} onValueChange={setCoordinator}>
+                <SelectTrigger><SelectValue placeholder="Select a coordinator" /></SelectTrigger>
+                <SelectContent>
+                  {coordinators.map((o) => (
+                    <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">For the coordinator rollup download.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Organization</Label>
+              <Select value={organization} onValueChange={setOrganization}>
+                <SelectTrigger><SelectValue placeholder="Select an organization" /></SelectTrigger>
+                <SelectContent>
+                  {organizations.map((o) => (
+                    <SelectItem key={o.id} value={String(o.id)}>{o.name || `Organization ${o.id}`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">For the single-organisation download.</p>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
@@ -295,11 +320,11 @@ export function ReportingWorkbookDialog({
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Single organisation</p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" disabled={!ready || busy !== null} onClick={() => handleDownload(false)}>
+              <Button variant="outline" disabled={!singleReady || busy !== null} onClick={() => handleDownload(false)}>
                 {busy === "blank" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Download Blank
               </Button>
-              <Button variant="outline" disabled={!ready || busy !== null} onClick={() => handleDownload(true)}>
+              <Button variant="outline" disabled={!singleReady || busy !== null} onClick={() => handleDownload(true)}>
                 {busy === "data" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Download With Data
               </Button>
@@ -308,7 +333,7 @@ export function ReportingWorkbookDialog({
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Coordinator (a sheet per sub-grantee + a TOTAL rollup)</p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" disabled={!ready || busy !== null} onClick={handleCoordinatorDownload}>
+              <Button variant="outline" disabled={!coordinatorReady || busy !== null} onClick={handleCoordinatorDownload}>
                 {busy === "coordinator" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Download Coordinator Workbook
               </Button>

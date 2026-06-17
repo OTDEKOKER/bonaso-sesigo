@@ -1294,7 +1294,9 @@ function AggregatesPageContent() {
               <ReportingWorkbookDialog
                 projects={projects}
                 organizations={writableOrganizations}
+                coordinators={effectiveCoordinatorOrganizations}
                 defaultProject={projectFilter}
+                defaultCoordinator={parentOrgFilter}
                 onImported={() => { void mutate(); }}
               />
             ) : null}
