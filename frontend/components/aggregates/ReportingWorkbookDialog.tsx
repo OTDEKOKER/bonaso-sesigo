@@ -72,6 +72,8 @@ export function ReportingWorkbookDialog({
   );
   const [quarter, setQuarter] = useState<string>(initial.quarter);
   const [fiscalYear, setFiscalYear] = useState<string>(String(initial.fiscalYear));
+  const [periodType, setPeriodType] = useState<"quarter" | "year" | "month">("quarter");
+  const [month, setMonth] = useState<string>("4"); // April = FY start
 
   const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "upload" | "confirm">(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -82,7 +84,16 @@ export function ReportingWorkbookDialog({
     return `${y}/${String(y + 1).slice(-2)}`;
   };
 
-  const ready = Boolean(project && organization && quarter && fiscalYear);
+  const MONTHS = [
+    ["1", "January"], ["2", "February"], ["3", "March"], ["4", "April"],
+    ["5", "May"], ["6", "June"], ["7", "July"], ["8", "August"],
+    ["9", "September"], ["10", "October"], ["11", "November"], ["12", "December"],
+  ] as const;
+
+  const ready = Boolean(
+    project && organization && fiscalYear &&
+    (periodType === "year" || (periodType === "quarter" && quarter) || (periodType === "month" && month)),
+  );
 
   const triggerFriendlyError = (err: unknown, fallback: string) => {
     const payload = (err as { payload?: ReportingWorkbookImportResult })?.payload;
@@ -105,6 +116,8 @@ export function ReportingWorkbookDialog({
         quarter,
         fiscal_year: fiscalYear,
         withData,
+        periodType,
+        month,
       });
       const orgName = organizations.find((o) => String(o.id) === organization)?.code
         || organizations.find((o) => String(o.id) === organization)?.name
@@ -134,6 +147,8 @@ export function ReportingWorkbookDialog({
         coordinator: organization,
         quarter,
         fiscal_year: fiscalYear,
+        periodType,
+        month,
       });
       const orgName = organizations.find((o) => String(o.id) === organization)?.code
         || organizations.find((o) => String(o.id) === organization)?.name
@@ -233,21 +248,45 @@ export function ReportingWorkbookDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Quarter</Label>
-            <Select value={quarter} onValueChange={setQuarter}>
+            <Label>Period type</Label>
+            <Select value={periodType} onValueChange={(v) => setPeriodType(v as "quarter" | "year" | "month")}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {QUARTERS.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                <SelectItem value="year">Yearly</SelectItem>
+                <SelectItem value="quarter">Quarterly</SelectItem>
+                <SelectItem value="month">Monthly</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {periodType === "quarter" && (
+            <div className="space-y-1.5">
+              <Label>Quarter</Label>
+              <Select value={quarter} onValueChange={setQuarter}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {QUARTERS.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {periodType === "month" && (
+            <div className="space-y-1.5">
+              <Label>Month</Label>
+              <Select value={month} onValueChange={setMonth}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map(([v, name]) => <SelectItem key={v} value={v}>{name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1.5">
-            <Label>Fiscal Year</Label>
+            <Label>{periodType === "month" ? "Calendar Year" : "Fiscal Year"}</Label>
             <Select value={fiscalYear} onValueChange={setFiscalYear}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {fiscalYears.map((y) => (
-                  <SelectItem key={y} value={String(y)}>{fyLabel(y)}</SelectItem>
+                  <SelectItem key={y} value={String(y)}>{periodType === "month" ? String(y) : fyLabel(y)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -276,6 +315,11 @@ export function ReportingWorkbookDialog({
                 Download Coordinator Workbook
               </Button>
             </div>
+            {busy === "coordinator" ? (
+              <p className="text-xs text-muted-foreground">
+                Generating… coordinators with many sub-grantees can take up to a minute. Please keep this open.
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy !== null} onClick={() => fileInputRef.current?.click()}>

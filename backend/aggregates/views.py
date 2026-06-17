@@ -1474,7 +1474,43 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 pass
         return None
 
-    def _build_indicator_plans(self, *, project, organization, quarter, period_start=None, period_end=None, with_data=False):
+    def _resolve_period(self, request):
+        """Resolve the workbook period from ``period_type`` (quarter|year|month).
+
+        Returns (quarter, fiscal_start_year, period_start, period_end, label,
+        period_type) or None. quarter is kept (defaulting to 1) so existing
+        target/metadata code keeps working for yearly/monthly too.
+        """
+        period_type = str(request.query_params.get('period_type') or 'quarter').strip().lower()
+        fy_raw = request.query_params.get('fiscal_year') or request.query_params.get('fiscal_start_year')
+
+        if period_type in ('year', 'yearly', 'annual'):
+            try:
+                fy = int(fy_raw)
+            except (TypeError, ValueError):
+                return None
+            s, e, label = rw.resolve_period('year', fiscal_start_year=fy)
+            return 1, fy, s, e, label, 'year'
+
+        if period_type in ('month', 'monthly'):
+            try:
+                month = int(request.query_params.get('month'))
+                cy = int(request.query_params.get('calendar_year') or fy_raw)
+            except (TypeError, ValueError):
+                return None
+            if not 1 <= month <= 12:
+                return None
+            s, e, label = rw.resolve_period('month', month=month, calendar_year=cy)
+            return 1, rw.fiscal_year_of_month(month, cy), s, e, label, 'month'
+
+        resolved = self._resolve_quarter_params(request)
+        if not resolved:
+            return None
+        quarter, fy = resolved
+        s, e = rw.quarter_period_range(quarter, fy)
+        return quarter, fy, s, e, rw.quarter_label(quarter, fy), 'quarter'
+
+    def _build_indicator_plans(self, *, project, organization, quarter, period_start=None, period_end=None, with_data=False, period_type='quarter'):
         """Resolve assigned indicators + targets (+ existing data) for the form."""
         from projects.models import (
             ProjectIndicator, ProjectIndicatorOrganizationTarget, ProjectIndicatorAssignment,
@@ -1525,7 +1561,27 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             ):
                 existing_by_indicator[agg.indicator_id] = agg.value
 
-        q_attr = f'q{quarter}_target'
+        def _target_for(source):
+            # Yearly = sum of the 4 quarter targets; monthly has no defined target;
+            # quarterly = that quarter's target (existing behaviour).
+            if period_type == 'year':
+                nums = []
+                for q in (1, 2, 3, 4):
+                    v = getattr(source, f'q{q}_target', None)
+                    if v is not None:
+                        try:
+                            nums.append(float(v))
+                        except (TypeError, ValueError):
+                            pass
+                return sum(nums) if nums else None
+            if period_type == 'month':
+                return None
+            raw = getattr(source, f'q{quarter}_target', None)
+            try:
+                return float(raw) if raw is not None else None
+            except (TypeError, ValueError):
+                return None
+
         plans = []
         for indicator in indicators:
             target = None
@@ -1533,12 +1589,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             pi = project_indicators.get(indicator.id)
             source = ot or pi
             if source is not None:
-                raw = getattr(source, q_attr, None)
-                if raw is not None:
-                    try:
-                        target = float(raw)
-                    except (TypeError, ValueError):
-                        target = None
+                target = _target_for(source)
             cfg = rw.resolve_matrix_config(indicator)
             existing_cells = {}
             if with_data and indicator.id in existing_by_indicator:
@@ -1564,19 +1615,19 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         # Permission + training/live boundary enforcement (no indicator → scope only).
         self._assert_write_scope(project=project, organization=organization)
 
-        resolved = self._resolve_quarter_params(request)
+        resolved = self._resolve_period(request)
         if not resolved:
             return Response(
-                {'detail': 'A valid quarter is required. Provide quarter=Q3 & fiscal_year=2025, or period_start & period_end.'},
+                {'detail': 'A valid period is required. Provide period_type=quarter&quarter=Q3&fiscal_year=2025, period_type=year&fiscal_year=2025, or period_type=month&month=4&fiscal_year=2026.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        quarter, fiscal_start_year = resolved
-        period_start, period_end = rw.quarter_period_range(quarter, fiscal_start_year)
+        quarter, fiscal_start_year, period_start, period_end, period_label, period_type = resolved
         with_data = _is_truthy(request.query_params.get("with_data"))
 
         plans = self._build_indicator_plans(
             project=project, organization=organization, quarter=quarter,
             period_start=period_start, period_end=period_end, with_data=with_data,
+            period_type=period_type,
         )
         if not plans:
             return Response(
@@ -1588,10 +1639,12 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             project=project, organization=organization, quarter=quarter,
             fiscal_start_year=fiscal_start_year, indicator_plans=plans,
             generated_by=getattr(request.user, 'username', '') or '', with_data=with_data,
+            period_start=period_start, period_end=period_end, period_label=period_label,
         )
         kind = 'data' if with_data else 'blank'
         org_code = (organization.code or organization.name or 'org').replace(' ', '_')
-        filename = f"reporting_workbook_{org_code}_Q{quarter}_{fiscal_start_year}_{kind}.xlsx"
+        period_slug = period_label.replace(' ', '_').replace('/', '-')
+        filename = f"reporting_workbook_{org_code}_{period_slug}_{kind}.xlsx"
         response = HttpResponse(
             buf.read(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1617,18 +1670,18 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         # coordinator org (covers its descendants via the org-scope hierarchy).
         self._assert_write_scope(project=project, organization=coordinator)
 
-        resolved = self._resolve_quarter_params(request)
+        resolved = self._resolve_period(request)
         if not resolved:
-            return Response({'detail': 'A valid quarter is required (e.g. quarter=Q1 & fiscal_year=2026).'},
+            return Response({'detail': 'A valid period is required (period_type=quarter|year|month with quarter/month + fiscal_year).'},
                             status=status.HTTP_400_BAD_REQUEST)
-        quarter, fiscal_start_year = resolved
+        quarter, fiscal_start_year, period_start, period_end, period_label, period_type = resolved
 
         # Data sheets: the coordinator's own (if it reports) plus every sub that
         # has assignments. The TOTAL sheet sums them all (matches partner template).
         sub_specs = []
         seen = {}
         for org in [coordinator] + list(coordinator.get_descendants()):
-            plans = self._build_indicator_plans(project=project, organization=org, quarter=quarter)
+            plans = self._build_indicator_plans(project=project, organization=org, quarter=quarter, period_type=period_type)
             if plans:
                 sub_specs.append((org, plans))
                 for p in plans:
@@ -1645,9 +1698,11 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             project=project, coordinator=coordinator, sub_specs=sub_specs,
             coordinator_plans=coordinator_plans, quarter=quarter, fiscal_start_year=fiscal_start_year,
             generated_by=getattr(request.user, 'username', '') or '',
+            period_start=period_start, period_end=period_end, period_label=period_label,
         )
         coord_code = (coordinator.code or coordinator.name or 'coordinator').replace(' ', '_')
-        filename = f"coordinator_workbook_{coord_code}_Q{quarter}_{fiscal_start_year}.xlsx"
+        period_slug = period_label.replace(' ', '_').replace('/', '-')
+        filename = f"coordinator_workbook_{coord_code}_{period_slug}.xlsx"
         response = HttpResponse(
             buf.read(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

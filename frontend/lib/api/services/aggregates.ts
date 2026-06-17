@@ -535,6 +535,8 @@ export const aggregatesService = {
     quarter: string; // e.g. "Q3"
     fiscal_year: string | number;
     withData?: boolean;
+    periodType?: 'quarter' | 'year' | 'month';
+    month?: string | number; // 1-12, required when periodType === 'month'
   }): Promise<Blob> {
     const search = new URLSearchParams({
       project: String(params.project),
@@ -542,9 +544,12 @@ export const aggregatesService = {
       quarter: params.quarter,
       fiscal_year: String(params.fiscal_year),
     });
+    if (params.periodType) search.set('period_type', params.periodType);
+    if (params.periodType === 'month' && params.month != null) search.set('month', String(params.month));
     if (params.withData) search.set('with_data', 'true');
     const response = await fetchWithAuth(
       withTrainingQuery(`/aggregates/reporting-workbook/?${search.toString()}`),
+      { timeoutMs: 180_000 }, // workbook generation can take a while; never use the short default
     );
     if (!response.ok) {
       const contentType = response.headers.get('content-type');
@@ -570,6 +575,8 @@ export const aggregatesService = {
     coordinator: string | number;
     quarter: string; // e.g. "Q1"
     fiscal_year: string | number;
+    periodType?: 'quarter' | 'year' | 'month';
+    month?: string | number;
   }): Promise<Blob> {
     const search = new URLSearchParams({
       project: String(params.project),
@@ -577,8 +584,11 @@ export const aggregatesService = {
       quarter: params.quarter,
       fiscal_year: String(params.fiscal_year),
     });
+    if (params.periodType) search.set('period_type', params.periodType);
+    if (params.periodType === 'month' && params.month != null) search.set('month', String(params.month));
     const response = await fetchWithAuth(
       withTrainingQuery(`/aggregates/coordinator-workbook/?${search.toString()}`),
+      { timeoutMs: 180_000 }, // many sheets + cross-sheet rollup formulas — allow several minutes
     );
     if (!response.ok) {
       const contentType = response.headers.get('content-type');

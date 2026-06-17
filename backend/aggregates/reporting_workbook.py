@@ -116,6 +116,56 @@ def quarter_label(quarter: int, fiscal_start_year: int) -> str:
     return f"Q{int(quarter)} {fiscal_year_label(fiscal_start_year)}"
 
 
+# ── Yearly / monthly periods (period_type selector) ─────────────────────────
+import calendar as _calendar  # noqa: E402
+
+_MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"]
+
+
+def year_period_range(fiscal_start_year: int) -> tuple[date, date]:
+    """Full Botswana fiscal year: Apr 1 → Mar 31 of the next calendar year."""
+    y = int(fiscal_start_year)
+    return date(y, 4, 1), date(y + 1, 3, 31)
+
+
+def year_label(fiscal_start_year: int) -> str:
+    return f"FY {fiscal_year_label(fiscal_start_year)}"
+
+
+def month_period_range(month: int, calendar_year: int) -> tuple[date, date]:
+    """First and last day of a calendar month."""
+    m, y = int(month), int(calendar_year)
+    if not 1 <= m <= 12:
+        raise ValueError(f"Month must be 1-12, received {month!r}")
+    return date(y, m, 1), date(y, m, _calendar.monthrange(y, m)[1])
+
+
+def month_label(month: int, calendar_year: int) -> str:
+    return f"{_MONTH_NAMES[int(month)]} {int(calendar_year)}"
+
+
+def fiscal_year_of_month(month: int, calendar_year: int) -> int:
+    """The fiscal start year that contains a given calendar month (FY = Apr-Mar)."""
+    m, y = int(month), int(calendar_year)
+    return y if m >= 4 else y - 1
+
+
+def resolve_period(period_type: str, *, quarter=None, month=None, fiscal_start_year=None,
+                   calendar_year=None) -> tuple[date, date, str]:
+    """Return (period_start, period_end, label) for the requested period type."""
+    pt = (period_type or "quarter").strip().lower()
+    if pt in ("year", "yearly", "annual"):
+        s, e = year_period_range(fiscal_start_year)
+        return s, e, year_label(fiscal_start_year)
+    if pt in ("month", "monthly"):
+        cy = int(calendar_year if calendar_year is not None else fiscal_start_year)
+        s, e = month_period_range(month, cy)
+        return s, e, month_label(month, cy)
+    s, e = quarter_period_range(quarter, fiscal_start_year)
+    return s, e, quarter_label(quarter, fiscal_start_year)
+
+
 _QUARTER_LABEL_RE = re.compile(
     r"^Q([1-4])\s+(\d{4})(?:\s*/\s*(?:\d{2}|\d{4}))?$", re.IGNORECASE
 )
@@ -359,9 +409,18 @@ def generate_workbook(
     indicator_plans: list[IndicatorPlan],
     generated_by: str = "",
     with_data: bool = False,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    period_label: str | None = None,
 ) -> BytesIO:
-    """Build the multi-sheet reporting workbook and return it as a BytesIO."""
-    period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    """Build the multi-sheet reporting workbook and return it as a BytesIO.
+
+    By default the period is the given fiscal ``quarter``; pass
+    ``period_start``/``period_end``/``period_label`` to render a yearly or
+    monthly workbook instead (see resolve_period)."""
+    if period_start is None or period_end is None:
+        period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    period_title = period_label or quarter_label(quarter, fiscal_start_year)
 
     wb = Workbook()
     form = wb.active
@@ -396,7 +455,7 @@ def generate_workbook(
 
     title = f"{project.name} — {organization.name}"
     form.cell(row=1, column=COL_NAME, value=title).font = Font(bold=True, size=14)
-    form.cell(row=2, column=COL_NAME, value=f"{quarter_label(quarter, fiscal_start_year)}  ({period_start} to {period_end})").font = _BOLD
+    form.cell(row=2, column=COL_NAME, value=f"{period_title}  ({period_start} to {period_end})").font = _BOLD
     form.cell(
         row=3, column=COL_NAME,
         value="Enter whole numbers in the light-blue cells only. Totals fill in automatically. The sheet is protected; do not unprotect, rename or delete sheets.",
@@ -434,7 +493,8 @@ def generate_workbook(
         ("quarter", quarter),
         ("fiscal_start_year", fiscal_start_year),
         ("fiscal_year", fiscal_year_label(fiscal_start_year)),
-        ("quarter_label", quarter_label(quarter, fiscal_start_year)),
+        ("quarter_label", period_title),
+        ("period_label", period_title),
         ("period_start", period_start.isoformat()),
         ("period_end", period_end.isoformat()),
         ("is_training", "true" if getattr(project, "is_training", False) else "false"),
@@ -489,13 +549,16 @@ def _safe_sheet_title(name: str, used: set) -> str:
 
 
 def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_year,
-                      plans, cellmap_rows, with_data=False, provider_factory=None, index=None):
+                      plans, cellmap_rows, with_data=False, provider_factory=None, index=None,
+                      period_start=None, period_end=None, period_label=None):
     """Write one reporting-form sheet (the layout used by generate_workbook) into
     an existing workbook, and return the sheet. ``provider_factory(indicator)``
     optionally yields a formula_provider so the sheet's input cells become
     cross-sheet rollup formulas (used for the coordinator TOTAL sheet)."""
     ws = wb.create_sheet(title=title) if index is None else wb.create_sheet(title=title, index=index)
-    period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    if period_start is None or period_end is None:
+        period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    period_title = period_label or quarter_label(quarter, fiscal_start_year)
     ws.sheet_view.showGridLines = False
     ws.column_dimensions[get_column_letter(COL_NAME)].width = 34
     ws.column_dimensions[get_column_letter(COL_KP)].width = 16
@@ -510,7 +573,7 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
 
     ws.cell(row=1, column=COL_NAME, value=f"{project.name} — {org_name}").font = Font(bold=True, size=14)
     ws.cell(row=2, column=COL_NAME,
-            value=f"{quarter_label(quarter, fiscal_start_year)}  ({period_start} to {period_end})").font = _BOLD
+            value=f"{period_title}  ({period_start} to {period_end})").font = _BOLD
     note = ("Coordinator rollup — totals are summed automatically from the sub sheets; do not edit."
             if provider_factory is not None else
             "Enter whole numbers in the light-blue cells only. Totals fill in automatically.")
@@ -534,7 +597,8 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
 
 
 def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinator_plans,
-                                  quarter: int, fiscal_start_year: int, generated_by: str = "") -> BytesIO:
+                                  quarter: int, fiscal_start_year: int, generated_by: str = "",
+                                  period_start=None, period_end=None, period_label=None) -> BytesIO:
     """One workbook for a coordinator: a reporting-form sheet per sub-organisation
     plus a leading TOTAL sheet whose cells SUM the matching sub cells live.
 
@@ -543,6 +607,10 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
     Standardised age bands are what make the cross-sheet sums line up.
     """
     from collections import defaultdict
+
+    if period_start is None or period_end is None:
+        period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    period_title = period_label or quarter_label(quarter, fiscal_start_year)
 
     wb = Workbook()
     wb.remove(wb.active)  # drop the default sheet; we add our own
@@ -557,7 +625,8 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
         sub_titles.append((org, title))
         start = len(cellmap_rows)
         _write_form_sheet(wb, title, org_name=org.name, project=project, quarter=quarter,
-                          fiscal_start_year=fiscal_start_year, plans=plans, cellmap_rows=cellmap_rows)
+                          fiscal_start_year=fiscal_start_year, plans=plans, cellmap_rows=cellmap_rows,
+                          period_start=period_start, period_end=period_end, period_label=period_title)
         for r in cellmap_rows[start:]:
             ind_id, _code, kind, primary, secondary, band, coord = r
             if kind in ("cell", "total"):
@@ -576,18 +645,18 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
     _write_form_sheet(wb, total_title, org_name=f"{coordinator.name} (All data sheets)",
                       project=project, quarter=quarter, fiscal_start_year=fiscal_start_year,
                       plans=coordinator_plans, cellmap_rows=cellmap_rows,
-                      provider_factory=lambda ind: _make_provider(ind.id))
+                      provider_factory=lambda ind: _make_provider(ind.id),
+                      period_start=period_start, period_end=period_end, period_label=period_title)
 
     # Metadata + cellmap + instructions
     meta = wb.create_sheet(SHEET_META)
-    period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
     meta_pairs = [
         ("workbook_version", WORKBOOK_VERSION),
         ("workbook_kind", "coordinator_rollup"),
         ("project_id", project.id), ("project_name", project.name),
         ("coordinator_id", coordinator.id), ("coordinator_name", coordinator.name),
         ("quarter", quarter), ("fiscal_start_year", fiscal_start_year),
-        ("quarter_label", quarter_label(quarter, fiscal_start_year)),
+        ("quarter_label", period_title), ("period_label", period_title),
         ("period_start", period_start.isoformat()), ("period_end", period_end.isoformat()),
         ("is_training", "true" if getattr(project, "is_training", False) else "false"),
         ("generated_at", datetime.utcnow().isoformat() + "Z"), ("generated_by", generated_by or ""),
