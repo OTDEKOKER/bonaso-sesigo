@@ -8,7 +8,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from .status_views import SystemStatusView
 from .offline_views import OfflineBootstrapView
-from .backup_views import BackupStatusView, BackupGenerateView, BackupDownloadView
+from .backup_views import BackupStatusView, BackupGenerateView, BackupDownloadView, EncryptedBackupDownloadView
 
 urlpatterns = [
     # Admin site
@@ -42,6 +42,7 @@ urlpatterns = [
     path('api/system/backups/status/', BackupStatusView.as_view(), name='backup_status'),
     path('api/system/backups/generate/', BackupGenerateView.as_view(), name='backup_generate'),
     path('api/system/backups/download/', BackupDownloadView.as_view(), name='backup_download'),
+    path('api/system/backups/encrypted-download/', EncryptedBackupDownloadView.as_view(), name='backup_encrypted_download'),
     path('api/system/restore/', include('recovery.urls')),
 
     # Offline sync-down package for field data capture

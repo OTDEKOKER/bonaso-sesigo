@@ -22,6 +22,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/shared/page-header";
@@ -177,6 +179,10 @@ function BackupsCard() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showEncrypted, setShowEncrypted] = useState(false);
+  const [isEncrypting, setIsEncrypting] = useState(false);
+  const [acctPw, setAcctPw] = useState("");
+  const [encPw, setEncPw] = useState("");
 
   const load = async () => {
     setIsLoading(true);
@@ -228,8 +234,41 @@ function BackupsCard() {
     }
   };
 
+  const onEncryptedDownload = async () => {
+    if (encPw.length < 12) {
+      toast({
+        variant: "destructive",
+        title: "Encryption password too short",
+        description: "Use at least 12 characters. This password is never stored — keep it safe.",
+      });
+      return;
+    }
+    setIsEncrypting(true);
+    try {
+      const filename = await systemService.downloadEncryptedBackup(acctPw, encPw);
+      setAcctPw("");
+      setEncPw("");
+      setShowEncrypted(false);
+      toast({
+        title: "Encrypted backup downloading",
+        description: `Saving ${filename}. Store it on an external drive and keep the password safe.`,
+      });
+      await load();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Encrypted backup failed",
+        description: err instanceof Error ? err.message : "The encrypted backup could not be generated.",
+      });
+    } finally {
+      setIsEncrypting(false);
+    }
+  };
+
   const download = data?.download;
   const latest = data?.latest;
+  const offsiteRaw = (latest?.offsite_status ?? "").toLowerCase();
+  const offsiteConfigured = Boolean(offsiteRaw) && !["not_configured", "unknown", ""].includes(offsiteRaw);
 
   return (
     <Card className={download ? levelClasses(download.level) : undefined}>
@@ -267,7 +306,17 @@ function BackupsCard() {
             label="Verification"
             value={latest?.verify_status === "pg_restore_list_ok" ? "Verified (pg_restore)" : latest?.verify_status ?? "Unknown"}
           />
-          <BackupRow label="Off-site replication" value={latest?.offsite_status ?? "Unknown"} />
+          <BackupRow
+            label="Off-site replication"
+            value={
+              <span className="inline-flex items-center gap-1.5">
+                <span className={offsiteConfigured ? "text-emerald-600" : "text-destructive"}>
+                  {offsiteConfigured ? "🟢" : "🔴"}
+                </span>
+                {offsiteConfigured ? `Configured (${latest?.offsite_status})` : "Not configured"}
+              </span>
+            }
+          />
           <BackupRow label="Last downloaded" value={formatDate(download?.last_downloaded_at)} />
           <BackupRow
             label="Days since download"
@@ -296,7 +345,55 @@ function BackupsCard() {
             {isDownloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
             Download latest backup
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowEncrypted((v) => !v)}
+            disabled={isLoading || !latest?.available}
+          >
+            <Lock className="mr-2 h-4 w-4" />
+            Encrypted off-site backup
+          </Button>
         </div>
+
+        {showEncrypted ? (
+          <div className="space-y-3 rounded-md border bg-muted/40 p-3">
+            <p className="text-xs text-muted-foreground">
+              Generates an AES-256 encrypted package (database dump + media). Re-confirm your
+              account password and set an encryption password — the encryption password is{" "}
+              <span className="font-medium">never stored</span>; if you lose it the file cannot be recovered.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="bk-acct-pw" className="text-xs">Your account password</Label>
+                <Input
+                  id="bk-acct-pw"
+                  type="password"
+                  autoComplete="current-password"
+                  value={acctPw}
+                  onChange={(e) => setAcctPw(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="bk-enc-pw" className="text-xs">Encryption password (min 12)</Label>
+                <Input
+                  id="bk-enc-pw"
+                  type="password"
+                  autoComplete="new-password"
+                  value={encPw}
+                  onChange={(e) => setEncPw(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => void onEncryptedDownload()}
+              disabled={isEncrypting || !acctPw || encPw.length < 12}
+            >
+              {isEncrypting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
+              Generate &amp; download encrypted backup
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

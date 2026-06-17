@@ -235,4 +235,38 @@ export const systemService = {
     triggerBrowserDownload(await response.blob(), filename);
     return filename;
   },
+
+  // Generates and downloads an AES-256 encrypted backup package for off-site /
+  // external-drive storage. Requires the admin to re-confirm their account
+  // password and supply an encryption password (never stored server-side).
+  downloadEncryptedBackup: async (
+    accountPassword: string,
+    encryptionPassword: string,
+  ): Promise<string> => {
+    const response = await fetchWithAuth("/system/backups/encrypted-download/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account_password: accountPassword,
+        encryption_password: encryptionPassword,
+      }),
+      timeoutMs: BACKUP_OP_TIMEOUT_MS,
+    });
+    if (!response.ok) {
+      const contentType = response.headers.get("content-type");
+      const payload = contentType?.includes("application/json")
+        ? await response.json()
+        : await response.text();
+      throw normalizeApiError({
+        status: response.status,
+        payload,
+        fallbackMessage: "Failed to generate encrypted backup",
+      });
+    }
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = /filename="?([^";]+)"?/i.exec(disposition);
+    const filename = match?.[1] || "sesigo_backup.tar.gz.enc";
+    triggerBrowserDownload(await response.blob(), filename);
+    return filename;
+  },
 };

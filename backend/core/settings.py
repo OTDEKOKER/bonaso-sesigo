@@ -273,6 +273,9 @@ REST_FRAMEWORK = {
         'login': os.getenv('THROTTLE_LOGIN', '10/minute'),
         'token_refresh': os.getenv('THROTTLE_TOKEN_REFRESH', '30/minute'),
         'password_reset': os.getenv('THROTTLE_PASSWORD_RESET', '5/hour'),
+        # Encrypted backup generation is expensive (pg dump + tar + AES); cap it
+        # per admin so an accidental or malicious loop can't hammer the server.
+        'backup': os.getenv('THROTTLE_BACKUP', '6/hour'),
     },
     # The backend runs behind exactly one reverse proxy (nginx) on loopback, so
     # REMOTE_ADDR is always 127.0.0.1. Tell DRF to read the real client IP from
