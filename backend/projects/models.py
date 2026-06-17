@@ -546,3 +546,96 @@ class NarrativeReport(models.Model):
         if self.file and not self.file_name:
             self.file_name = self.file.name.split('/')[-1]
         super().save(*args, **kwargs)
+
+
+class WorkbookLayout(models.Model):
+    """Coordinator-level ordering template for reporting workbooks.
+
+    A layout ONLY controls the order (and section grouping) that indicators are
+    rendered in when a reporting workbook is generated. It deliberately carries
+    NO project / year / quarter / month / period-type: those are supplied at
+    download time to fetch the right data, never to define the saved order.
+
+    The layout belongs to a coordinator organization. All sub-organisations
+    under that coordinator inherit it when they download a workbook. A coordinator
+    may have at most one *active* layout per environment (``mode``).
+    """
+
+    MODE_CHOICES = [
+        ('live', 'Live'),
+        ('training', 'Training'),
+    ]
+
+    coordinator_organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='workbook_layouts',
+    )
+    name = models.CharField(max_length=255)
+    # Live/Training isolation: a layout has no project FK to isolate through, so
+    # (like analysis Report/ScheduledReport) it carries the environment directly.
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='live')
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_workbook_layouts',
+    )
+    updated_by = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='updated_workbook_layouts',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['coordinator_organization_id', '-is_active', 'name']
+        constraints = [
+            # One ACTIVE layout per coordinator per environment.
+            models.UniqueConstraint(
+                fields=['coordinator_organization', 'mode'],
+                condition=models.Q(is_active=True),
+                name='unique_active_workbook_layout_per_coordinator',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.coordinator_organization_id}/{self.mode})"
+
+
+class WorkbookLayoutItem(models.Model):
+    """One ordered entry in a :class:`WorkbookLayout`.
+
+    An item is either an *indicator row* (``indicator`` set) or a *section
+    heading* (``indicator`` is null and ``section_title`` set). ``order_index``
+    defines the position in the workbook; headings and indicators share one
+    ordered sequence so headings can be interleaved between indicators.
+    """
+
+    layout = models.ForeignKey(
+        WorkbookLayout, on_delete=models.CASCADE, related_name='items',
+    )
+    indicator = models.ForeignKey(
+        'indicators.Indicator', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='workbook_layout_items',
+    )
+    section_title = models.CharField(max_length=255, blank=True, default='')
+    order_index = models.PositiveIntegerField(default=0)
+    is_required = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['layout_id', 'order_index', 'id']
+        constraints = [
+            # The same indicator must not appear twice in one layout.
+            models.UniqueConstraint(
+                fields=['layout', 'indicator'],
+                condition=models.Q(indicator__isnull=False),
+                name='unique_indicator_per_workbook_layout',
+            ),
+        ]
+
+    def __str__(self):
+        if self.indicator_id:
+            return f"L{self.layout_id} #{self.order_index} indicator={self.indicator_id}"
+        return f"L{self.layout_id} #{self.order_index} heading={self.section_title!r}"

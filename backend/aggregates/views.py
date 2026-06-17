@@ -1635,6 +1635,14 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Apply the coordinator's saved Workbook Layout order (project/period
+        # independent). A sub-organisation inherits its coordinator's layout; with
+        # no layout the default plan order (built above) is kept.
+        from organizations.access import request_mode_value
+        from projects.workbook_layout import resolve_layout_for_org, order_plans_by_layout
+        layout = resolve_layout_for_org(project, organization, mode=request_mode_value(request))
+        plans = order_plans_by_layout(plans, layout)
+
         buf = rw.generate_workbook(
             project=project, organization=organization, quarter=quarter,
             fiscal_start_year=fiscal_start_year, indicator_plans=plans,
@@ -1694,6 +1702,16 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             rw.IndicatorPlan(indicator=ind, config=rw.resolve_matrix_config(ind), target=None, existing_cells={})
             for ind in sorted(seen.values(), key=lambda i: (i.name or ''))
         ]
+
+        # Apply the coordinator's saved Workbook Layout order to every sub sheet
+        # and the TOTAL sheet (project/period independent). No layout → default.
+        from organizations.access import request_mode_value
+        from projects.workbook_layout import get_active_layout, order_plans_by_layout
+        layout = get_active_layout(coordinator.id, mode=request_mode_value(request))
+        if layout is not None:
+            sub_specs = [(org, order_plans_by_layout(plans, layout)) for org, plans in sub_specs]
+            coordinator_plans = order_plans_by_layout(coordinator_plans, layout)
+
         buf = rw.generate_coordinator_workbook(
             project=project, coordinator=coordinator, sub_specs=sub_specs,
             coordinator_plans=coordinator_plans, quarter=quarter, fiscal_start_year=fiscal_start_year,

@@ -2,7 +2,8 @@
 
 import React, { use, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Calendar, Users, Target, CheckCircle2, Clock, Edit, Trash2, Plus, Loader2, Building2, ChevronDown, FileText, Download, Upload } from "lucide-react"
+import { Calendar, Users, Target, CheckCircle2, Clock, Edit, Trash2, Plus, Loader2, Building2, ChevronDown, FileText, Download, Upload, ListOrdered } from "lucide-react"
+import { ManageWorkbookLayoutDialog, type WorkbookLayoutCoordinator } from "@/components/projects/ManageWorkbookLayoutDialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -132,6 +133,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [isSavingReport, setIsSavingReport] = useState(false)
   const [activeTab, setActiveTab] = useState("tasks")
   const [isManageOrgsOpen, setIsManageOrgsOpen] = useState(false)
+  const [isWorkbookLayoutOpen, setIsWorkbookLayoutOpen] = useState(false)
   const [manageOrgSearch, setManageOrgSearch] = useState("")
   const [managedOrgIds, setManagedOrgIds] = useState<string[]>([])
   const [isManageOrgsSaving, setIsManageOrgsSaving] = useState(false)
@@ -283,6 +285,22 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     })
     return map
   }, [project?.project_organizations])
+  // Coordinators in this project — the orgs a Workbook Layout can be created for.
+  const workbookLayoutCoordinators = useMemo<WorkbookLayoutCoordinator[]>(() => {
+    const out: WorkbookLayoutCoordinator[] = []
+    const seen = new Set<number>()
+    projectOrgs.forEach((org) => {
+      const orgId = coerceId(org.id)
+      const membership = projectMembershipByOrgId.get(orgId)
+      const role = String(membership?.role || "")
+      const isCoordinator = Boolean(membership?.is_coordinator || role === "coordinator")
+      const numericId = Number(orgId)
+      if (!isCoordinator || !numericId || seen.has(numericId)) return
+      seen.add(numericId)
+      out.push({ id: numericId, name: org.name || `Org ${numericId}` })
+    })
+    return out.sort((a, b) => a.name.localeCompare(b.name))
+  }, [projectOrgs, projectMembershipByOrgId])
   const fallbackAssignedIndicatorCountByOrgId = useMemo(() => {
     const map = new Map<string, number>()
     ;(project?.project_indicator_assignments || [])
@@ -1437,6 +1455,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 {projectOrgs.length} organization{projectOrgs.length !== 1 ? "s" : ""} in this project
               </p>
               <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setIsWorkbookLayoutOpen(true)}>
+                  <ListOrdered className="mr-2 h-4 w-4" />
+                  Manage Workbook Layout
+                </Button>
                 <Button variant="outline" size="sm" onClick={openManageOrgs}>
                   <Users className="mr-2 h-4 w-4" />
                   Manage
@@ -2656,6 +2678,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ManageWorkbookLayoutDialog
+        open={isWorkbookLayoutOpen}
+        onOpenChange={setIsWorkbookLayoutOpen}
+        coordinators={workbookLayoutCoordinators}
+      />
     </div>
   )
 }

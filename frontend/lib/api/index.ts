@@ -197,3 +197,6 @@ export type { NotificationFilters, MessageFilters, CreateMessageRequest, Announc
 // System operations
 export { systemService } from './services/system';
 export type { SystemHealthStatus, SystemStatusResponse, BackupManagementStatus, BackupReminderLevel, RestoreValidationResult, RestoreHistoryEntry, SystemIssue, IssueSeverity, IssueStatus } from './services/system';
+
+export { workbookLayoutsService } from './services/workbook-layouts';
+export type { WorkbookLayout, WorkbookLayoutItem, WorkbookLayoutAvailableIndicator, SaveWorkbookLayoutRequest } from './services/workbook-layouts';

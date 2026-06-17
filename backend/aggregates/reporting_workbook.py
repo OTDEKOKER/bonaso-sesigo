@@ -71,6 +71,7 @@ _LABEL_FILL = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="s
 _INPUT_FILL = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
 _SUBTOTAL_FILL = PatternFill(start_color="BFBFBF", end_color="BFBFBF", fill_type="solid")
 _GRANDTOTAL_FILL = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+_SECTION_FILL = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
 _WHITE_BOLD = Font(bold=True, color="FFFFFF")
 _BOLD = Font(bold=True)
 _CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -398,6 +399,9 @@ class IndicatorPlan:
     config: MatrixConfig
     target: float | None
     existing_cells: dict[tuple[str, str, str], float] = field(default_factory=dict)
+    # Optional section heading this indicator sits under (from a WorkbookLayout).
+    # Empty string means "no section" — the workbook renders no heading row.
+    section: str = ""
 
 
 def generate_workbook(
@@ -462,7 +466,12 @@ def generate_workbook(
     ).font = Font(italic=True, color="808080")
 
     row = 5
+    current_section = None
     for plan in indicator_plans:
+        section = (getattr(plan, "section", "") or "").strip()
+        if section and section != current_section:
+            row = _write_section_heading(form, row, section)
+            current_section = section
         row = _write_indicator_block(
             form, row, plan, cellmap_rows, number_validation, with_data=with_data
         )
@@ -580,7 +589,12 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
     ws.cell(row=3, column=COL_NAME, value=note).font = Font(italic=True, color="808080")
 
     row = 5
+    current_section = None
     for plan in plans:
+        section = (getattr(plan, "section", "") or "").strip()
+        if section and section != current_section:
+            row = _write_section_heading(ws, row, section)
+            current_section = section
         fp = provider_factory(plan.indicator) if provider_factory else None
         row = _write_indicator_block(ws, row, plan, cellmap_rows, dv, with_data=with_data, formula_provider=fp)
         row += 1
@@ -748,6 +762,18 @@ def _value_cell(ws, row, col, dv, *, formula_provider, kind, primary, secondary,
                       fill=_SUBTOTAL_FILL, locked=True)
         return cell
     return _input_cell(ws, row, col, dv)
+
+
+SECTION_HEADING_SPAN = 8  # columns a section heading row spans (A..H)
+
+
+def _write_section_heading(ws, start_row, title: str) -> int:
+    """Write a full-width section heading row (e.g. "HIV Testing"). Returns the
+    next free row. Headings carry no input cells, so they never affect the
+    cellmap or the import round-trip."""
+    _merge(ws, start_row, COL_NAME, start_row, SECTION_HEADING_SPAN, str(title).strip(),
+           fill=_SECTION_FILL, font=_WHITE_BOLD, align=_LEFT)
+    return start_row + 1
 
 
 def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv, *, with_data, formula_provider=None):
