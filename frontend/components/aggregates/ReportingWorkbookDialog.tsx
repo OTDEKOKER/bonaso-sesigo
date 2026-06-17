@@ -73,7 +73,7 @@ export function ReportingWorkbookDialog({
   const [quarter, setQuarter] = useState<string>(initial.quarter);
   const [fiscalYear, setFiscalYear] = useState<string>(String(initial.fiscalYear));
 
-  const [busy, setBusy] = useState<null | "blank" | "data" | "upload" | "confirm">(null);
+  const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "upload" | "confirm">(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ReportingWorkbookImportResult | null>(null);
 
@@ -117,6 +117,35 @@ export function ReportingWorkbookDialog({
       URL.revokeObjectURL(url);
     } catch (err) {
       triggerFriendlyError(err, "Failed to download workbook");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleCoordinatorDownload = async () => {
+    if (!ready) {
+      toast({ title: "Select project, coordinator organization and quarter first.", variant: "destructive" });
+      return;
+    }
+    setBusy("coordinator");
+    try {
+      const blob = await aggregatesService.downloadCoordinatorWorkbook({
+        project,
+        coordinator: organization,
+        quarter,
+        fiscal_year: fiscalYear,
+      });
+      const orgName = organizations.find((o) => String(o.id) === organization)?.code
+        || organizations.find((o) => String(o.id) === organization)?.name
+        || "coordinator";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `coordinator_workbook_${orgName}_${quarter}_${fiscalYear}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      triggerFriendlyError(err, "Failed to download coordinator workbook");
     } finally {
       setBusy(null);
     }
@@ -225,19 +254,35 @@ export function ReportingWorkbookDialog({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Button variant="outline" disabled={!ready || busy !== null} onClick={() => handleDownload(false)}>
-            {busy === "blank" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Download Blank
-          </Button>
-          <Button variant="outline" disabled={!ready || busy !== null} onClick={() => handleDownload(true)}>
-            {busy === "data" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Download With Data
-          </Button>
-          <Button disabled={busy !== null} onClick={() => fileInputRef.current?.click()}>
-            {busy === "upload" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-            Upload Workbook
-          </Button>
+        <div className="space-y-3 pt-2">
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Single organisation</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" disabled={!ready || busy !== null} onClick={() => handleDownload(false)}>
+                {busy === "blank" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Download Blank
+              </Button>
+              <Button variant="outline" disabled={!ready || busy !== null} onClick={() => handleDownload(true)}>
+                {busy === "data" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Download With Data
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Coordinator (a sheet per sub-grantee + a TOTAL rollup)</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" disabled={!ready || busy !== null} onClick={handleCoordinatorDownload}>
+                {busy === "coordinator" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Download Coordinator Workbook
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={busy !== null} onClick={() => fileInputRef.current?.click()}>
+              {busy === "upload" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+              Upload Workbook
+            </Button>
+          </div>
           <input
             ref={fileInputRef}
             type="file"

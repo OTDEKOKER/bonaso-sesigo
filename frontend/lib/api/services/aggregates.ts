@@ -561,6 +561,40 @@ export const aggregatesService = {
   },
 
   /**
+   * Download a coordinator rollup workbook: one reporting-form sheet per
+   * sub-organisation (and the coordinator's own) plus a TOTAL sheet that sums
+   * them. Django endpoint: GET /api/aggregates/coordinator-workbook/
+   */
+  async downloadCoordinatorWorkbook(params: {
+    project: string | number;
+    coordinator: string | number;
+    quarter: string; // e.g. "Q1"
+    fiscal_year: string | number;
+  }): Promise<Blob> {
+    const search = new URLSearchParams({
+      project: String(params.project),
+      coordinator: String(params.coordinator),
+      quarter: params.quarter,
+      fiscal_year: String(params.fiscal_year),
+    });
+    const response = await fetchWithAuth(
+      withTrainingQuery(`/aggregates/coordinator-workbook/?${search.toString()}`),
+    );
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      const payload = contentType?.includes('application/json')
+        ? await response.json()
+        : await response.text();
+      throw normalizeApiError({
+        status: response.status,
+        payload,
+        fallbackMessage: 'Failed to download coordinator workbook',
+      });
+    }
+    return response.blob();
+  },
+
+  /**
    * Upload a completed reporting workbook. The backend reads project/org/quarter
    * from the embedded metadata — no technical ID columns required.
    * Django endpoint: POST /api/aggregates/import-reporting-workbook/

@@ -473,6 +473,150 @@ def generate_workbook(
     return buf
 
 
+SHEET_TOTAL = "TOTAL (Coordinator)"
+
+
+def _safe_sheet_title(name: str, used: set) -> str:
+    """Excel-safe, unique sheet title (<=31 chars, no : \\ / ? * [ ])."""
+    title = re.sub(r"[:\\/?*\[\]]", " ", str(name or "Sheet")).strip()[:31] or "Sheet"
+    base, n = title, 2
+    while title.lower() in used:
+        suffix = f" ({n})"
+        title = base[:31 - len(suffix)] + suffix
+        n += 1
+    used.add(title.lower())
+    return title
+
+
+def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_year,
+                      plans, cellmap_rows, with_data=False, provider_factory=None, index=None):
+    """Write one reporting-form sheet (the layout used by generate_workbook) into
+    an existing workbook, and return the sheet. ``provider_factory(indicator)``
+    optionally yields a formula_provider so the sheet's input cells become
+    cross-sheet rollup formulas (used for the coordinator TOTAL sheet)."""
+    ws = wb.create_sheet(title=title) if index is None else wb.create_sheet(title=title, index=index)
+    period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions[get_column_letter(COL_NAME)].width = 34
+    ws.column_dimensions[get_column_letter(COL_KP)].width = 16
+    ws.column_dimensions[get_column_letter(COL_SEX)].width = 10
+
+    dv = DataValidation(type="whole", operator="greaterThanOrEqual", formula1="0", allow_blank=True)
+    dv.showErrorMessage = True
+    dv.errorTitle = "Numbers only"
+    dv.error = "Please enter a whole number (0 or more)."
+    ws.add_data_validation(dv)
+    dv._pending_coords = []
+
+    ws.cell(row=1, column=COL_NAME, value=f"{project.name} — {org_name}").font = Font(bold=True, size=14)
+    ws.cell(row=2, column=COL_NAME,
+            value=f"{quarter_label(quarter, fiscal_start_year)}  ({period_start} to {period_end})").font = _BOLD
+    note = ("Coordinator rollup — totals are summed automatically from the sub sheets; do not edit."
+            if provider_factory is not None else
+            "Enter whole numbers in the light-blue cells only. Totals fill in automatically.")
+    ws.cell(row=3, column=COL_NAME, value=note).font = Font(italic=True, color="808080")
+
+    row = 5
+    for plan in plans:
+        fp = provider_factory(plan.indicator) if provider_factory else None
+        row = _write_indicator_block(ws, row, plan, cellmap_rows, dv, with_data=with_data, formula_provider=fp)
+        row += 1
+
+    if dv._pending_coords:
+        dv.sqref = " ".join(dv._pending_coords)
+    del dv._pending_coords
+
+    ws.protection.sheet = True
+    ws.protection.password = PROTECTION_PASSWORD
+    ws.protection.formatColumns = False
+    ws.protection.formatRows = False
+    return ws
+
+
+def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinator_plans,
+                                  quarter: int, fiscal_start_year: int, generated_by: str = "") -> BytesIO:
+    """One workbook for a coordinator: a reporting-form sheet per sub-organisation
+    plus a leading TOTAL sheet whose cells SUM the matching sub cells live.
+
+    sub_specs: list of (organization, plans) for each sub-organisation.
+    coordinator_plans: plans for the union of indicators (the TOTAL sheet layout).
+    Standardised age bands are what make the cross-sheet sums line up.
+    """
+    from collections import defaultdict
+
+    wb = Workbook()
+    wb.remove(wb.active)  # drop the default sheet; we add our own
+    cellmap_rows = [["indicator_id", "indicator_code", "kind", "primary", "secondary", "band", "coordinate"]]
+    used_titles: set = set()
+
+    # (indicator_id, kind, primary, secondary, band) -> ["'Sheet'!Coord", ...]
+    ref_index: dict = defaultdict(list)
+    sub_titles = []
+    for org, plans in sub_specs:
+        title = _safe_sheet_title(org.name, used_titles)
+        sub_titles.append((org, title))
+        start = len(cellmap_rows)
+        _write_form_sheet(wb, title, org_name=org.name, project=project, quarter=quarter,
+                          fiscal_start_year=fiscal_start_year, plans=plans, cellmap_rows=cellmap_rows)
+        for r in cellmap_rows[start:]:
+            ind_id, _code, kind, primary, secondary, band, coord = r
+            if kind in ("cell", "total"):
+                sheet, cell = coord.split("!", 1)
+                ref_index[(ind_id, kind, str(primary), str(secondary), str(band))].append(f"'{sheet}'!{cell}")
+
+    def _make_provider(indicator_id):
+        def provider(kind, primary, secondary, band):
+            refs = ref_index.get((indicator_id, kind, str(primary), str(secondary), str(band)))
+            return ("=SUM(" + ",".join(refs) + ")") if refs else 0
+        return provider
+
+    # TOTAL sheet goes LAST (after all the data sheets), mirroring the partner
+    # template the coordinators already use.
+    total_title = _safe_sheet_title(SHEET_TOTAL, used_titles)
+    _write_form_sheet(wb, total_title, org_name=f"{coordinator.name} (All data sheets)",
+                      project=project, quarter=quarter, fiscal_start_year=fiscal_start_year,
+                      plans=coordinator_plans, cellmap_rows=cellmap_rows,
+                      provider_factory=lambda ind: _make_provider(ind.id))
+
+    # Metadata + cellmap + instructions
+    meta = wb.create_sheet(SHEET_META)
+    period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    meta_pairs = [
+        ("workbook_version", WORKBOOK_VERSION),
+        ("workbook_kind", "coordinator_rollup"),
+        ("project_id", project.id), ("project_name", project.name),
+        ("coordinator_id", coordinator.id), ("coordinator_name", coordinator.name),
+        ("quarter", quarter), ("fiscal_start_year", fiscal_start_year),
+        ("quarter_label", quarter_label(quarter, fiscal_start_year)),
+        ("period_start", period_start.isoformat()), ("period_end", period_end.isoformat()),
+        ("is_training", "true" if getattr(project, "is_training", False) else "false"),
+        ("generated_at", datetime.utcnow().isoformat() + "Z"), ("generated_by", generated_by or ""),
+        ("sub_count", len(sub_specs)),
+        ("sub_sheets", "; ".join(t for _o, t in sub_titles)),
+    ]
+    meta.cell(row=1, column=1, value="key").font = _BOLD
+    meta.cell(row=1, column=2, value="value").font = _BOLD
+    for i, (k, v) in enumerate(meta_pairs, start=2):
+        meta.cell(row=i, column=1, value=k)
+        meta.cell(row=i, column=2, value=v)
+    meta.column_dimensions["A"].width = 22
+    meta.column_dimensions["B"].width = 60
+    meta.sheet_state = "hidden"
+
+    cellmap = wb.create_sheet(SHEET_CELLMAP)
+    for r, values in enumerate(cellmap_rows, start=1):
+        for c, val in enumerate(values, start=1):
+            cellmap.cell(row=r, column=c, value=val)
+    cellmap.sheet_state = "veryHidden"
+
+    wb.active = 0  # open on the first data sheet (coordinator / first sub)
+    wb.security = WorkbookProtection(workbookPassword=PROTECTION_PASSWORD, lockStructure=True)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
 _AYP_RANGE_RE = re.compile(r"^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*$")
 _AYP_SINGLE_RE = re.compile(r"^\s*(\d{1,2})\s*$")
 
@@ -525,7 +669,19 @@ def _input_cell(ws, row, col, dv, value=None):
     return cell
 
 
-def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv, *, with_data):
+def _value_cell(ws, row, col, dv, *, formula_provider, kind, primary, secondary, band):
+    """An editable blue input cell, or — for the coordinator TOTAL sheet — a
+    locked cross-sheet rollup formula cell. ``formula_provider`` returns the
+    Excel formula string for this (kind, primary, secondary, band), or None."""
+    if formula_provider is not None:
+        formula = formula_provider(kind, primary, secondary, band)
+        cell = _style(ws.cell(row=row, column=col, value=formula if formula is not None else 0),
+                      fill=_SUBTOTAL_FILL, locked=True)
+        return cell
+    return _input_cell(ws, row, col, dv)
+
+
+def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv, *, with_data, formula_provider=None):
     """Write one indicator in the NAHPA consolidated reporting layout.
 
     Columns: indicator name | key population | sex | age bands… | Sub-total |
@@ -552,8 +708,9 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         _merge(ws, start_row, COL_NAME, start_row, COL_KP, name or category,
                fill=_LABEL_FILL, font=_BOLD, align=_LEFT)
         _style(ws.cell(row=start_row, column=COL_SEX, value="Total"), fill=_LABEL_FILL, font=_BOLD)
-        cell = _input_cell(ws, start_row, COL_BAND_START, dv)
-        if with_data:
+        cell = _value_cell(ws, start_row, COL_BAND_START, dv, formula_provider=formula_provider,
+                           kind="total", primary=ALL_PRIMARY, secondary=ALL_PRIMARY, band=NO_BAND)
+        if with_data and formula_provider is None:
             amount = plan.existing_cells.get((ALL_PRIMARY, ALL_PRIMARY, NO_BAND))
             if amount is not None:
                 cell.value = amount
@@ -612,8 +769,9 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
             else:
                 _style(ws.cell(row=row, column=COL_SEX, value="Count"), fill=_LABEL_FILL, font=_BOLD)
             for band in bands:
-                cell = _input_cell(ws, row, band_cols[band], dv)
-                if with_data:
+                cell = _value_cell(ws, row, band_cols[band], dv, formula_provider=formula_provider,
+                                   kind="cell", primary=primary, secondary=secondary, band=band)
+                if with_data and formula_provider is None:
                     amount = plan.existing_cells.get((primary, secondary, band))
                     if amount is not None:
                         cell.value = amount

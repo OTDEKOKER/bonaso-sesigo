@@ -1599,6 +1599,62 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
+    @action(detail=False, methods=['get'], url_path='coordinator-workbook')
+    def coordinator_workbook(self, request):
+        """Download one workbook for a coordinator: a reporting-form sheet per
+        sub-organisation plus a leading TOTAL sheet that live-sums the subs."""
+        project_id = request.query_params.get('project')
+        coordinator_id = request.query_params.get('coordinator') or request.query_params.get('organization')
+        if not project_id or not coordinator_id:
+            return Response({'detail': 'project and coordinator query params are required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        project = Project.objects.filter(id=project_id).first()
+        coordinator = Organization.objects.filter(id=coordinator_id).first()
+        if not project or not coordinator:
+            return Response({'detail': 'Project or coordinator not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Scope + training/live boundary: the caller must be able to write at the
+        # coordinator org (covers its descendants via the org-scope hierarchy).
+        self._assert_write_scope(project=project, organization=coordinator)
+
+        resolved = self._resolve_quarter_params(request)
+        if not resolved:
+            return Response({'detail': 'A valid quarter is required (e.g. quarter=Q1 & fiscal_year=2026).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        quarter, fiscal_start_year = resolved
+
+        # Data sheets: the coordinator's own (if it reports) plus every sub that
+        # has assignments. The TOTAL sheet sums them all (matches partner template).
+        sub_specs = []
+        seen = {}
+        for org in [coordinator] + list(coordinator.get_descendants()):
+            plans = self._build_indicator_plans(project=project, organization=org, quarter=quarter)
+            if plans:
+                sub_specs.append((org, plans))
+                for p in plans:
+                    seen.setdefault(p.indicator.id, p.indicator)
+        if not sub_specs:
+            return Response({'detail': 'No organisations have indicator assignments for this project.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        coordinator_plans = [
+            rw.IndicatorPlan(indicator=ind, config=rw.resolve_matrix_config(ind), target=None, existing_cells={})
+            for ind in sorted(seen.values(), key=lambda i: (i.name or ''))
+        ]
+        buf = rw.generate_coordinator_workbook(
+            project=project, coordinator=coordinator, sub_specs=sub_specs,
+            coordinator_plans=coordinator_plans, quarter=quarter, fiscal_start_year=fiscal_start_year,
+            generated_by=getattr(request.user, 'username', '') or '',
+        )
+        coord_code = (coordinator.code or coordinator.name or 'coordinator').replace(' ', '_')
+        filename = f"coordinator_workbook_{coord_code}_Q{quarter}_{fiscal_start_year}.xlsx"
+        response = HttpResponse(
+            buf.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
     @action(detail=False, methods=['post'], url_path='import-reporting-workbook')
     def import_reporting_workbook(self, request):
         """Upload a completed reporting workbook. Reads project/org/quarter from the
