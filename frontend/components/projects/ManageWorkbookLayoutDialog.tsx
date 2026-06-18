@@ -10,12 +10,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, ArrowDown, ArrowUp, GripVertical, Heading, Plus, Trash2 } from "lucide-react"
+import {
+  AlertTriangle, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp,
+  GripVertical, Heading, Plus, Trash2,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -61,7 +68,7 @@ export function ManageWorkbookLayoutDialog({ open, onOpenChange, coordinators, c
   const [name, setName] = useState("")
   const [items, setItems] = useState<EditorItem[]>([])
   const [available, setAvailable] = useState<WorkbookLayoutAvailableIndicator[]>([])
-  const [indicatorToAdd, setIndicatorToAdd] = useState<string>("")
+  const [addOpen, setAddOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
@@ -79,6 +86,18 @@ export function ManageWorkbookLayoutDialog({ open, onOpenChange, coordinators, c
     () => available.filter((ind) => !usedIndicatorIds.has(ind.id)),
     [available, usedIndicatorIds],
   )
+
+  const indicatorCount = useMemo(() => items.filter((i) => i.type === "indicator").length, [items])
+  const sectionCount = useMemo(() => items.filter((i) => i.type === "heading").length, [items])
+
+  // Indent indicators that fall under a section heading, so the grouping is visible.
+  const rows = useMemo(() => {
+    let underSection = false
+    return items.map((item) => {
+      if (item.type === "heading") { underSection = true; return { item, indented: false } }
+      return { item, indented: underSection }
+    })
+  }, [items])
 
   const loadCoordinator = useCallback(async (id: string) => {
     if (!id) return
@@ -135,7 +154,7 @@ export function ManageWorkbookLayoutDialog({ open, onOpenChange, coordinators, c
   // Reset when the dialog closes; preselect a single coordinator on open.
   useEffect(() => {
     if (!open) {
-      setCoordinatorId(""); setName(""); setItems([]); setAvailable([]); setIndicatorToAdd("")
+      setCoordinatorId(""); setName(""); setItems([]); setAvailable([]); setAddOpen(false)
       return
     }
     if (!coordinatorId && coordinators.length === 1) {
@@ -147,7 +166,6 @@ export function ManageWorkbookLayoutDialog({ open, onOpenChange, coordinators, c
 
   const onSelectCoordinator = (id: string) => {
     setCoordinatorId(id)
-    setIndicatorToAdd("")
     loadCoordinator(id)
   }
 
@@ -161,18 +179,24 @@ export function ManageWorkbookLayoutDialog({ open, onOpenChange, coordinators, c
     })
   }
 
+  const moveTo = (index: number, target: number) => {
+    setItems((prev) => {
+      if (target < 0 || target >= prev.length || target === index) return prev
+      const next = [...prev]
+      const [moved] = next.splice(index, 1)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }
+
   const removeItem = (key: string) =>
     setItems((prev) => prev.filter((i) => i.key !== key))
 
-  const addIndicator = () => {
-    const id = Number(indicatorToAdd)
-    const ind = available.find((a) => a.id === id)
-    if (!ind) return
+  const addIndicator = (ind: WorkbookLayoutAvailableIndicator) => {
     setItems((prev) => [...prev, {
       key: nextKey(), type: "indicator", indicator: ind.id,
       indicator_name: ind.name, indicator_code: ind.code, section_title: "", is_required: false,
     }])
-    setIndicatorToAdd("")
   }
 
   const addHeading = () => {
@@ -232,13 +256,13 @@ export function ManageWorkbookLayoutDialog({ open, onOpenChange, coordinators, c
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Manage Workbook Layout</DialogTitle>
           <DialogDescription>
-            Arrange indicators into the preferred order for reporting workbooks. This order is
-            saved per coordinator and reused for every project and period — it does not depend on
-            project, year, quarter or month.
+            Set the order indicators appear in this coordinator&apos;s reporting workbooks. Add
+            indicators, group them under section headings, and drag to reorder. The order is reused
+            for every project and period.
           </DialogDescription>
         </DialogHeader>
 
@@ -277,74 +301,108 @@ export function ManageWorkbookLayoutDialog({ open, onOpenChange, coordinators, c
           )}
 
           {coordinatorId && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={indicatorToAdd} onValueChange={setIndicatorToAdd}>
-                <SelectTrigger className="w-[260px]">
-                  <SelectValue placeholder={addableIndicators.length ? "Add an indicator…" : "All indicators added"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {addableIndicators.map((ind) => (
-                    <SelectItem key={ind.id} value={String(ind.id)}>{ind.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button type="button" variant="outline" size="sm" onClick={addIndicator} disabled={!indicatorToAdd || !canEdit}>
-                <Plus className="mr-1 h-4 w-4" /> Add indicator
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={addHeading} disabled={!canEdit}>
-                <Heading className="mr-1 h-4 w-4" /> Add section heading
-              </Button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Popover open={addOpen} onOpenChange={setAddOpen}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" size="sm" disabled={!canEdit || !addableIndicators.length}>
+                      <Plus className="mr-1 h-4 w-4" /> Add indicator
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[340px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search indicators…" />
+                      <CommandList>
+                        <CommandEmpty>
+                          {available.length ? "All indicators are already added." : "No indicators for this coordinator."}
+                        </CommandEmpty>
+                        <CommandGroup heading={`${addableIndicators.length} available`}>
+                          {addableIndicators.map((ind) => (
+                            <CommandItem
+                              key={ind.id}
+                              value={`${ind.name} ${ind.code}`}
+                              onSelect={() => addIndicator(ind)}
+                            >
+                              <Plus className="mr-2 h-4 w-4 shrink-0 opacity-60" />
+                              <span className="truncate">{ind.name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Button type="button" variant="outline" size="sm" onClick={addHeading} disabled={!canEdit}>
+                  <Heading className="mr-1 h-4 w-4" /> Add section
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {indicatorCount} indicator{indicatorCount === 1 ? "" : "s"}
+                {sectionCount > 0 && ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}`}
+              </p>
             </div>
           )}
 
-          <ScrollArea className="h-[320px] rounded-md border">
-            <ul className="divide-y">
+          <ScrollArea className="h-[48vh] min-h-[280px] rounded-md border">
+            <ul>
               {loading && <li className="p-4 text-sm text-muted-foreground">Loading…</li>}
               {!loading && coordinatorId && items.length === 0 && (
-                <li className="p-4 text-sm text-muted-foreground">
-                  No indicators available for this coordinator yet.
+                <li className="p-6 text-center text-sm text-muted-foreground">
+                  No indicators yet. Use “Add indicator” to build the layout.
                 </li>
               )}
               {!loading && !coordinatorId && (
-                <li className="p-4 text-sm text-muted-foreground">Select a coordinator to begin.</li>
+                <li className="p-6 text-center text-sm text-muted-foreground">Select a coordinator to begin.</li>
               )}
-              {!loading && items.map((item, index) => (
+              {!loading && rows.map(({ item, indented }, index) => (
                 <li
                   key={item.key}
                   draggable={canEdit}
                   onDragStart={() => setDragIndex(index)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => onDrop(index)}
-                  className={`flex items-center gap-2 px-3 py-2 ${item.type === "heading" ? "bg-muted/60" : ""}`}
+                  onDragEnd={() => setDragIndex(null)}
+                  className={`group flex items-center gap-2 border-b px-2 py-1.5 last:border-b-0 ${
+                    item.type === "heading"
+                      ? "border-l-4 border-l-primary bg-muted/60"
+                      : `hover:bg-muted/40 ${indented ? "pl-8" : ""}`
+                  } ${dragIndex === index ? "opacity-50" : ""}`}
                 >
-                  <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground" />
+                  <GripVertical
+                    className={`h-4 w-4 shrink-0 text-muted-foreground ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
+                  />
                   {item.type === "heading" ? (
                     <>
                       <Badge variant="secondary" className="shrink-0">Section</Badge>
                       <Input
                         value={item.section_title}
                         onChange={(e) => setHeadingTitle(item.key, e.target.value)}
-                        placeholder="Section heading (e.g. HIV Testing)"
-                        className="h-8"
+                        placeholder="Section name (e.g. HIV Testing)"
+                        className="h-8 font-medium"
                         disabled={!canEdit}
                       />
                     </>
                   ) : (
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{item.indicator_name}</p>
-                      {item.indicator_code && (
-                        <p className="truncate text-xs text-muted-foreground">{item.indicator_code}</p>
-                      )}
-                    </div>
+                    <p className="min-w-0 flex-1 truncate text-sm" title={item.indicator_code || item.indicator_name}>
+                      {item.indicator_name}
+                    </p>
                   )}
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
+                      onClick={() => moveTo(index, 0)} disabled={index === 0 || !canEdit} aria-label="Move to top">
+                      <ChevronsUp className="h-4 w-4" />
+                    </Button>
                     <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
                       onClick={() => move(index, -1)} disabled={index === 0 || !canEdit} aria-label="Move up">
-                      <ArrowUp className="h-4 w-4" />
+                      <ChevronUp className="h-4 w-4" />
                     </Button>
                     <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
                       onClick={() => move(index, 1)} disabled={index === items.length - 1 || !canEdit} aria-label="Move down">
-                      <ArrowDown className="h-4 w-4" />
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
+                      onClick={() => moveTo(index, items.length - 1)} disabled={index === items.length - 1 || !canEdit} aria-label="Move to bottom">
+                      <ChevronsDown className="h-4 w-4" />
                     </Button>
                     <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
                       onClick={() => removeItem(item.key)} disabled={!canEdit} aria-label="Remove">
