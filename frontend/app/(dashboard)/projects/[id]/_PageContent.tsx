@@ -1,9 +1,12 @@
 "use client"
 
-import React, { use, useEffect, useMemo, useState } from "react"
+import React, { use, useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Calendar, Users, Target, CheckCircle2, Clock, Edit, Trash2, Plus, Loader2, Building2, ChevronDown, FileText, Download, Upload, ListOrdered } from "lucide-react"
-import { ManageWorkbookLayoutDialog, type WorkbookLayoutCoordinator } from "@/components/projects/ManageWorkbookLayoutDialog"
+import { type WorkbookLayoutCoordinator } from "@/components/projects/ManageWorkbookLayoutDialog"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -133,7 +136,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [isSavingReport, setIsSavingReport] = useState(false)
   const [activeTab, setActiveTab] = useState("tasks")
   const [isManageOrgsOpen, setIsManageOrgsOpen] = useState(false)
-  const [isWorkbookLayoutOpen, setIsWorkbookLayoutOpen] = useState(false)
+  const goToWorkbookLayout = useCallback((coordinatorId: number, coordinatorName: string) => {
+    const params = new URLSearchParams({ name: coordinatorName })
+    if (resolvedProjectId) params.set("project", String(resolvedProjectId))
+    router.push(`/workbook-layouts/${coordinatorId}?${params.toString()}`)
+  }, [router, resolvedProjectId])
   const [manageOrgSearch, setManageOrgSearch] = useState("")
   const [managedOrgIds, setManagedOrgIds] = useState<string[]>([])
   const [isManageOrgsSaving, setIsManageOrgsSaving] = useState(false)
@@ -1455,10 +1462,36 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 {projectOrgs.length} organization{projectOrgs.length !== 1 ? "s" : ""} in this project
               </p>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setIsWorkbookLayoutOpen(true)}>
-                  <ListOrdered className="mr-2 h-4 w-4" />
-                  Manage Workbook Layout
-                </Button>
+                {workbookLayoutCoordinators.length > 1 ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <ListOrdered className="mr-2 h-4 w-4" />
+                        Manage Workbook Layout
+                        <ChevronDown className="ml-1 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {workbookLayoutCoordinators.map((c) => (
+                        <DropdownMenuItem key={c.id} onClick={() => goToWorkbookLayout(c.id, c.name)}>
+                          {c.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={workbookLayoutCoordinators.length === 0}
+                    onClick={() => {
+                      const c = workbookLayoutCoordinators[0]
+                      if (c) goToWorkbookLayout(c.id, c.name)
+                    }}
+                  >
+                    <ListOrdered className="mr-2 h-4 w-4" />
+                    Manage Workbook Layout
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={openManageOrgs}>
                   <Users className="mr-2 h-4 w-4" />
                   Manage
@@ -2679,11 +2712,6 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         </DialogContent>
       </Dialog>
 
-      <ManageWorkbookLayoutDialog
-        open={isWorkbookLayoutOpen}
-        onOpenChange={setIsWorkbookLayoutOpen}
-        coordinators={workbookLayoutCoordinators}
-      />
     </div>
   )
 }

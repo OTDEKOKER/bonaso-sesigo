@@ -47,6 +47,8 @@ export interface SaveWorkbookLayoutRequest {
   coordinator_organization: number;
   name: string;
   is_active?: boolean;
+  /** Optimistic concurrency: the updated_at the client last saw (echoed on save). */
+  expected_updated_at?: string;
   items: Array<{
     indicator: number | null;
     section_title?: string;

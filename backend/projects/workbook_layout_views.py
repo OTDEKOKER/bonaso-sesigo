@@ -19,9 +19,19 @@ from __future__ import annotations
 from django.db import IntegrityError, transaction
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+
+class WorkbookLayoutConflict(APIException):
+    """Raised when a save would clobber a newer version edited elsewhere."""
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = (
+        "This layout was changed since you opened it. Reload to get the latest "
+        "version, then re-apply your changes."
+    )
+    default_code = "stale_workbook_layout"
 
 from indicators.models import Indicator
 from organizations.access import is_organization_admin, request_mode_value
@@ -72,12 +82,17 @@ class WorkbookLayoutSerializer(serializers.ModelSerializer):
     coordinator_name = serializers.CharField(
         source="coordinator_organization.name", read_only=True,
     )
+    # Optimistic concurrency: the client echoes the ``updated_at`` it last saw;
+    # if the row has moved on since, the save is rejected (409) instead of
+    # silently clobbering another editor's changes.
+    expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
 
     class Meta:
         model = WorkbookLayout
         fields = [
             "id", "coordinator_organization", "coordinator_name", "name", "mode",
-            "is_active", "items", "created_by", "updated_by", "created_at", "updated_at",
+            "is_active", "items", "expected_updated_at",
+            "created_by", "updated_by", "created_at", "updated_at",
         ]
         read_only_fields = ["mode", "created_by", "updated_by", "created_at", "updated_at"]
 
@@ -115,6 +130,7 @@ class WorkbookLayoutSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        validated_data.pop("expected_updated_at", None)
         items = validated_data.pop("items", [])
         layout = WorkbookLayout.objects.create(**validated_data)
         self._write_items(layout, items)
@@ -122,6 +138,12 @@ class WorkbookLayoutSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        expected = validated_data.pop("expected_updated_at", None)
+        if expected is not None and instance.updated_at is not None:
+            # The client echoes the exact updated_at it last saw; any concurrent
+            # save moves it forward. Allow ≤1ms for serialization rounding only.
+            if abs((instance.updated_at - expected).total_seconds()) > 0.001:
+                raise WorkbookLayoutConflict()
         items = validated_data.pop("items", None)
         for attr, val in validated_data.items():
             setattr(instance, attr, val)

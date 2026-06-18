@@ -123,6 +123,38 @@ class WorkbookLayoutAPITests(WorkbookLayoutSetup):
         )
         self.assertEqual(resp2.status_code, 200, resp2.content)
 
+    def test_stale_save_is_rejected_with_409(self):
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        created = client.post("/api/manage/workbook-layouts/", self._create_payload(), format="json")
+        self.assertEqual(created.status_code, 201, created.content)
+        layout_id = created.data["id"]
+        original_updated_at = created.data["updated_at"]
+
+        # Another editor saves first (moves updated_at forward).
+        ahead = client.patch(
+            f"/api/manage/workbook-layouts/{layout_id}/", {"name": "Saved by someone else"}, format="json",
+        )
+        self.assertEqual(ahead.status_code, 200, ahead.content)
+
+        # Our save carries the stale updated_at → rejected, not clobbered.
+        stale = client.patch(
+            f"/api/manage/workbook-layouts/{layout_id}/",
+            {"name": "My stale change", "expected_updated_at": original_updated_at},
+            format="json",
+        )
+        self.assertEqual(stale.status_code, 409, stale.content)
+        self.assertEqual(WorkbookLayout.objects.get(id=layout_id).name, "Saved by someone else")
+
+        # Re-fetching the current updated_at lets the save through.
+        current = client.get(f"/api/manage/workbook-layouts/{layout_id}/").data["updated_at"]
+        ok = client.patch(
+            f"/api/manage/workbook-layouts/{layout_id}/",
+            {"name": "Applied cleanly", "expected_updated_at": current},
+            format="json",
+        )
+        self.assertEqual(ok.status_code, 200, ok.content)
+
     def test_coordinator_user_cannot_create_for_other(self):
         client = APIClient()
         client.force_authenticate(self.coord_user)
