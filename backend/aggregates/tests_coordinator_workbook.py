@@ -87,6 +87,36 @@ class CoordinatorWorkbookTests(SimpleTestCase):
         # B) → its total cells reference only Sub B. So Sub A appears for IND1 only.
         self.assertGreater(ref_to_a, 0)
 
+    def test_formula_cells_have_cached_values_not_empty(self):
+        """openpyxl emits ``<f>…</f><v/>`` (empty cached value); Excel "repairs"
+        cross-sheet rollup formulas that carry an empty cached value. The workbook
+        must ship every formula cell with an explicit ``<v>0</v>`` (recomputed on
+        open via fullCalcOnLoad) and zero empty ``<v/>`` left behind."""
+        import zipfile
+        i1 = _indicator(1, "IND1", "Indicator One")
+        i2 = _indicator(2, "IND2", "Indicator Two")
+        project = SimpleNamespace(id=99, name="Test Project", code="TP", is_training=False)
+        coord = SimpleNamespace(id=5, name="Coordinator Org", code="COORD")
+        subA = SimpleNamespace(id=11, name="Sub A", code="A")
+        subB = SimpleNamespace(id=12, name="Sub B", code="B")
+        buf = rw.generate_coordinator_workbook(
+            project=project, coordinator=coord,
+            sub_specs=[(subA, [_plan(i1)]), (subB, [_plan(i2), _plan(i1)])],
+            coordinator_plans=[_plan(i1), _plan(i2)], quarter=1, fiscal_start_year=2026,
+        )
+        empty = cached = formulas = 0
+        with zipfile.ZipFile(BytesIO(buf.getvalue())) as z:
+            for name in z.namelist():
+                if name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                    xml = z.read(name).decode("utf-8")
+                    formulas += xml.count("</f>")
+                    empty += len(re.findall(r"</f><v\s*/>", xml))
+                    empty += xml.count("</f><v></v>")
+                    cached += len(re.findall(r"</f><v>0</v>", xml))
+        self.assertGreater(formulas, 0)
+        self.assertEqual(empty, 0, "formula cells must not ship an empty <v/> cached value")
+        self.assertEqual(cached, formulas, "every formula cell should carry an explicit cached value")
+
     def test_indicator_only_in_one_sub_sums_only_that_sub(self):
         wb = self._build()
         cm = wb["_cellmap"]

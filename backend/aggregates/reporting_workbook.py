@@ -610,6 +610,39 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
     return ws
 
 
+# openpyxl writes formula cells as ``<f>…</f><v/>`` — an *empty* self-closing
+# cached-value element (not a missing one). Excel tolerates that for same-sheet
+# formulas, but for the coordinator TOTAL sheet's *cross-sheet* ``=SUM('Sub'!…)``
+# rollups it reports "we found a problem with some content" and silently strips
+# them ("Repaired"). This matches the empty cached value (``<v/>`` or ``<v></v>``)
+# or a missing one, right before the cell closes.
+_FORMULA_CACHE_RE = re.compile(r"</f>(?:<v\s*/>|<v></v>)?</c>")
+
+
+def _inject_formula_cache(buf: BytesIO, cached: str = "0") -> BytesIO:
+    """Give every formula cell an explicit cached ``<v>`` value.
+
+    Replaces openpyxl's empty ``<v/>`` with ``<v>0</v>`` so each formula cell is
+    structurally complete and Excel stops "repairing" the cross-sheet rollup
+    formulas. Excel still recomputes the real total on open because the workbook
+    has ``fullCalcOnLoad`` set. Only worksheet parts are rewritten. Cells that
+    already carry a real cached value (``<v>123</v>``) are left untouched.
+    """
+    import zipfile
+
+    replacement = f"</f><v>{cached}</v></c>"
+    src = zipfile.ZipFile(buf, "r")
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name in src.namelist():
+            data = src.read(name)
+            if name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                data = _FORMULA_CACHE_RE.sub(replacement, data.decode("utf-8")).encode("utf-8")
+            zout.writestr(name, data)
+    out.seek(0)
+    return out
+
+
 def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinator_plans,
                                   quarter: int, fiscal_start_year: int, generated_by: str = "",
                                   period_start=None, period_end=None, period_label=None) -> BytesIO:
@@ -697,6 +730,9 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
+    # Cross-sheet rollup formulas need a cached value or Excel reports the file as
+    # corrupt and strips them ("Repaired"). Recomputed on open via fullCalcOnLoad.
+    buf = _inject_formula_cache(buf)
     return buf
 
 
