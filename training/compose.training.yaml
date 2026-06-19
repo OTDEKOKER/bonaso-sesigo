@@ -54,7 +54,12 @@ services:
       # training backup from ever being restored into the LIVE system.
       BONASO_ENVIRONMENT: "TRAINING"
     volumes:
-      - ./state/backend/uploads:/app/uploads
+      # NOTE: do NOT bind-mount /app/uploads — that path is the uploads Django
+      # *app package*, not runtime storage (uploaded files go to MEDIA_ROOT =
+      # /app/media/uploads/). A host mount here shadows the baked-in app code
+      # with a stale copy and silently pins old migrations/views (it froze the
+      # uploads app at 0002, hiding the export-isolation fix). Same root cause
+      # as the 2026-06-05 live uploads-shadowing outage.
       - ./state/backend/media:/app/media
       - ./state/backend/staticfiles:/app/staticfiles
       - ../frontend/scripts:/app/workbook-imports:ro
