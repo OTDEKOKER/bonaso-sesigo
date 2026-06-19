@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PageHeader } from "@/components/shared/page-header"
 import QuarterlyTargetsSection from "@/components/indicators/quarterly-targets-section"
+import { IndicatorAliasesCard } from "@/components/indicators/indicator-aliases-card"
 import { useIndicator } from "@/lib/hooks/use-api"
 import { useSmartBack } from "@/lib/hooks/use-smart-back"
 import { isIndicatorEffectivelyActive } from "@/lib/indicators/activation"
@@ -114,6 +115,8 @@ export default function IndicatorDetailPage() {
           </p>
         </CardContent>
       </Card>
+
+      <IndicatorAliasesCard indicatorId={id} />
 
       <QuarterlyTargetsSection
         indicatorId={id}

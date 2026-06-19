@@ -244,7 +244,40 @@ export const indicatorsService = {
     }>(`/indicators/${id}/stats/`);
     return data;
   },
+
+  /** List the aliases (alternate import/display names) for an indicator. */
+  async listAliases(indicatorId: number): Promise<IndicatorAlias[]> {
+    const { data } = await api.get<PaginatedResponse<IndicatorAlias> | IndicatorAlias[]>(
+      '/indicators/aliases/',
+      { indicator: indicatorId, is_active: true, ordering: 'name' },
+    );
+    return Array.isArray(data) ? data : data.results ?? [];
+  },
+
+  /** Add an alias that future imports will resolve to this indicator. */
+  async createAlias(request: { indicator: number; name: string; notes?: string }): Promise<IndicatorAlias> {
+    const { data } = await api.post<IndicatorAlias>('/indicators/aliases/', request);
+    return data;
+  },
+
+  /** Remove an alias. */
+  async deleteAlias(aliasId: number): Promise<void> {
+    await api.delete(`/indicators/aliases/${aliasId}/`);
+  },
 };
+
+export interface IndicatorAlias {
+  id: number;
+  indicator: number;
+  indicator_name?: string;
+  indicator_code?: string;
+  name: string;
+  normalized_name?: string;
+  is_active: boolean;
+  notes?: string;
+  created_by_name?: string;
+  created_at?: string;
+}
 
 // ============================================================================
 // Assessments Service
