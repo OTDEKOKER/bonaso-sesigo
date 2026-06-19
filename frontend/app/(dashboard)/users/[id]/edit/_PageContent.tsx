@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Loader2, Save, Shield, UserCog, Building2, Mail, AtSign } from "lucide-react"
+import { ArrowLeft, Loader2, Save, Shield, UserCog, Building2, Mail, AtSign, FolderKanban } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +23,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header"
 import { OrganizationSelect } from "@/components/shared/organization-select"
 
-import { useAllOrganizations, useUser, useGroupCatalog } from "@/lib/hooks/use-api"
+import { useAllOrganizations, useUser, useGroupCatalog, useProjects } from "@/lib/hooks/use-api"
 import { usersService } from "@/lib/api"
 import type { UserRole } from "@/lib/types"
 import { USER_ROLE_OPTIONS, USER_ROLE_COLORS } from "@/lib/roles"
@@ -61,6 +61,7 @@ type FormState = {
   isActive: boolean
   permissions: string[]
   groups: string[]
+  assignedProjects: number[]
 }
 
 const initialForm: FormState = {
@@ -74,6 +75,7 @@ const initialForm: FormState = {
   isActive: true,
   permissions: [],
   groups: [],
+  assignedProjects: [],
 }
 
 export default function UserEditPage() {
@@ -91,8 +93,13 @@ export default function UserEditPage() {
   const { data: user, isLoading, error, mutate } = useUser(isValidUserId ? userId : null)
   const { data: orgsData } = useAllOrganizations()
   const { data: catalogData = [] } = useGroupCatalog(canEditRestrictedFields)
+  const { data: projectsData } = useProjects()
 
   const organizations = orgsData?.results || []
+  const projectOptions = useMemo(
+    () => ((projectsData as { results?: { id: number; name?: string; is_training?: boolean }[] })?.results || []),
+    [projectsData],
+  )
   const groupCatalog = useMemo(
     () => Array.from(new Set([...catalogData])).filter(Boolean),
     [catalogData],
@@ -119,6 +126,9 @@ export default function UserEditPage() {
       isActive: source.is_active ?? source.isActive ?? true,
       permissions: Array.isArray(source.permissions) ? source.permissions : [],
       groups: Array.isArray((source as { groups?: string[] }).groups) ? (source as { groups?: string[] }).groups! : [],
+      assignedProjects: Array.isArray((source as { assigned_projects?: number[] }).assigned_projects)
+        ? (source as { assigned_projects?: number[] }).assigned_projects!.map(Number)
+        : [],
     })
   }, [user])
 
@@ -132,6 +142,15 @@ export default function UserEditPage() {
       groups: checked
         ? Array.from(new Set([...prev.groups, group]))
         : prev.groups.filter((entry) => entry !== group),
+    }))
+  }
+
+  const toggleProject = (projectId: number, checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      assignedProjects: checked
+        ? Array.from(new Set([...prev.assignedProjects, projectId]))
+        : prev.assignedProjects.filter((id) => id !== projectId),
     }))
   }
 
@@ -180,6 +199,7 @@ export default function UserEditPage() {
         is_active?: boolean
         permissions?: string[]
         groups?: string[]
+        assigned_projects?: number[]
       } = {
         email: form.email.trim() || undefined,
         first_name: form.firstName.trim() || undefined,
@@ -196,6 +216,7 @@ export default function UserEditPage() {
         requestPayload.is_active = form.isActive
         requestPayload.permissions = form.permissions
         requestPayload.groups = form.groups
+        requestPayload.assigned_projects = form.assignedProjects
       }
 
       await usersService.update(userId, requestPayload)
@@ -485,6 +506,51 @@ export default function UserEditPage() {
                             onCheckedChange={(value) => toggleGroup(group, Boolean(value))}
                           />
                           <span className="text-sm">{group}</span>
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {canEditRestrictedFields && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <FolderKanban className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">Project Access</CardTitle>
+                </div>
+                <CardDescription>
+                  Choose which projects this user can see and report on. Non-admins only see projects assigned here.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {projectOptions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No projects available.</p>
+                  ) : (
+                    projectOptions.map((project) => {
+                      const htmlId = `project-${project.id}`
+                      const checked = form.assignedProjects.includes(Number(project.id))
+
+                      return (
+                        <label
+                          key={project.id}
+                          htmlFor={htmlId}
+                          className="flex cursor-pointer items-center gap-3 rounded-md border border-transparent p-2 transition hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            id={htmlId}
+                            checked={checked}
+                            onCheckedChange={(value) => toggleProject(Number(project.id), Boolean(value))}
+                          />
+                          <span className="text-sm">
+                            {project.name || `Project ${project.id}`}
+                            {project.is_training ? (
+                              <Badge variant="outline" className="ml-2 text-[10px]">Training</Badge>
+                            ) : null}
+                          </span>
                         </label>
                       )
                     })

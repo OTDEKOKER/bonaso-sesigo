@@ -45,6 +45,7 @@ export interface UpdateUserRequest {
   is_active?: boolean;
   permissions?: string[];
   groups?: string[];
+  assigned_projects?: number[];
 }
 
 export interface UserPermissionOption {
