@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { Download, Upload, FileSpreadsheet, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Download, Upload, FileSpreadsheet, Loader2, CheckCircle2, AlertTriangle, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useRouter, usePathname } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useProject } from "@/lib/hooks/use-api";
 import {
@@ -117,6 +118,8 @@ export function ReportingWorkbookDialog({
   onImported,
 }: ReportingWorkbookDialogProps) {
   const { toast } = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const initial = useMemo(currentFiscal, []);
@@ -137,6 +140,27 @@ export function ReportingWorkbookDialog({
   const [fiscalYear, setFiscalYear] = useState<string>(String(initial.fiscalYear));
   const [periodType, setPeriodType] = useState<"quarter" | "year" | "month">("quarter");
   const [month, setMonth] = useState<string>("4"); // April = FY start
+
+  // Reset every selection back to the default period and a blank project/coordinator/
+  // organisation so the user can start the picker fresh.
+  const resetFilters = () => {
+    setPeriodType("quarter");
+    setQuarter(initial.quarter);
+    setFiscalYear(String(initial.fiscalYear));
+    setMonth("4");
+    setProject("");
+    setCoordinator("");
+    setOrganization("");
+  };
+  // True when anything has been narrowed from the defaults (drives the button's enabled state).
+  const filtersDirty =
+    periodType !== "quarter" ||
+    quarter !== initial.quarter ||
+    fiscalYear !== String(initial.fiscalYear) ||
+    month !== "4" ||
+    !!project ||
+    !!coordinator ||
+    !!organization;
 
   // ── Cascade: Period → Project → Coordinator → Organization ──────────────────
   //
@@ -351,13 +375,25 @@ export function ReportingWorkbookDialog({
       const result = await aggregatesService.importReportingWorkbook(pendingFile);
       const s = result.summary;
       toast({
-        title: "Workbook imported",
-        description: `${s?.created ?? 0} created, ${s?.updated ?? 0} updated for ${s?.organization ?? ""} (${s?.quarter ?? ""}).`,
+        title: "Workbook successfully loaded",
+        description: `${s?.created ?? 0} created, ${s?.updated ?? 0} updated for ${s?.organization ?? ""} (${s?.quarter ?? ""}). Opening the entries to review and edit…`,
       });
       setPendingFile(null);
       setPreview(null);
       setOpen(false);
       onImported?.();
+
+      // Take the officer to the review/edit ("send") state for exactly the data
+      // they just uploaded: the aggregates list scoped to this project, org and
+      // period, where each entry can be viewed, edited and submitted.
+      const base = (pathname || "").startsWith("/training") ? "/training/aggregates" : "/aggregates";
+      const params = new URLSearchParams();
+      if (s?.project_id) params.set("project", String(s.project_id));
+      if (s?.organization_id) params.set("organizations", String(s.organization_id));
+      if (s?.period_start) params.set("date_from", s.period_start);
+      if (s?.period_end) params.set("date_to", s.period_end);
+      const query = params.toString();
+      router.push(query ? `${base}?${query}` : base);
     } catch (err) {
       triggerFriendlyError(err, "Workbook import failed");
     } finally {
@@ -387,6 +423,20 @@ export function ReportingWorkbookDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Clear all selections back to the default period and a blank project/org. */}
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 text-muted-foreground hover:text-foreground"
+              onClick={resetFilters}
+              disabled={!filtersDirty || busy !== null}
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Clear filters
+            </Button>
+          </div>
+
           {/* Step 1 — Period. Drives which projects are shown. */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
@@ -536,8 +586,11 @@ export function ReportingWorkbookDialog({
 
         {preview && summary && (
           <div className="mt-2 rounded-lg border bg-muted/30 p-4 text-sm">
-            <p className="mb-2 flex items-center gap-2 font-semibold">
-              <CheckCircle2 className="h-4 w-4 text-green-600" /> Ready to import
+            <p className="mb-1 flex items-center gap-2 font-semibold">
+              <CheckCircle2 className="h-4 w-4 text-green-600" /> Workbook loaded successfully
+            </p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Check the details below, then submit to open the entries for review — you can view and edit each one before it&apos;s finalised.
             </p>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
               <dt className="text-muted-foreground">Project</dt><dd>{summary.project}</dd>
@@ -561,7 +614,7 @@ export function ReportingWorkbookDialog({
               <Button variant="outline" onClick={() => { setPreview(null); setPendingFile(null); }}>Cancel</Button>
               <Button disabled={busy !== null || (summary.indicators_valid ?? 0) === 0} onClick={handleConfirmImport}>
                 {busy === "confirm" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Confirm Import
+                Submit &amp; Review
               </Button>
             </div>
           </div>
