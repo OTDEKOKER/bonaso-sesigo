@@ -1249,8 +1249,11 @@ class SavedQueryViewSet(viewsets.ModelViewSet):
     
     queryset = SavedQuery.objects.all()
     serializer_class = SavedQuerySerializer
-    permission_classes = [IsAuthenticated]
-    
+    # Saved queries are part of the reports/analysis module; honour explicit
+    # deny. (get_queryset already restricts to the requesting user's own rows.)
+    required_module = 'reports'
+    permission_classes = [IsAuthenticated, HasModulePermission]
+
     def get_queryset(self):
         from organizations.access import apply_mode_field_filter
         return apply_mode_field_filter(
@@ -1267,7 +1270,10 @@ class ScheduledReportViewSet(viewsets.ModelViewSet):
 
     queryset = ScheduledReport.objects.all()
     serializer_class = ScheduledReportSerializer
-    permission_classes = [IsAuthenticated]
+    # Scheduled reports are part of the reports/analysis module; honour explicit
+    # deny. (get_queryset already restricts non-admins to their own rows.)
+    required_module = 'reports'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['frequency', 'is_active']
     search_fields = ['report_name', 'report_type']

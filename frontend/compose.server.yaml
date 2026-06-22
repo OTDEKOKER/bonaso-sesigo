@@ -5,6 +5,12 @@ services:
       dockerfile: Dockerfile
     network_mode: host
     restart: unless-stopped
+    # Cap memory so a runaway request/worker is OOM-killed inside the container
+    # instead of starving the whole host (audit O3, 2026-06-22). 2g is well above
+    # the normal ~340 MB footprint, so it only binds on a true runaway.
+    mem_limit: 2g
+    mem_reservation: 512m
+    memswap_limit: 2560m
     environment:
       PORT: "18000"
       SECURE_SSL_REDIRECT: "True"
@@ -13,7 +19,9 @@ services:
       # Access logging w/ request duration (%(D)s, microseconds) so slow endpoints
       # are visible before they hit the gunicorn --timeout and get SIGKILLed.
       # Gunicorn reads GUNICORN_CMD_ARGS automatically; no entrypoint/image change.
-      GUNICORN_CMD_ARGS: "--access-logfile - --access-logformat '%(h)s %(m)s %(U)s?%(q)s -> %(s)s %(D)sus %(b)sb'"
+      # --max-requests recycles each worker after N requests (+jitter) to bound
+      # gradual memory growth/leaks (audit O3).
+      GUNICORN_CMD_ARGS: "--max-requests 800 --max-requests-jitter 100 --access-logfile - --access-logformat '%(h)s %(m)s %(U)s?%(q)s -> %(s)s %(D)sus %(b)sb'"
     volumes:
       - ../backend/.env:/app/.env:ro
       - ../backend/uploads:/app/uploads
@@ -37,6 +45,10 @@ services:
       - backend
     network_mode: host
     restart: unless-stopped
+    # Cap memory (audit O3). Next.js SSR normally sits well under this.
+    mem_limit: 1g
+    mem_reservation: 256m
+    memswap_limit: 1280m
     # Bind Next.js to loopback only. The host-networked container would
     # otherwise listen on 0.0.0.0:13000 and be reachable directly (bypassing
     # nginx/TLS). nginx proxies / to 127.0.0.1:13000, so loopback is sufficient.

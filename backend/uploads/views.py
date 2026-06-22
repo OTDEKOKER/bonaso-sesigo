@@ -574,7 +574,10 @@ class ImportJobViewSet(viewsets.ReadOnlyModelViewSet):
     
     queryset = ImportJob.objects.all()
     serializer_class = ImportJobSerializer
-    permission_classes = [IsAuthenticated]
+    # Import jobs are part of the uploads module; honour an explicit deny.
+    # (get_queryset already restricts to the user's own jobs.)
+    required_module = 'uploads'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'upload']
     

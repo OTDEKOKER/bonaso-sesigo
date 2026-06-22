@@ -131,7 +131,11 @@ class InteractionViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     """ViewSet for managing interactions."""
     
     queryset = Interaction.objects.all()
-    permission_classes = [IsAuthenticated]
+    # Interactions are respondent data: honour an admin's explicit deny of the
+    # 'respondents' module at the API too. Org/project scope (get_queryset)
+    # already prevents cross-org access; this adds the module-visibility gate.
+    required_module = 'respondents'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['respondent', 'assessment', 'project', 'event']
     search_fields = ['respondent__unique_id', 'notes']
@@ -276,7 +280,9 @@ class ResponseViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     
     queryset = Response.objects.select_related('interaction', 'indicator', 'question')
     serializer_class = ResponseSerializer
-    permission_classes = [IsAuthenticated]
+    # Responses belong to the respondents module (see InteractionViewSet).
+    required_module = 'respondents'
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['interaction', 'indicator', 'question']
 
