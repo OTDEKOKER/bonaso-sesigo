@@ -177,6 +177,19 @@ class WorkbookLayoutAPITests(WorkbookLayoutSetup):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data["results"] if "results" in resp.data else resp.data), 1)
 
+    def test_available_indicators_missing_coordinator_returns_400(self):
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        resp = client.get("/api/manage/workbook-layouts/available-indicators/")
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_available_indicators_non_integer_coordinator_returns_400(self):
+        # A front-end "NaN" must not reach the ORM (which raises ValueError → 500).
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        resp = client.get("/api/manage/workbook-layouts/available-indicators/?coordinator=NaN")
+        self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_duplicate_indicator_rejected(self):
         client = APIClient()
         client.force_authenticate(self.admin)

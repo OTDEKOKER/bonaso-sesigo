@@ -218,6 +218,13 @@ class WorkbookLayoutViewSet(viewsets.ModelViewSet):
         if not coordinator_id:
             return Response({"detail": "coordinator query param is required."},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Guard against non-integer ids (e.g. a front-end "NaN"): a raw filter on
+        # the id field would raise ValueError → 500. Fail with a clean 400.
+        try:
+            coordinator_id = int(coordinator_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "coordinator must be a valid organization id."},
+                            status=status.HTTP_400_BAD_REQUEST)
         from organizations.models import Organization
         coordinator = Organization.objects.filter(id=coordinator_id).first()
         if not coordinator:

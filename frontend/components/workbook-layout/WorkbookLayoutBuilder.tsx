@@ -91,16 +91,36 @@ export function WorkbookLayoutBuilder({
   }, [])
 
   // ── Load ────────────────────────────────────────────────────────────────
+  // The saved layout and the indicator library are loaded INDEPENDENTLY: a
+  // failure of one must not discard the other. (A coupled Promise.all here once
+  // let a failing available-indicators call wipe a successfully-loaded layout,
+  // leaving an empty editor.) Each surfaces its own error.
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    Promise.all([
-      workbookLayoutsService.forCoordinator(coordinatorId),
-      workbookLayoutsService.availableIndicators(coordinatorId),
-    ])
+
+    const layoutP = workbookLayoutsService.forCoordinator(coordinatorId)
+    const indicatorsP = workbookLayoutsService.availableIndicators(coordinatorId)
+
+    // Library is best-effort: on failure we keep an empty library but still let
+    // a saved layout render (its items carry their own names from the API).
+    indicatorsP
+      .then((indicators) => { if (!cancelled) setAvailable(indicators) })
+      .catch((err) => {
+        if (cancelled) return
+        toast({
+          title: "Could not load indicator library",
+          description: err instanceof Error ? err.message : "Add-indicator search is unavailable; saved items still show.",
+          variant: "destructive",
+        })
+      })
+
+    // The layout is the primary artifact. Use whatever indicators we managed to
+    // load (possibly none) purely to enrich category labels — never to gate the
+    // layout rendering.
+    Promise.all([layoutP, indicatorsP.catch(() => [] as WorkbookLayoutAvailableIndicator[])])
       .then(([layout, indicators]) => {
         if (cancelled) return
-        setAvailable(indicators)
         if (layout) {
           setLayoutId(layout.id)
           setName(layout.name)
