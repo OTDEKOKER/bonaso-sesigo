@@ -25,6 +25,7 @@ from indicator_import_aliases import canonical_resolution_aliases, preferred_dup
 from organizations.models import Organization  # noqa: E402
 from projects.models import Project, ProjectIndicator  # noqa: E402
 from projects.project_indicator_links import ensure_project_indicator_link  # noqa: E402
+from uploads.fuzzy_match import best_match  # noqa: E402
 
 
 DEFAULT_WORKBOOK = r"C:\Users\dekok\Downloads\2026 FINAL ANALYSIS May-March 03.02.2025 (1) (3).xlsx"
@@ -210,10 +211,14 @@ def canonical_indicator_key(value):
     return re.sub(r"\s+", " ", normalized).strip()
 
 
-def resolve_sheet_organization(sheet_name, organizations):
+def _exact_or_alias_organization(sheet_name, organizations):
+    """Exact-name / sheet-alias organization match (confidence 1.0), or None.
+
+    This is the deterministic, unambiguous part of org resolution — an exact
+    normalized name match or a curated ``SHEET_ORG_ALIASES`` entry.
+    """
     normalized_sheet = normalize(sheet_name)
     aliases = [SHEET_ORG_ALIASES.get(normalized_sheet), sheet_name]
-
     for candidate in aliases:
         if not candidate:
             continue
@@ -221,18 +226,43 @@ def resolve_sheet_organization(sheet_name, organizations):
         for organization in organizations:
             if normalize(organization.name) == normalized_candidate:
                 return organization
-
-    for organization in organizations:
-        normalized_org = normalize(organization.name)
-        if normalized_sheet and (
-            normalized_sheet in normalized_org or normalized_org in normalized_sheet
-        ):
-            return organization
-
     return None
 
 
+def resolve_sheet_organization_scored(sheet_name, organizations):
+    """Return a ``MatchResult`` for a sheet → organization match.
+
+    Exact/alias matches are returned with full confidence. Otherwise the
+    confidence engine scores every organization and REFUSES (matched=None) when
+    the best score is low or two organizations score within the ambiguity margin —
+    so a wrong organization can never be silently chosen from a sheet name.
+    """
+    exact = _exact_or_alias_organization(sheet_name, organizations)
+    if exact is not None:
+        from uploads.fuzzy_match import Candidate, MatchResult
+
+        return MatchResult(exact, 1.0, False, "exact",
+                           [Candidate(exact, exact.name, 1.0)])
+    return best_match(sheet_name, organizations, label_of=lambda o: o.name)
+
+
+def resolve_sheet_organization(sheet_name, organizations):
+    """Back-compatible obj-or-None resolver (no silent low-confidence/ambiguous)."""
+    return resolve_sheet_organization_scored(sheet_name, organizations).matched
+
+
 def resolve_sheet_organization_with_overrides(sheet_name, organizations, sheet_org_overrides=None):
+    return resolve_sheet_organization_with_overrides_scored(
+        sheet_name, organizations, sheet_org_overrides
+    ).matched
+
+
+def resolve_sheet_organization_with_overrides_scored(sheet_name, organizations, sheet_org_overrides=None):
+    """Like :func:`resolve_sheet_organization_scored` but an explicit user
+    override (sheet → org id/name/code) wins with full confidence. The override
+    IS the user's confirmation of an otherwise ambiguous/low-confidence sheet."""
+    from uploads.fuzzy_match import Candidate, MatchResult
+
     overrides = sheet_org_overrides or {}
     normalized_sheet = normalize(sheet_name)
     override_value = overrides.get(normalized_sheet)
@@ -241,13 +271,16 @@ def resolve_sheet_organization_with_overrides(sheet_name, organizations, sheet_o
         if text_value:
             for organization in organizations:
                 if text_value.isdigit() and int(text_value) == int(organization.id):
-                    return organization
+                    return MatchResult(organization, 1.0, False, "override",
+                                       [Candidate(organization, organization.name, 1.0)])
                 if normalize(getattr(organization, "name", "")) == normalize(text_value):
-                    return organization
+                    return MatchResult(organization, 1.0, False, "override",
+                                       [Candidate(organization, organization.name, 1.0)])
                 if normalize(getattr(organization, "code", "")) == normalize(text_value):
-                    return organization
+                    return MatchResult(organization, 1.0, False, "override",
+                                       [Candidate(organization, organization.name, 1.0)])
 
-    return resolve_sheet_organization(sheet_name, organizations)
+    return resolve_sheet_organization_scored(sheet_name, organizations)
 
 
 def get_code_resolution_overrides(code, title):
@@ -880,19 +913,36 @@ def main():
     selected_sheets = []
     missing_sheets = []
     missing_orgs = []
+    # Per-sheet org-match diagnostics for the review report: WHY a sheet could not
+    # be resolved (low confidence / ambiguous) and the nearest candidates, so the
+    # reviewer can supply an override instead of guessing.
+    org_diagnostics = {}
+    org_match_by_sheet = {}
     for sheet_name in candidate_sheets:
         if sheet_name not in workbook.sheetnames:
             missing_sheets.append(sheet_name)
             continue
-        if resolve_sheet_organization_with_overrides(sheet_name, organizations, sheet_org_overrides) is None:
+        org_result = resolve_sheet_organization_with_overrides_scored(
+            sheet_name, organizations, sheet_org_overrides
+        )
+        org_diagnostics[sheet_name] = org_result.as_report()
+        if not org_result.resolved:
             missing_orgs.append(sheet_name)
             continue
+        org_match_by_sheet[sheet_name] = org_result
         selected_sheets.append(sheet_name)
 
     if args.sheets and missing_sheets:
         raise SystemExit(f"Sheets not found in workbook: {', '.join(missing_sheets)}")
+    # Ambiguous / low-confidence organization matches are treated exactly like an
+    # unresolved org: the run fails (no aggregate is written) and the unresolved
+    # sheet names are reported so the user can confirm them via sheet_org_overrides.
     if args.sheets and missing_orgs:
-        raise SystemExit(f"Organizations not found for sheets: {', '.join(missing_orgs)}")
+        ambiguous = [s for s in missing_orgs if org_diagnostics.get(s, {}).get("ambiguous")]
+        detail = f"Organizations not found for sheets: {', '.join(missing_orgs)}"
+        if ambiguous:
+            detail += f" | ambiguous (needs override): {', '.join(ambiguous)}"
+        raise SystemExit(detail)
     if not selected_sheets:
         raise SystemExit("No organization sheets found in workbook.")
 
@@ -933,19 +983,22 @@ def main():
     created_project_assignments = 0
 
     for sheet_name in selected_sheets:
-        organization = resolve_sheet_organization_with_overrides(
-            sheet_name,
-            organizations,
-            sheet_org_overrides,
-        )
+        org_result = org_match_by_sheet.get(sheet_name)
+        organization = org_result.matched if org_result else None
         if organization is None:
+            # Should never happen (unresolved sheets are filtered out above), but
+            # guard so a borderline match can never silently write to an org.
             raise SystemExit(f"Organization not found for sheet: {sheet_name}")
         parsed_rows = parse_sheet(workbook[sheet_name])
         sheet_report = {
             "organization_id": organization.id,
+            "organization_name": organization.name,
+            "organization_match": org_diagnostics.get(sheet_name, {}),
             "parsed_rows": len(parsed_rows),
             "matched_rows": [],
             "unknown_rows": [],
+            "unknown_row_details": [],
+            "ambiguous_rows": [],
         }
 
         for item in parsed_rows:
@@ -958,7 +1011,18 @@ def main():
             )
             if indicator is None:
                 unknown[item["title"]] += 1
-                sheet_report["unknown_rows"].append(item["title"])
+                sheet_report["unknown_rows"].append(item["title"])  # back-compat (strings)
+                # Surface the nearest indicator candidates (and whether they look
+                # ambiguous) so the reviewer can pick an override — these rows are
+                # NOT written.
+                near = best_match(item["title"], indicators, label_of=lambda i: i.name)
+                sheet_report["unknown_row_details"].append({
+                    "title": item["title"],
+                    "code": item["code"],
+                    **near.as_report(),
+                })
+                if near.ambiguous or near.reason == "low_confidence":
+                    sheet_report["ambiguous_rows"].append(item["title"])
                 continue
 
             matched += 1
@@ -992,15 +1056,20 @@ def main():
             }
 
             aggregate_action = "would_update"
-            existing = Aggregate.objects.only("id").filter(
+            # Capture the prior state (status + value) so the audit trail can show
+            # old→new and flag an approved row being reset back to pending review.
+            existing = Aggregate.objects.only("id", "status", "value").filter(
                 indicator=indicator,
                 project=project,
                 organization=organization,
                 period_start=args.period_start,
                 period_end=args.period_end,
             ).first()
+            old_status = existing.status if existing is not None else None
+            old_value = existing.value if existing is not None else None
             if existing is None:
                 aggregate_action = "would_create"
+            aggregate_id = existing.id if existing is not None else None
             if not args.dry_run:
                 aggregate, created = Aggregate.objects.update_or_create(
                     indicator=indicator,
@@ -1011,11 +1080,13 @@ def main():
                     defaults=aggregate_defaults,
                 )
                 aggregate_action = "created" if created else "updated"
+                aggregate_id = aggregate.id
                 upserted_aggregates.append(aggregate.id)
 
             if changed:
                 updated_indicators.append(indicator.id)
 
+            org_match = org_diagnostics.get(sheet_name, {}) or {}
             sheet_report["matched_rows"].append(
                 {
                     "code": item["code"],
@@ -1024,9 +1095,23 @@ def main():
                     "indicator_name": indicator.name,
                     "matrix": item["is_matrix"],
                     "aggregate_action": aggregate_action,
+                    # Audit context (consumed by run_aggregate_review_import_job):
+                    "aggregate_id": aggregate_id,
+                    "organization_id": organization.id,
+                    "period_start": str(args.period_start),
+                    "period_end": str(args.period_end),
+                    "old_status": old_status,
+                    "old_value": old_value,
+                    "new_value": item["value"],
+                    "approved_reset": old_status == "approved",
+                    "organization_confidence": org_match.get("confidence"),
+                    "organization_match_reason": org_match.get("reason"),
+                    "organization_override": org_match.get("reason") == "override",
                 }
             )
 
+        sheet_report["organization_confidence"] = (org_diagnostics.get(sheet_name, {}) or {}).get("confidence")
+        sheet_report["ambiguous_row_count"] = len(sheet_report["ambiguous_rows"])
         report["sheets"][sheet_name] = sheet_report
 
     report["summary"] = {
@@ -1040,6 +1125,12 @@ def main():
         "unknown_titles": dict(unknown.most_common()),
         "indicator_override_count": len(indicator_overrides),
         "sheet_org_override_count": len(sheet_org_overrides),
+        "ambiguous_rows": sum(len(s.get("ambiguous_rows", [])) for s in report["sheets"].values()),
+        "unresolved_sheet_names": missing_orgs,
+        "ambiguous_sheet_names": [
+            s for s in missing_orgs if org_diagnostics.get(s, {}).get("ambiguous")
+        ],
+        "organization_match_diagnostics": org_diagnostics,
     }
 
     if args.report_path:

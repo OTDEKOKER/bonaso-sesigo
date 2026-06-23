@@ -639,3 +639,80 @@ class WorkbookLayoutItem(models.Model):
         if self.indicator_id:
             return f"L{self.layout_id} #{self.order_index} indicator={self.indicator_id}"
         return f"L{self.layout_id} #{self.order_index} heading={self.section_title!r}"
+
+
+class WorkbookLayoutSnapshot(models.Model):
+    """Frozen indicator order + section structure for ONE generated workbook period.
+
+    A :class:`WorkbookLayout` is a *living* template — editing it changes every
+    future workbook. A snapshot pins the exact resolved structure (indicator ids,
+    their order, and section headings) for a specific reporting period the first
+    time that period's workbook is generated, so regenerating a past quarter
+    reproduces it exactly even after the layout is later edited (P3).
+
+    ``items`` is a denormalised, self-contained list — it does NOT depend on the
+    live layout still existing — of::
+
+        [{"order_index": 0, "indicator_id": 12, "indicator_code": "...",
+          "indicator_name": "...", "section_title": "HIV Testing"}, ...]
+
+    Like :class:`WorkbookLayout` it carries the Live/Training environment directly
+    (``mode``) since it has no project-independent FK to isolate through.
+    """
+
+    KIND_CHOICES = [
+        ('org', 'Organisation workbook'),
+        ('coordinator', 'Coordinator workbook'),
+    ]
+    MODE_CHOICES = [
+        ('live', 'Live'),
+        ('training', 'Training'),
+    ]
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name='workbook_layout_snapshots',
+    )
+    # The organisation the workbook is FOR (the sub-organisation for an 'org'
+    # workbook, or the coordinator for a 'coordinator' workbook).
+    organization = models.ForeignKey(
+        'organizations.Organization', on_delete=models.CASCADE,
+        related_name='workbook_layout_snapshots',
+    )
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES, default='org')
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='live')
+    period_start = models.DateField()
+    period_end = models.DateField()
+    period_label = models.CharField(max_length=64, blank=True, default='')
+
+    # Provenance of the order that was frozen (the layout may later change/vanish).
+    source_layout = models.ForeignKey(
+        WorkbookLayout, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='snapshots',
+    )
+    layout_name = models.CharField(max_length=255, blank=True, default='')
+    # The source layout's updated_at (ISO) when frozen, so an edit is detectable.
+    layout_version = models.CharField(max_length=64, blank=True, default='')
+
+    items = models.JSONField(default=list, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_workbook_layout_snapshots',
+    )
+
+    class Meta:
+        ordering = ['-period_start', 'organization_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['project', 'organization', 'kind', 'mode', 'period_start', 'period_end'],
+                name='unique_workbook_layout_snapshot_per_period',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"snapshot[{self.kind}/{self.mode}] proj={self.project_id} "
+            f"org={self.organization_id} {self.period_start}..{self.period_end}"
+        )

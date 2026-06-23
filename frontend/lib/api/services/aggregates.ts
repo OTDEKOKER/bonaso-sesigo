@@ -56,6 +56,17 @@ export interface ReportingWorkbookImportResult {
   errors?: Array<{ indicator?: string | number; error?: string }>;
 }
 
+export interface ReportingWorkbookPreview {
+  project?: string;
+  organization?: string;
+  period_label?: string;
+  has_layout?: boolean;
+  layout_name?: string | null;
+  indicator_count?: number;
+  indicators?: Array<{ id: number; code: string; name: string; section: string }>;
+  warnings?: string[];
+}
+
 export interface AggregateFilters {
   search?: string;
   indicator?: string;
@@ -563,6 +574,40 @@ export const aggregatesService = {
       });
     }
     return response.blob();
+  },
+
+  /**
+   * Preview the indicator order + any warnings (deprecated indicators redirected
+   * to canonical, indicators assigned but not placed in the layout) for a
+   * reporting workbook BEFORE downloading it. JSON; does not generate the file.
+   * Django endpoint: GET /api/aggregates/reporting-workbook-preview/
+   */
+  async previewReportingWorkbook(params: {
+    project: string | number;
+    organization: string | number;
+    quarter: string;
+    fiscal_year: string | number;
+    periodType?: 'quarter' | 'year' | 'month';
+    month?: string | number;
+  }): Promise<ReportingWorkbookPreview> {
+    const search = new URLSearchParams({
+      project: String(params.project),
+      organization: String(params.organization),
+      quarter: params.quarter,
+      fiscal_year: String(params.fiscal_year),
+    });
+    if (params.periodType) search.set('period_type', params.periodType);
+    if (params.periodType === 'month' && params.month != null) search.set('month', String(params.month));
+    const response = await fetchWithAuth(
+      withTrainingQuery(`/aggregates/reporting-workbook-preview/?${search.toString()}`),
+      { timeoutMs: 60_000 },
+    );
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      const payload = contentType?.includes('application/json') ? await response.json() : await response.text();
+      throw normalizeApiError({ status: response.status, payload, fallbackMessage: 'Failed to preview reporting workbook' });
+    }
+    return response.json() as Promise<ReportingWorkbookPreview>;
   },
 
   /**

@@ -26,6 +26,7 @@ import { useProject } from "@/lib/hooks/use-api";
 import {
   aggregatesService,
   type ReportingWorkbookImportResult,
+  type ReportingWorkbookPreview,
 } from "@/lib/api/services/aggregates";
 
 type Option = { id: string | number; name?: string; code?: string };
@@ -261,9 +262,10 @@ export function ReportingWorkbookDialog({
     }
   }, [organization, scopedOrganizations]);
 
-  const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "upload" | "confirm">(null);
+  const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "upload" | "confirm" | "preview">(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ReportingWorkbookImportResult | null>(null);
+  const [orderPreview, setOrderPreview] = useState<ReportingWorkbookPreview | null>(null);
 
   const fyLabel = (startYear: number | string) => {
     const y = Number(startYear);
@@ -317,6 +319,36 @@ export function ReportingWorkbookDialog({
       URL.revokeObjectURL(url);
     } catch (err) {
       triggerFriendlyError(err, "Failed to download workbook");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handlePreviewOrder = async () => {
+    if (!singleReady) {
+      toast({ title: "Select project, organization and period first.", variant: "destructive" });
+      return;
+    }
+    setBusy("preview");
+    setOrderPreview(null);
+    try {
+      const info = await aggregatesService.previewReportingWorkbook({
+        project,
+        organization,
+        quarter,
+        fiscal_year: fiscalYear,
+        periodType,
+        month,
+      });
+      setOrderPreview(info);
+      if (info.warnings && info.warnings.length > 0) {
+        toast({
+          title: `${info.warnings.length} workbook warning${info.warnings.length === 1 ? "" : "s"}`,
+          description: "Review the highlighted items before downloading.",
+        });
+      }
+    } catch (err) {
+      triggerFriendlyError(err, "Failed to preview workbook");
     } finally {
       setBusy(null);
     }
@@ -549,7 +581,35 @@ export function ReportingWorkbookDialog({
                 {busy === "data" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Download With Data
               </Button>
+              <Button variant="ghost" disabled={!singleReady || busy !== null} onClick={handlePreviewOrder}>
+                {busy === "preview" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}
+                Preview order &amp; warnings
+              </Button>
             </div>
+            {orderPreview ? (
+              <div className="rounded-md border border-border bg-muted/30 p-2 text-xs">
+                <div className="font-medium">
+                  {orderPreview.indicator_count ?? orderPreview.indicators?.length ?? 0} indicators
+                  {orderPreview.has_layout
+                    ? ` · layout: ${orderPreview.layout_name || "active"}`
+                    : " · no saved layout (default order)"}
+                </div>
+                {orderPreview.warnings && orderPreview.warnings.length > 0 ? (
+                  <ul className="mt-1 space-y-1">
+                    {orderPreview.warnings.map((w, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-1 flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> No warnings — order is fully controlled by the layout.
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Coordinator (a sheet per sub-grantee + a TOTAL rollup)</p>

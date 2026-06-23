@@ -1510,8 +1510,13 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         s, e = rw.quarter_period_range(quarter, fy)
         return quarter, fy, s, e, rw.quarter_label(quarter, fy), 'quarter'
 
-    def _build_indicator_plans(self, *, project, organization, quarter, period_start=None, period_end=None, with_data=False, period_type='quarter'):
-        """Resolve assigned indicators + targets (+ existing data) for the form."""
+    def _build_indicator_plans(self, *, project, organization, quarter, period_start=None, period_end=None, with_data=False, period_type='quarter', warnings=None):
+        """Resolve assigned indicators + targets (+ existing data) for the form.
+
+        ``warnings`` (optional list) collects user-facing notices — currently for
+        deprecated indicators that were redirected to their canonical (P4) — so a
+        caller can surface them instead of an indicator silently vanishing.
+        """
         from projects.models import (
             ProjectIndicator, ProjectIndicatorOrganizationTarget, ProjectIndicatorAssignment,
         )
@@ -1534,20 +1539,65 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             order = (pia.assignment_metadata or {}).get('sort_order')
             if isinstance(order, int):
                 sort_order.setdefault(pia.project_indicator.indicator_id, order)
-        indicators = sorted(
-            Indicator.objects.filter(id__in=indicator_ids, is_active=True)
-            .exclude(canonical_indicator__isnull=False),
-            key=lambda ind: (sort_order.get(ind.id) is None, sort_order.get(ind.id, 0), ind.name or ''),
+
+        # P4: redirect deprecated assigned indicators to their canonical row
+        # (the one analytics rolls up on) instead of silently dropping them, and
+        # warn for every redirect. Dedupe by the resolved id; keep the lowest
+        # sort_order and remember which original ids fed each resolved indicator
+        # so target/existing-data lookups (keyed on the assigned id) still match.
+        assigned = list(Indicator.objects.filter(id__in=indicator_ids))
+        canonical_ids = {ind.canonical_indicator_id for ind in assigned if ind.canonical_indicator_id}
+        canonical_by_id = (
+            {ind.id: ind for ind in Indicator.objects.filter(id__in=canonical_ids)}
+            if canonical_ids else {}
         )
+        resolved_map = {}                       # resolved id -> Indicator
+        resolved_sort = {}                      # resolved id -> min sort_order
+        origin_ids = {}                         # resolved id -> [assigned id, ...]
+        for ind in assigned:
+            if ind.canonical_indicator_id:
+                target_ind = canonical_by_id.get(ind.canonical_indicator_id)
+                if target_ind is None:
+                    if warnings is not None:
+                        warnings.append(
+                            f'Indicator “{ind.name}” is deprecated and its canonical indicator is '
+                            f'missing; it was skipped.'
+                        )
+                    continue
+                if warnings is not None:
+                    warnings.append(
+                        f'Indicator “{ind.name}” is deprecated; reporting on its canonical '
+                        f'indicator “{target_ind.name}” instead.'
+                    )
+            else:
+                target_ind = ind
+            if not target_ind.is_active:
+                if warnings is not None:
+                    warnings.append(f'Indicator “{target_ind.name}” is inactive and was skipped.')
+                continue
+            resolved_map.setdefault(target_ind.id, target_ind)
+            origin_ids.setdefault(target_ind.id, []).append(ind.id)
+            o = sort_order.get(ind.id)
+            if isinstance(o, int):
+                prev = resolved_sort.get(target_ind.id)
+                resolved_sort[target_ind.id] = o if prev is None else min(prev, o)
+        indicators = sorted(
+            resolved_map.values(),
+            key=lambda ind: (resolved_sort.get(ind.id) is None, resolved_sort.get(ind.id, 0), ind.name or ''),
+        )
+
+        # Targets/existing data may be keyed on either the resolved (canonical) id
+        # or any deprecated origin id, so look up across the union.
+        lookup_ids = set(indicator_ids) | set(resolved_map.keys())
         project_indicators = {
             pi.indicator_id: pi
-            for pi in ProjectIndicator.objects.filter(project=project, indicator_id__in=indicator_ids)
+            for pi in ProjectIndicator.objects.filter(project=project, indicator_id__in=lookup_ids)
         }
         org_targets = {
             ot.project_indicator.indicator_id: ot
             for ot in ProjectIndicatorOrganizationTarget.objects.filter(
                 project_indicator__project=project,
-                project_indicator__indicator_id__in=indicator_ids,
+                project_indicator__indicator_id__in=lookup_ids,
                 organization=organization,
             ).select_related('project_indicator')
         }
@@ -1557,9 +1607,28 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             for agg in Aggregate.objects.filter(
                 project=project, organization=organization,
                 period_start=period_start, period_end=period_end,
-                indicator_id__in=indicator_ids,
+                indicator_id__in=lookup_ids,
             ):
                 existing_by_indicator[agg.indicator_id] = agg.value
+
+        def _resolved_source(indicator):
+            """Target row for a resolved indicator, trying its own id then any
+            deprecated origin id that redirected onto it."""
+            for candidate in [indicator.id, *origin_ids.get(indicator.id, [])]:
+                ot = org_targets.get(candidate)
+                if ot is not None:
+                    return ot
+            for candidate in [indicator.id, *origin_ids.get(indicator.id, [])]:
+                pi = project_indicators.get(candidate)
+                if pi is not None:
+                    return pi
+            return None
+
+        def _resolved_existing(indicator):
+            for candidate in [indicator.id, *origin_ids.get(indicator.id, [])]:
+                if candidate in existing_by_indicator:
+                    return existing_by_indicator[candidate]
+            return None
 
         def _target_for(source):
             # Yearly = sum of the 4 quarter targets; monthly has no defined target;
@@ -1585,15 +1654,15 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         plans = []
         for indicator in indicators:
             target = None
-            ot = org_targets.get(indicator.id)
-            pi = project_indicators.get(indicator.id)
-            source = ot or pi
+            source = _resolved_source(indicator)
             if source is not None:
                 target = _target_for(source)
             cfg = rw.resolve_matrix_config(indicator)
             existing_cells = {}
-            if with_data and indicator.id in existing_by_indicator:
-                existing_cells = rw.extract_cells_from_value(existing_by_indicator[indicator.id], cfg)
+            if with_data:
+                existing_value = _resolved_existing(indicator)
+                if existing_value is not None:
+                    existing_cells = rw.extract_cells_from_value(existing_value, cfg)
             plans.append(rw.IndicatorPlan(
                 indicator=indicator, config=cfg, target=target, existing_cells=existing_cells,
             ))
@@ -1624,10 +1693,11 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         quarter, fiscal_start_year, period_start, period_end, period_label, period_type = resolved
         with_data = _is_truthy(request.query_params.get("with_data"))
 
-        plans = self._build_indicator_plans(
-            project=project, organization=organization, quarter=quarter,
+        warnings: list[str] = []
+        plans, layout = self._resolve_ordered_plans(
+            request, project=project, organization=organization, quarter=quarter,
             period_start=period_start, period_end=period_end, with_data=with_data,
-            period_type=period_type,
+            period_type=period_type, warnings=warnings,
         )
         if not plans:
             return Response(
@@ -1635,13 +1705,20 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Apply the coordinator's saved Workbook Layout order (project/period
-        # independent). A sub-organisation inherits its coordinator's layout; with
-        # no layout the default plan order (built above) is kept.
-        from organizations.access import request_mode_value
-        from projects.workbook_layout import resolve_layout_for_org, order_plans_by_layout
-        layout = resolve_layout_for_org(project, organization, mode=request_mode_value(request))
-        plans = order_plans_by_layout(plans, layout)
+        # P3: pin this period's structure. First generation freezes the resolved
+        # order into a snapshot; later generations of the SAME period replay that
+        # snapshot so a past quarter regenerates identically even after the layout
+        # is edited. Admins may force a refresh with ?refresh_snapshot=true.
+        from organizations.access import request_mode_value, is_organization_admin
+        from projects.workbook_snapshot import get_or_create_snapshot, order_plans_by_snapshot
+        snap_refresh = is_organization_admin(request.user) and _is_truthy(request.query_params.get('refresh_snapshot'))
+        snapshot, snap_created = get_or_create_snapshot(
+            project=project, organization=organization, kind='org',
+            mode=request_mode_value(request), period_start=period_start, period_end=period_end,
+            period_label=period_label, plans=plans, layout=layout, user=request.user, refresh=snap_refresh,
+        )
+        if snapshot is not None and not snap_created:
+            plans = order_plans_by_snapshot(plans, snapshot, warnings=warnings)
 
         buf = rw.generate_workbook(
             project=project, organization=organization, quarter=quarter,
@@ -1658,7 +1735,75 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        # Surface ordering / deprecated-indicator notices to the client without
+        # breaking the binary download (the dialog reads this header; the JSON
+        # ``reporting-workbook-preview`` action returns the same list up front).
+        if warnings:
+            response['X-Workbook-Warnings'] = json.dumps(warnings)
+            response['Access-Control-Expose-Headers'] = 'X-Workbook-Warnings'
         return response
+
+    def _resolve_ordered_plans(self, request, *, project, organization, quarter,
+                               period_start=None, period_end=None, with_data=False,
+                               period_type='quarter', warnings=None):
+        """Build indicator plans and apply the coordinator's WorkbookLayout order.
+
+        Single helper shared by the workbook download and its JSON preview so the
+        two can never diverge. A sub-organisation inherits its coordinator's
+        layout (project/period independent); with no layout the default plan order
+        is kept. Returns ``(ordered_plans, layout_or_None)``.
+        """
+        from organizations.access import request_mode_value
+        from projects.workbook_layout import resolve_layout_for_org, order_plans_by_layout
+        plans = self._build_indicator_plans(
+            project=project, organization=organization, quarter=quarter,
+            period_start=period_start, period_end=period_end, with_data=with_data,
+            period_type=period_type, warnings=warnings,
+        )
+        layout = resolve_layout_for_org(project, organization, mode=request_mode_value(request))
+        plans = order_plans_by_layout(plans, layout, warnings=warnings)
+        return plans, layout
+
+    @action(detail=False, methods=['get'], url_path='reporting-workbook-preview')
+    def reporting_workbook_preview(self, request):
+        """JSON preview of a reporting workbook: the resolved indicator order and
+        any warnings (deprecated redirects, indicators not placed in the layout),
+        so the UI can show issues BEFORE the user downloads the file (P2/P4)."""
+        project_id = request.query_params.get('project')
+        organization_id = request.query_params.get('organization')
+        if not project_id or not organization_id:
+            return Response({'detail': 'project and organization query params are required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        project = Project.objects.filter(id=project_id).first()
+        organization = Organization.objects.filter(id=organization_id).first()
+        if not project or not organization:
+            return Response({'detail': 'Project or organization not found.'}, status=status.HTTP_404_NOT_FOUND)
+        self._assert_write_scope(project=project, organization=organization)
+
+        resolved = self._resolve_period(request)
+        if not resolved:
+            return Response({'detail': 'A valid period is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        quarter, fiscal_start_year, period_start, period_end, period_label, period_type = resolved
+
+        warnings: list[str] = []
+        plans, layout = self._resolve_ordered_plans(
+            request, project=project, organization=organization, quarter=quarter,
+            period_start=period_start, period_end=period_end, with_data=False,
+            period_type=period_type, warnings=warnings,
+        )
+        return Response({
+            'project': project.name, 'organization': organization.name,
+            'period_label': period_label,
+            'has_layout': layout is not None,
+            'layout_name': getattr(layout, 'name', None),
+            'indicator_count': len(plans),
+            'indicators': [
+                {'id': p.indicator.id, 'code': getattr(p.indicator, 'code', '') or '',
+                 'name': p.indicator.name, 'section': getattr(p, 'section', '') or ''}
+                for p in plans
+            ],
+            'warnings': warnings,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='coordinator-workbook')
     def coordinator_workbook(self, request):
@@ -1686,9 +1831,16 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         # Data sheets: the coordinator's own (if it reports) plus every sub that
         # has assignments. The TOTAL sheet sums them all (matches partner template).
+        #
+        # P1 (workbook/analytics parity): the sub-organisation set is resolved
+        # through the SAME project-hierarchy scope the analytics coordinator
+        # rollup uses — never the global organization tree — so the workbook's
+        # sub-sheets always cover exactly the organisations the dashboards roll
+        # up under this coordinator.
+        from projects.hierarchy import resolve_workbook_scope_organizations
         sub_specs = []
         seen = {}
-        for org in [coordinator] + list(coordinator.get_descendants()):
+        for org in resolve_workbook_scope_organizations(coordinator, project):
             plans = self._build_indicator_plans(project=project, organization=org, quarter=quarter, period_type=period_type)
             if plans:
                 sub_specs.append((org, plans))
@@ -1705,12 +1857,28 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         # Apply the coordinator's saved Workbook Layout order to every sub sheet
         # and the TOTAL sheet (project/period independent). No layout → default.
-        from organizations.access import request_mode_value
+        from organizations.access import request_mode_value, is_organization_admin
         from projects.workbook_layout import get_active_layout, order_plans_by_layout
-        layout = get_active_layout(coordinator.id, mode=request_mode_value(request))
+        mode = request_mode_value(request)
+        layout = get_active_layout(coordinator.id, mode=mode)
         if layout is not None:
             sub_specs = [(org, order_plans_by_layout(plans, layout)) for org, plans in sub_specs]
             coordinator_plans = order_plans_by_layout(coordinator_plans, layout)
+
+        # P3: freeze/replay this period's coordinator structure so a past quarter
+        # regenerates identically after a later layout edit. The TOTAL-sheet
+        # (coordinator_plans) order is the canonical structure; the same snapshot
+        # order is replayed onto each sub sheet for alignment.
+        from projects.workbook_snapshot import get_or_create_snapshot, order_plans_by_snapshot
+        snap_refresh = is_organization_admin(request.user) and _is_truthy(request.query_params.get('refresh_snapshot'))
+        snapshot, snap_created = get_or_create_snapshot(
+            project=project, organization=coordinator, kind='coordinator', mode=mode,
+            period_start=period_start, period_end=period_end, period_label=period_label,
+            plans=coordinator_plans, layout=layout, user=request.user, refresh=snap_refresh,
+        )
+        if snapshot is not None and not snap_created:
+            coordinator_plans = order_plans_by_snapshot(coordinator_plans, snapshot)
+            sub_specs = [(org, order_plans_by_snapshot(plans, snapshot)) for org, plans in sub_specs]
 
         buf = rw.generate_coordinator_workbook(
             project=project, coordinator=coordinator, sub_specs=sub_specs,

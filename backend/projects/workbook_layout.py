@@ -101,16 +101,19 @@ def resolve_layout_for_org(project, organization, mode: str = "live"):
     return None
 
 
-def order_plans_by_layout(plans, layout):
+def order_plans_by_layout(plans, layout, *, warnings=None):
     """Reorder ``plans`` (a list of ``IndicatorPlan``) by ``layout``.
 
-    Rules (see the feature spec):
+    The :class:`WorkbookLayout` is the single source of truth for indicator order
+    and section grouping. Rules:
       * Layout items are walked in ``order_index``. Heading items set the current
         section; indicator items emit the matching plan (if applicable) under it.
       * A layout indicator that is NOT in ``plans`` (not applicable to the
         selected project/org) is skipped.
       * A plan whose indicator is not in the layout is appended at the bottom
-        under an "Unordered Indicators" section.
+        under an "Unordered Indicators" section — AND, when ``warnings`` is
+        provided, a clear notice is recorded for it so the gap is visible rather
+        than silent (P2).
       * Each returned plan carries its ``section`` so the generator can render
         heading rows.
 
@@ -146,5 +149,11 @@ def order_plans_by_layout(plans, layout):
     for plan in leftovers:
         plan.section = UNORDERED_SECTION
         ordered.append(plan)
+        if warnings is not None:
+            name = getattr(plan.indicator, "name", None) or getattr(plan.indicator, "code", None) or "An indicator"
+            warnings.append(
+                f'Indicator “{name}” is assigned but not placed in the workbook layout; it was '
+                f'added under “{UNORDERED_SECTION}”. Add it to the layout to control its position.'
+            )
 
     return ordered

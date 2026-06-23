@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 
 from aggregates.models import Aggregate
-from indicators.models import Indicator
+from indicators.models import Indicator, IndicatorAlias
 from openpyxl import load_workbook
 from organizations.models import Organization
 from projects.models import Project, ProjectIndicator
@@ -895,9 +895,23 @@ class OrganizationResolver:
         if not ranked:
             return None
 
-        best_overlap, _, best_match = ranked[0]
+        best_overlap, _, best_org = ranked[0]
         minimum_overlap = max(2, len(requested_tokens) // 2)
-        return best_match if best_overlap >= minimum_overlap else None
+        if best_overlap < minimum_overlap:
+            return None
+
+        # Ambiguity guard (shared confidence engine): if a *different*
+        # organization scores within the ambiguity margin of the winner, refuse
+        # rather than silently pick the first — the caller must disambiguate via
+        # an explicit override. Mirrors the production subprocess importer.
+        from uploads.fuzzy_match import best_match as _confident_match
+
+        result = _confident_match(
+            name, [org for _o, _t, org in ranked], label_of=lambda o: o.name,
+        )
+        if result.ambiguous:
+            return None
+        return best_org
 
 
 class IndicatorResolver:
@@ -914,8 +928,38 @@ class IndicatorResolver:
         self.configured_project_indicators = []
         self.indicators_by_index: dict[str, list[Indicator]] = {}
         self.project_indicators_by_index: dict[str, list[Indicator]] = {}
+        self.indicators_by_id: dict[int, Indicator] = {}
         for indicator in Indicator.objects.all():
+            self.indicators_by_id[indicator.id] = indicator
             self.remember(indicator)
+
+        # P5: IndicatorAlias is the SHARED, deterministic first-pass resolver for
+        # every fuzzy importer (this command and the subprocess script). An active
+        # alias whose normalized name matches the row label resolves straight to
+        # its indicator — folded onto the canonical row — before any fuzzy scoring.
+        self.alias_by_normalized: dict[str, int] = {}
+        for alias_name, indicator_id in IndicatorAlias.objects.filter(
+            is_active=True,
+        ).values_list("normalized_name", "indicator_id"):
+            if alias_name:
+                self.alias_by_normalized.setdefault(alias_name, indicator_id)
+
+    def _resolve_via_alias(self, title: str) -> Indicator | None:
+        """Exact alias match (canonical-folded), or ``None``. Deterministic."""
+        normalized = re.sub(
+            r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(title or "").lower())
+        ).strip()
+        indicator_id = self.alias_by_normalized.get(normalized)
+        if not indicator_id:
+            return None
+        indicator = self.indicators_by_id.get(indicator_id)
+        if indicator is None:
+            return None
+        # Fold a deprecated duplicate onto its canonical row so imported data
+        # lands where analytics rolls it up.
+        if indicator.canonical_indicator_id:
+            return self.indicators_by_id.get(indicator.canonical_indicator_id, indicator)
+        return indicator
 
     def _candidate_sort_key(self, indicator: Indicator, requested_key: str, section_index: str | None):
         candidate_key = canonical_indicator_name(indicator.name)
@@ -985,6 +1029,11 @@ class IndicatorResolver:
         return ranked[0][-1]
 
     def resolve(self, title: str, section_index: str | None = None) -> Indicator | None:
+        # P5: deterministic alias match wins over all fuzzy scoring.
+        alias_match = self._resolve_via_alias(title)
+        if alias_match is not None:
+            return alias_match
+
         key = canonical_indicator_name(title)
         normalized_index = normalize_section_index(section_index)
 

@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
+import { WorkbookImportReview } from "@/components/aggregates/WorkbookImportReview";
 import { useAllExportJobs, useAllImportJobs } from "@/lib/hooks/use-api";
 import { reportsService, uploadsService } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -478,6 +479,7 @@ export default function UploadImportsPage() {
                       Error: {JSON.stringify(job.errors[0])}
                     </div>
                   ) : null}
+                  <WorkbookImportReview result={job.result} />
                 </div>
               ))}
             </div>

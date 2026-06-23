@@ -39,6 +39,28 @@ NON_REPORT_SHEET_KEYWORDS = (
 )
 
 
+def _prior_validated_dry_run_exists(upload, *, exclude_job_id=None) -> bool:
+    """True when a dry-run preview for ``upload`` has already been validated."""
+    qs = ImportJob.objects.filter(
+        upload=upload, job_type="aggregate_review_import", status="validated",
+        parameters__dry_run=True,
+    )
+    if exclude_job_id is not None:
+        qs = qs.exclude(id=exclude_job_id)
+    return qs.exists()
+
+
+def fuzzy_import_needs_confirmation(*, upload, dry_run, confirm, exclude_job_id=None) -> bool:
+    """P5 gate: a legacy/fuzzy import may only WRITE when previewed first.
+
+    Returns ``True`` (block) when this is a real (non-dry-run) write that has
+    neither an explicit confirmation nor a prior validated dry-run for the upload.
+    """
+    if dry_run or confirm:
+        return False
+    return not _prior_validated_dry_run_exists(upload, exclude_job_id=exclude_job_id)
+
+
 def _is_truthy(value):
     if isinstance(value, bool):
         return value
@@ -366,6 +388,34 @@ class UploadViewSet(viewsets.ModelViewSet):
         }
         job.output_file = str(report_path)
         job.save(update_fields=["parameters", "output_file"])
+
+        # P5: legacy/fuzzy imports must be previewed before they write. Unlike the
+        # deterministic SESIGO workbook (mapped by indicator_id), this path resolves
+        # organizations from sheet names and indicators from row labels by fuzzy
+        # matching, so a real (non-dry-run) write is refused until the caller has
+        # either confirmed explicitly or already run a dry-run preview for this
+        # upload. The SESIGO path above is unaffected.
+        if not dry_run:
+            confirm = _is_truthy(request.data.get("confirm")) or _is_truthy(request.data.get("confirmed"))
+            if fuzzy_import_needs_confirmation(
+                upload=upload, dry_run=dry_run, confirm=confirm, exclude_job_id=job.id,
+            ):
+                job.status = "failed"
+                job.completed_at = timezone.now()
+                job.errors = [{"error": "dry-run confirmation required"}]
+                job.save(update_fields=["status", "completed_at", "errors"])
+                return Response(
+                    {
+                        "error": "Confirmation required",
+                        "requires_confirmation": True,
+                        "messages": [
+                            "Legacy (non-SESIGO) workbook imports use fuzzy organization and "
+                            "indicator matching and can mis-map data.",
+                            "Run a dry-run preview first, then resubmit with confirm=true to import.",
+                        ],
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         if dry_run:
             job = run_aggregate_review_import_job(job.id)

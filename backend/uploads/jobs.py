@@ -150,7 +150,103 @@ def run_aggregate_review_import_job(job_id):
             "result",
         ]
     )
+
+    # Close the legacy-import audit gap: the subprocess writes aggregates directly
+    # (bypassing the viewset's _record_aggregate_change), so we record the audit
+    # events here from its report. Dry-runs write nothing, so they are not audited.
+    if not dry_run:
+        _record_legacy_import_audit(job, report_payload)
     return job
+
+
+def _record_legacy_import_audit(job, report_payload):
+    """Emit one audit event per written aggregate (and per refused sheet) for a
+    legacy/fuzzy workbook import. Best-effort — never raises into the job."""
+    try:
+        from audit.recording import record_audit_event
+        from organizations.models import Organization
+        from projects.models import Project
+
+        sheets = (report_payload or {}).get("sheets") or {}
+        summary = (report_payload or {}).get("summary") or {}
+        project_info = (report_payload or {}).get("project") or {}
+        project = Project.objects.filter(id=project_info.get("id")).first()
+        actor = job.created_by
+
+        # Batch-load organizations referenced by matched rows.
+        org_ids = {
+            row.get("organization_id")
+            for sheet in sheets.values()
+            for row in (sheet.get("matched_rows") or [])
+            if row.get("organization_id")
+        }
+        orgs = {o.id: o for o in Organization.objects.filter(id__in=org_ids)} if org_ids else {}
+
+        for sheet_name, sheet in sheets.items():
+            for row in (sheet.get("matched_rows") or []):
+                action = row.get("aggregate_action")
+                if action not in ("created", "updated"):
+                    continue  # dry-run placeholders ("would_*") are not real writes
+                approved_reset = bool(row.get("approved_reset"))
+                record_audit_event(
+                    action="import",
+                    actor=actor,
+                    object_type="aggregate",
+                    object_id=row.get("aggregate_id"),
+                    organization=orgs.get(row.get("organization_id")),
+                    project=project,
+                    description=(
+                        f"Legacy workbook import {action} aggregate for "
+                        f"'{row.get('indicator_name')}' from sheet '{sheet_name}'"
+                        + (" (approved → pending reset)" if approved_reset else "")
+                    ),
+                    metadata={
+                        "source": "legacy_workbook_import",
+                        "upload_id": job.upload_id,
+                        "import_job_id": job.id,
+                        "sheet_name": sheet_name,
+                        "indicator_id": row.get("indicator_id"),
+                        "indicator_name": row.get("indicator_name"),
+                        "organization_id": row.get("organization_id"),
+                        "period_start": row.get("period_start"),
+                        "period_end": row.get("period_end"),
+                        "outcome": "reset_from_approved" if approved_reset else action,
+                        "old_status": row.get("old_status"),
+                        "old_value": row.get("old_value"),
+                        "new_value": row.get("new_value"),
+                        "organization_confidence": row.get("organization_confidence"),
+                        "organization_match_reason": row.get("organization_match_reason"),
+                        "override_used": bool(row.get("organization_override")),
+                    },
+                )
+
+        # Audit sheets that were REFUSED (ambiguous / unresolved → nothing written).
+        refused = list(summary.get("unresolved_sheet_names") or [])
+        ambiguous = set(summary.get("ambiguous_sheet_names") or [])
+        for sheet_name in refused:
+            record_audit_event(
+                action="import",
+                actor=actor,
+                object_type="aggregate",
+                project=project,
+                description=(
+                    f"Legacy workbook import skipped sheet '{sheet_name}' "
+                    f"({'ambiguous' if sheet_name in ambiguous else 'unresolved'} "
+                    f"organization match) — no data written"
+                ),
+                metadata={
+                    "source": "legacy_workbook_import",
+                    "upload_id": job.upload_id,
+                    "import_job_id": job.id,
+                    "sheet_name": sheet_name,
+                    "outcome": "ambiguous_skipped" if sheet_name in ambiguous else "unresolved_skipped",
+                },
+            )
+    except Exception:  # pragma: no cover - auditing must never break the import
+        import logging
+        logging.getLogger(__name__).exception(
+            "Failed to record legacy import audit for job id=%s", getattr(job, "id", None)
+        )
 
 
 def _content_disposition_filename(value, fallback):

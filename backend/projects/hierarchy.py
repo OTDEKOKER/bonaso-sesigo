@@ -186,3 +186,26 @@ def resolve_organization_scope_with_project_hierarchy(
         resolved_scope = resolved_scope.intersection(project_org_ids)
 
     return resolved_scope
+
+
+def resolve_workbook_scope_organizations(coordinator, project) -> list[Organization]:
+    """Ordered ``Organization`` objects for a coordinator's reporting workbook.
+
+    Single source of truth for "which organizations belong under this coordinator
+    for reporting". It returns exactly the same scope the analytics coordinator
+    rollup uses (:func:`resolve_organization_scope_with_project_hierarchy`), so a
+    coordinator workbook's sub-sheets always cover the same organizations whose
+    data the dashboards/rollups attribute to that coordinator — never the global
+    organization tree, which can diverge from the project-specific hierarchy.
+
+    The coordinator organization itself is first; the remaining organizations
+    follow sorted by name for a stable, readable sheet order.
+    """
+    if coordinator is None:
+        return []
+    scope_ids = resolve_organization_scope_with_project_hierarchy(
+        coordinator.id, project=project
+    ) or {coordinator.id}
+    orgs = list(Organization.objects.filter(id__in=scope_ids))
+    orgs.sort(key=lambda o: (o.id != coordinator.id, (o.name or "").lower()))
+    return orgs
