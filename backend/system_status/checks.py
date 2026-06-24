@@ -72,6 +72,16 @@ def _parity_report():
     return latest, _safe_read_json(latest)
 
 
+def _missing_in_db_csv_path(latest_file):
+    """Path to the complete missing-in-db CSV next to a real parity report file,
+    or ``None`` (e.g. in tests where the report file is a stub)."""
+    from pathlib import Path as _Path
+    if not isinstance(latest_file, _Path):
+        return None
+    candidate = latest_file.parent / "missing_in_db_latest.csv"
+    return str(candidate) if candidate.exists() else None
+
+
 def _parity_issue(parity_block: dict) -> dict | None:
     latest_file, report = _parity_report()
     if not isinstance(report, dict):
@@ -105,10 +115,28 @@ def _parity_issue(parity_block: dict) -> dict | None:
     generated = report.get("generated_at")
 
     org_names = ", ".join(o["org"] for o in affected_orgs) or "—"
+
+    # Distinguish the three categories so admins are not told un-imported workbook
+    # rows are "value mismatches" (which reads as corruption). Only an actual
+    # ``payload_mismatch`` is a value disagreement; ``missing_in_db`` is a
+    # completeness/data-loading gap and ``missing_in_workbook`` a traceability gap.
+    # NB: the parity CALCULATION is untouched — only how the result is described.
+    is_value_corruption = mismatches > 0
+    if is_value_corruption:
+        title = "Monthly payload parity mismatch"
+        severity = "critical"
+        headline_kind = "value mismatch"
+    else:
+        title = "Monthly payload parity completeness gap"
+        severity = "warning"
+        headline_kind = "completeness gap"
+
     message = (
-        f"Monthly payload parity check found {difference} "
-        f"mismatch{'es' if difference != 1 else ''} "
-        f"across {len(affected_orgs)} organization{'s' if len(affected_orgs) != 1 else ''}"
+        f"Monthly payload parity check found: "
+        f"{mismatches} value mismatch{'' if mismatches == 1 else 'es'}, "
+        f"{missing_db} workbook record{'' if missing_db == 1 else 's'} missing in the database, "
+        f"{missing_wb} database record{'' if missing_wb == 1 else 's'} missing from the workbook "
+        f"across {len(affected_orgs)} organization{'' if len(affected_orgs) == 1 else 's'}"
         f" ({org_names}). Click to review affected records."
     )
     fp = _fingerprint("parity", period, mismatches, missing_db, missing_wb,
@@ -116,9 +144,11 @@ def _parity_issue(parity_block: dict) -> dict | None:
 
     issue = {
         "id": "parity-latest",
-        "issue_type": "PARITY_MISMATCH",
-        "title": "Monthly payload parity mismatch",
-        "severity": "warning",
+        "issue_type": "PARITY_MISMATCH" if is_value_corruption else "PARITY_COMPLETENESS",
+        "category": "consistency" if is_value_corruption else "completeness",
+        "title": title,
+        "severity": severity,
+        "headline_kind": headline_kind,
         "component": "parity_checks",
         "environment": "live",
         "related_project_id": project.get("id"),
@@ -126,23 +156,37 @@ def _parity_issue(parity_block: dict) -> dict | None:
         "message": message,
         "explanation": (
             "The nightly check compares the totals stored in the database against the "
-            "figures in each organization's submitted reporting workbook. A mismatch means "
-            "a value in the database differs from the workbook (or is present on only one "
-            "side). It is a data-quality flag, not a system fault — the portal is fully "
-            "operational."
+            "figures in each organization's submitted reporting workbook. "
+            + (
+                "A VALUE MISMATCH means a number in the database differs from the workbook — "
+                "investigate which side is correct."
+                if is_value_corruption else
+                "There are NO value mismatches: every value present on both sides matches exactly. "
+                "The flagged records are present in the workbook but were never imported into the "
+                "database — this is a data-loading backlog (a completeness gap), NOT value corruption."
+            )
+            + " It is a data-quality flag, not a system fault — the portal is fully operational."
         ),
         "technical_details": (
             f"parity report {latest_file.name if latest_file else '?'} for project "
-            f"{project.get('code') or project.get('name') or '?'}: "
+            f"{project.get('id')} {project.get('code') or project.get('name') or '?'} "
+            f"(generated {generated}): "
             f"payloads_compared={summary.get('payloads_compared')}, "
-            f"payload_mismatches={mismatches}, missing_in_db={missing_db}, "
-            f"missing_in_workbook={missing_wb}, orgs_checked={summary.get('orgs_checked')}."
+            f"value_mismatches={mismatches}, missing_in_db={missing_db}, "
+            f"missing_in_workbook={missing_wb}, orgs_checked={summary.get('orgs_checked')}, "
+            f"affected_orgs={len(affected_orgs)}, sample_indicators={len(affected_indicators)}. "
+            + ("" if is_value_corruption else
+               "This is a data-loading backlog (records present in the workbook but not yet imported), "
+               "NOT value corruption.")
         ),
         "evidence": {
             "report_file": latest_file.name if latest_file else None,
             "generated_at": generated,
             "summary": summary,
             "diff_sample": diff_rows,
+            # Path to the COMPLETE missing-in-db export (written by the parity
+            # script next to its JSON), when present — the drill-down serves it.
+            "missing_in_db_csv": _missing_in_db_csv_path(latest_file),
         },
         "metrics": {
             "period": period,
@@ -161,12 +205,23 @@ def _parity_issue(parity_block: dict) -> dict | None:
             "affected_indicators": [{"id": i, "name": n} for i, n in affected_indicators],
             "mismatch_rows": diff_rows,
         },
-        "recommended_fix": [
-            "Open the affected organization's reporting workbook and the matching records in the portal.",
-            "Confirm whether the database value or the workbook value is correct.",
-            "Correct the wrong side (re-import the workbook, or fix the aggregate in the portal).",
-            "Re-run the parity check; if it still flags after a deliberate manual correction, mark the issue resolved.",
-        ],
+        "recommended_fix": (
+            [
+                "Open the affected organization's reporting workbook and the matching records in the portal.",
+                "Confirm whether the database value or the workbook value is correct.",
+                "Correct the wrong side (re-import the workbook, or fix the aggregate in the portal).",
+                "Re-run the parity check; if it still flags after a deliberate manual correction, mark the issue resolved.",
+            ]
+            if is_value_corruption else
+            [
+                "These records exist in the workbooks but were never imported — this is a data-loading "
+                "backlog, not corrupted data.",
+                "Download the missing-records CSV (link below) to see every affected org/indicator/quarter.",
+                "Import the outstanding workbook data for the listed organizations, or confirm the rows "
+                "are out of scope.",
+                "Re-run the parity check; the completeness gap clears once the data is loaded.",
+            ]
+        ),
         "related_module": "/aggregates",
         "fingerprint": fp,
         "links": _links("parity-latest", csv=True),
@@ -523,7 +578,25 @@ def overall_from_issues(issues: list, fallback: str) -> str:
 
 
 def parity_csv_rows(issue: dict):
-    """Header + rows for the parity mismatch CSV download."""
+    """Header + rows for the parity CSV download.
+
+    Prefers the COMPLETE ``missing_in_db_latest.csv`` written by the parity script
+    (every missing record, not the 40-row JSON sample) when the issue references
+    it; otherwise falls back to the in-report diff sample.
+    """
+    import csv as _csv
+    from pathlib import Path as _Path
+
+    full_csv = (issue.get("evidence", {}) or {}).get("missing_in_db_csv")
+    if full_csv and _Path(full_csv).exists():
+        try:
+            with open(full_csv, newline="", encoding="utf-8") as fh:
+                reader = list(_csv.reader(fh))
+            if reader:
+                return reader[0], reader[1:]
+        except OSError:
+            pass
+
     rows = issue.get("detail", {}).get("mismatch_rows", []) or issue.get("evidence", {}).get("diff_sample", [])
     header = ["organization", "quarter", "indicator_id", "indicator_name", "type"]
     body = [

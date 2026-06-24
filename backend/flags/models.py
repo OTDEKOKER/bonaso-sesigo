@@ -60,6 +60,12 @@ class Flag(models.Model):
         blank=True,
         related_name='resolved_flags'
     )
+
+    # Structured payload for data-quality flags (Data Quality program). Carries
+    # the DQ sub-category (consistency / anomaly / duplicate / missing /
+    # validation / fact_integrity), severity, the computed numbers, and the
+    # check-run that raised it. Empty for non-DQ flags.
+    metadata = models.JSONField(default=dict, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
