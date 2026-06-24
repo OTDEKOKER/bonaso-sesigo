@@ -42,14 +42,49 @@ class BuildIssuesTests(APITestCase):
         issue = issues[0]
         self.assertEqual(issue["id"], "parity-latest")
         self.assertEqual(issue["component"], "parity_checks")
-        self.assertEqual(issue["severity"], "warning")
+        # Value mismatches present (2) → real corruption → critical + mismatch title.
+        self.assertEqual(issue["severity"], "critical")
+        self.assertEqual(issue["issue_type"], "PARITY_MISMATCH")
+        self.assertEqual(issue["title"], "Monthly payload parity mismatch")
         self.assertEqual(issue["status"], "open")
-        self.assertIn("mismatch", issue["message"])
+        self.assertIn("2 value mismatch", issue["message"])
         self.assertEqual(issue["metrics"]["difference_count"], 2)
         self.assertEqual(issue["metrics"]["affected_organizations"], 1)  # only APSA
         self.assertEqual(issue["metrics"]["affected_indicators"], 1)
         self.assertTrue(issue["links"]["download_csv"])
         self.assertEqual(len(issue["detail"]["mismatch_rows"]), 2)
+
+    def test_completeness_gap_not_called_value_mismatch(self):
+        """payload_mismatches=0 with missing_in_db>0 must NOT read as corruption."""
+        report = {
+            "generated_at": "2026-06-24T01:30:01",
+            "project": {"id": 2, "code": "NAHPA2025/26", "name": "NAHPA Social Contracting"},
+            "summary": {"orgs_checked": 18, "payloads_compared": 497,
+                        "payload_mismatches": 0, "missing_in_db": 338, "missing_in_workbook": 0},
+            "orgs": [
+                {"org_id": 94, "org": "Journey of Hope", "workbook": "/imp/JoH.xlsx",
+                 "payload_mismatches": 0, "missing_in_db": 17, "missing_in_workbook": 0},
+                {"org_id": 95, "org": "BOSASNet", "workbook": "/imp/BOS.xlsx",
+                 "payload_mismatches": 0, "missing_in_db": 43, "missing_in_workbook": 0},
+            ],
+            "diff_sample": [{"org": "BOSASNet", "quarter": "Q2", "indicator_id": 374,
+                             "indicator_name": "Breast cancer education", "type": "missing_in_db_payload"}],
+        }
+        with patch.object(checks, "_parity_report", return_value=(_FakeFile(), report)):
+            issue = checks.build_issues({"parity": {"status": "warning"}})[0]
+        # Headline + classification must be completeness, not mismatch.
+        self.assertEqual(issue["title"], "Monthly payload parity completeness gap")
+        self.assertEqual(issue["issue_type"], "PARITY_COMPLETENESS")
+        self.assertEqual(issue["category"], "completeness")
+        self.assertEqual(issue["severity"], "warning")  # NOT critical
+        # Message breaks the count into the three categories, NOT "338 mismatches".
+        self.assertIn("0 value mismatches", issue["message"])
+        self.assertIn("338 workbook records missing in the database", issue["message"])
+        self.assertNotIn("338 mismatch", issue["message"])
+        self.assertIn("not value corruption", issue["explanation"].lower())
+        # The total is still visible via metrics.
+        self.assertEqual(issue["metrics"]["missing_in_db"], 338)
+        self.assertEqual(issue["metrics"]["payload_mismatches"], 0)
 
     def test_parity_csv_rows(self):
         with patch.object(checks, "_parity_report", return_value=(_FakeFile(), FAKE_PARITY)):

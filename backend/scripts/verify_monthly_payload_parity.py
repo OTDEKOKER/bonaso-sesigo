@@ -8,6 +8,7 @@ workbook-derived payloads against aggregate rows per organization and quarter.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -308,6 +309,21 @@ def main() -> int:
 
     org_rows: list[dict[str, Any]] = []
     diff_sample: list[dict[str, Any]] = []
+    # Uncapped record of every diff (the JSON ``diff_sample`` is capped at
+    # ``--sample-limit``). Used to write the COMPLETE missing-in-db CSV export.
+    # This is additive output only — the parity calculation is unchanged.
+    all_diff_rows: list[dict[str, Any]] = []
+
+    def _record_diff(*, org, quarter, indicator_id, indicator_name, kind, workbook):
+        all_diff_rows.append({
+            "org": org, "quarter": quarter, "indicator_id": indicator_id,
+            "indicator_name": indicator_name, "type": kind, "workbook": workbook,
+        })
+        if len(diff_sample) < args.sample_limit:
+            diff_sample.append({
+                "org": org, "quarter": quarter, "indicator_id": indicator_id,
+                "indicator_name": indicator_name, "type": kind,
+            })
 
     for org_id in sorted(org_workbook_map.keys()):
         workbook_name = org_workbook_map[org_id]
@@ -382,31 +398,21 @@ def main() -> int:
                 if expected is None:
                     summary["missing_in_workbook"] += 1
                     org_stats["missing_in_workbook"] += 1
-                    if len(diff_sample) < args.sample_limit:
-                        diff_sample.append(
-                            {
-                                "org": organization.name,
-                                "quarter": quarter_name,
-                                "indicator_id": indicator_id,
-                                "indicator_name": indicator_name_by_id.get(indicator_id),
-                                "type": "missing_in_workbook_payload",
-                            }
-                        )
+                    _record_diff(
+                        org=organization.name, quarter=quarter_name, indicator_id=indicator_id,
+                        indicator_name=indicator_name_by_id.get(indicator_id),
+                        kind="missing_in_workbook_payload", workbook=str(workbook_path),
+                    )
                     continue
 
                 if actual is None:
                     summary["missing_in_db"] += 1
                     org_stats["missing_in_db"] += 1
-                    if len(diff_sample) < args.sample_limit:
-                        diff_sample.append(
-                            {
-                                "org": organization.name,
-                                "quarter": quarter_name,
-                                "indicator_id": indicator_id,
-                                "indicator_name": indicator_name_by_id.get(indicator_id),
-                                "type": "missing_in_db_payload",
-                            }
-                        )
+                    _record_diff(
+                        org=organization.name, quarter=quarter_name, indicator_id=indicator_id,
+                        indicator_name=indicator_name_by_id.get(indicator_id),
+                        kind="missing_in_db_payload", workbook=str(workbook_path),
+                    )
                     continue
 
                 if normalize_for_compare(expected) == normalize_for_compare(actual):
@@ -414,16 +420,11 @@ def main() -> int:
                 else:
                     summary["payload_mismatches"] += 1
                     org_stats["payload_mismatches"] += 1
-                    if len(diff_sample) < args.sample_limit:
-                        diff_sample.append(
-                            {
-                                "org": organization.name,
-                                "quarter": quarter_name,
-                                "indicator_id": indicator_id,
-                                "indicator_name": indicator_name_by_id.get(indicator_id),
-                                "type": "payload_mismatch",
-                            }
-                        )
+                    _record_diff(
+                        org=organization.name, quarter=quarter_name, indicator_id=indicator_id,
+                        indicator_name=indicator_name_by_id.get(indicator_id),
+                        kind="payload_mismatch", workbook=str(workbook_path),
+                    )
 
         summary["orgs_checked"] += 1
         org_rows.append(org_stats)
@@ -444,7 +445,36 @@ def main() -> int:
         output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"REPORT_JSON={output_path}")
 
+        # Additive export: the COMPLETE list of records present in workbooks but
+        # missing from the database, so admins can triage/import the backlog. The
+        # parity calculation is unchanged; this just writes already-computed rows.
+        write_missing_in_db_csv(output_path.parent, all_diff_rows, project)
+
     print(json.dumps(summary, sort_keys=True))
+
+
+def write_missing_in_db_csv(parity_dir: Path, all_diff_rows: list[dict], project) -> Path:
+    """Write every ``missing_in_db_payload`` row to ``missing_in_db_latest.csv``
+    (and a dated copy). Columns: Organization, Quarter, Indicator ID, Indicator
+    Name, Project, Workbook File, Issue Type."""
+    project_label = f"{getattr(project, 'id', '')} {getattr(project, 'code', '') or getattr(project, 'name', '')}".strip()
+    missing = [r for r in all_diff_rows if r.get("type") == "missing_in_db_payload"]
+    header = ["Organization", "Quarter", "Indicator ID", "Indicator Name",
+              "Project", "Workbook File", "Issue Type"]
+    latest = parity_dir / "missing_in_db_latest.csv"
+    dated = parity_dir / f"missing_in_db_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    for path in (latest, dated):
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(header)
+            for r in missing:
+                w.writerow([
+                    r.get("org"), r.get("quarter"), r.get("indicator_id"),
+                    r.get("indicator_name"), project_label,
+                    Path(r.get("workbook") or "").name, r.get("type"),
+                ])
+    print(f"MISSING_IN_DB_CSV={latest} (rows={len(missing)})")
+    return latest
 
     has_issues = any(
         summary[key] > 0

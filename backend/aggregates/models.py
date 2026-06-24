@@ -131,3 +131,55 @@ class AggregateFact(models.Model):
 
     def __str__(self):
         return f"fact[{self.aggregate_id}] {self.primary}/{self.secondary}/{self.band}={self.value}"
+
+
+class DataQualityScore(models.Model):
+    """A point-in-time data-quality score snapshot for a scope.
+
+    The Data Quality monitoring run writes one row per scored scope
+    (organization / coordinator / project / national) so the dashboard can show
+    rankings and the trend over time. Per-aggregate quality is not snapshotted
+    here (it is computed on demand + surfaced as Flags); this table powers the
+    historical/trend + ranking views.
+    """
+
+    SCOPE_CHOICES = [
+        ('organization', 'Organization'),
+        ('coordinator', 'Coordinator'),
+        ('project', 'Project'),
+        ('national', 'National'),
+    ]
+    MODE_CHOICES = [('live', 'Live'), ('training', 'Training')]
+
+    scope_type = models.CharField(max_length=16, choices=SCOPE_CHOICES)
+    # The organization/coordinator/project id the score is for (null for national).
+    scope_id = models.IntegerField(null=True, blank=True)
+    scope_label = models.CharField(max_length=255, blank=True, default='')
+    project = models.ForeignKey(
+        'projects.Project', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='data_quality_scores',
+    )
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='live')
+
+    # The reporting window the score covers (null = all-time / current).
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+
+    score = models.DecimalField(max_digits=5, decimal_places=1, default=0)
+    label = models.CharField(max_length=32, blank=True, default='')
+    factors = models.JSONField(default=dict, blank=True)   # per-factor 0-100 scores
+    details = models.JSONField(default=dict, blank=True)   # counts feeding the score
+
+    # Groups all rows written by a single monitoring run (e.g. "2026-06-23-daily").
+    run_label = models.CharField(max_length=64, blank=True, default='', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-score']
+        indexes = [
+            models.Index(fields=['scope_type', 'scope_id', '-created_at'], name='dqscore_scope_idx'),
+            models.Index(fields=['mode', 'scope_type', '-created_at'], name='dqscore_mode_scope_idx'),
+        ]
+
+    def __str__(self):
+        return f"DQScore[{self.scope_type}:{self.scope_id}] {self.score} ({self.label})"
