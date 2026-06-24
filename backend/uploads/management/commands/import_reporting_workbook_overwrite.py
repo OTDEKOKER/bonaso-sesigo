@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 
 from aggregates.models import Aggregate
+from aggregates.validation import validate_aggregate_value
 from indicators.models import Indicator
 from openpyxl import load_workbook
 from organizations.models import Organization
@@ -1595,6 +1596,15 @@ class Command(BaseCommand):
                             project.organizations.add(assigned_organization)
                             indicator.organizations.add(assigned_organization)
 
+                    # P2: validate before writing (finite, non-negative, %<=100,
+                    # overflow cap) — skip invalid values, never persist them.
+                    try:
+                        validate_aggregate_value(section["value"], indicator=indicator)
+                    except Exception as exc:
+                        self.stderr.write(
+                            f"Skipped invalid value for {indicator.code or indicator.name}: {exc}"
+                        )
+                        continue
                     aggregate, created = Aggregate.objects.get_or_create(
                         indicator=indicator,
                         project=project,
@@ -1626,6 +1636,14 @@ class Command(BaseCommand):
 
             if coordinator and not coordinator_source_sheet_seen:
                 for rollup in coordinator_rollups.values():
+                    try:
+                        validate_aggregate_value(rollup["value"], indicator=rollup["indicator"])
+                    except Exception as exc:
+                        self.stderr.write(
+                            f"Skipped invalid coordinator rollup value for "
+                            f"{rollup['indicator'].code or rollup['indicator'].name}: {exc}"
+                        )
+                        continue
                     Aggregate.objects.update_or_create(
                         indicator=rollup["indicator"],
                         project=project,

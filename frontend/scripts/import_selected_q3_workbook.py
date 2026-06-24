@@ -20,6 +20,7 @@ django.setup()
 from openpyxl import load_workbook  # noqa: E402
 
 from aggregates.models import Aggregate  # noqa: E402
+from aggregates.validation import validate_aggregate_value  # noqa: E402
 from indicators.models import Indicator, IndicatorAlias  # noqa: E402
 from indicator_import_aliases import canonical_resolution_aliases, preferred_duplicate_rank  # noqa: E402
 from organizations.models import Organization  # noqa: E402
@@ -958,6 +959,17 @@ def main():
             )
             if indicator is None:
                 unknown[item["title"]] += 1
+                sheet_report["unknown_rows"].append(item["title"])
+                continue
+
+            # P2: every imported value must pass aggregate validation (finite,
+            # non-negative, percentage<=100, overflow cap) before it can be
+            # written. Legacy imports previously bypassed this — an invalid value
+            # is recorded and skipped, never persisted.
+            try:
+                validate_aggregate_value(item["value"], indicator=indicator)
+            except Exception as exc:  # serializers.ValidationError / coercion errors
+                unknown[f"{item['title']} [invalid value: {exc}]"] += 1
                 sheet_report["unknown_rows"].append(item["title"])
                 continue
 
