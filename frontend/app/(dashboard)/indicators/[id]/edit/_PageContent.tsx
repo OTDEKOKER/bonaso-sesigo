@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 
 import { PageHeader } from "@/components/shared/page-header"
-import DisaggregationBuilder from "@/components/indicators/disaggregation-builder"
+import DisaggregationConfigEditor from "@/components/indicators/disaggregation-config-editor"
 import QuarterlyTargetsSection from "@/components/indicators/quarterly-targets-section"
 
 import { indicatorsService } from "@/lib/api"
@@ -32,10 +32,9 @@ import type { Indicator } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { useSmartBack } from "@/lib/hooks/use-smart-back"
 import {
-  buildDisaggregationConfigFromPresetKeys,
-  getLegacySubLabelsFromPresetKeys,
-  getPresetKeysFromConfig,
-  type DisaggregationPresetKey,
+  createEmptyDisaggregationConfig,
+  normalizeAggregateDisaggregationConfig,
+  type AggregateDisaggregationConfig,
 } from "@/lib/indicators/disaggregation-presets"
 import {
   INDICATOR_CATEGORY_OPTIONS,
@@ -55,7 +54,7 @@ type FormDataState = {
   type: string
   unit: string
   options: string
-  disaggregation_preset_keys: DisaggregationPresetKey[]
+  disaggregation_config: AggregateDisaggregationConfig
   is_active: boolean
 }
 
@@ -68,7 +67,7 @@ const initialFormData: FormDataState = {
   type: "",
   unit: "",
   options: "",
-  disaggregation_preset_keys: [],
+  disaggregation_config: createEmptyDisaggregationConfig(),
   is_active: true,
 }
 
@@ -105,7 +104,7 @@ export default function IndicatorEditPage() {
             .filter(Boolean)
             .join(", ")
         : "",
-      disaggregation_preset_keys: getPresetKeysFromConfig(
+      disaggregation_config: normalizeAggregateDisaggregationConfig(
         indicator.aggregate_disaggregation_config,
         indicator.sub_labels,
       ),
@@ -238,10 +237,10 @@ export default function IndicatorEditPage() {
         type: formData.type as Indicator["type"],
         unit: formData.unit.trim() || undefined,
         options: requiresOptions ? parsedOptions : undefined,
-        sub_labels: getLegacySubLabelsFromPresetKeys(formData.disaggregation_preset_keys),
-        aggregate_disaggregation_config: buildDisaggregationConfigFromPresetKeys(
-          formData.disaggregation_preset_keys,
-        ),
+        sub_labels: formData.disaggregation_config.enabled
+          ? formData.disaggregation_config.dimensions.map((d) => d.label)
+          : undefined,
+        aggregate_disaggregation_config: formData.disaggregation_config,
         is_active: canActivateIndicator ? formData.is_active : false,
       }
 
@@ -470,10 +469,11 @@ export default function IndicatorEditPage() {
                 Select the disaggregate groups used when entering aggregate values.
               </p>
             </div>
-            <DisaggregationBuilder
-              value={formData.disaggregation_preset_keys}
+            <DisaggregationConfigEditor
+              value={formData.disaggregation_config}
+              disabled={isSubmitting}
               onChange={(next) =>
-                setFormData((prev) => ({ ...prev, disaggregation_preset_keys: next }))
+                setFormData((prev) => ({ ...prev, disaggregation_config: next }))
               }
             />
           </div>

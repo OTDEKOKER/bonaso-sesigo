@@ -33,6 +33,11 @@ export type DisaggregationPresetKey =
   | "referral_type"
   | "location"
   | "target_group"
+  | "service_provider_type"
+  | "disability"
+  | "citizenship"
+  | "hiv_status"
+  | "pregnancy"
 
 export const DISAGGREGATION_PRESETS: Record<
   DisaggregationPresetKey,
@@ -265,6 +270,36 @@ export const DISAGGREGATION_PRESETS: Record<
       "People Living with HIV",
     ],
   },
+
+  service_provider_type: {
+    key: "service_provider_type",
+    label: "Service Provider Type",
+    values: ["community mobilisers", "M&E Officers", "stakeholders"],
+  },
+
+  disability: {
+    key: "disability",
+    label: "Disability",
+    values: ["No disability", "Visual", "Hearing", "Physical", "Intellectual", "Psychosocial", "Multiple"],
+  },
+
+  citizenship: {
+    key: "citizenship",
+    label: "Citizenship",
+    values: ["Citizen", "Non-citizen"],
+  },
+
+  hiv_status: {
+    key: "hiv_status",
+    label: "HIV Status",
+    values: ["Positive", "Negative", "Unknown"],
+  },
+
+  pregnancy: {
+    key: "pregnancy",
+    label: "Pregnancy",
+    values: ["Pregnant", "Not pregnant", "Breastfeeding"],
+  },
 }
 
 export const DISAGGREGATION_PRESET_OPTIONS = [
@@ -292,6 +327,11 @@ export const DISAGGREGATION_PRESET_OPTIONS = [
   { value: "referral_type", label: "Referral Type" },
   { value: "location", label: "Location" },
   { value: "target_group", label: "Target Group" },
+  { value: "service_provider_type", label: "Service Provider Type" },
+  { value: "disability", label: "Disability" },
+  { value: "citizenship", label: "Citizenship" },
+  { value: "hiv_status", label: "HIV Status" },
+  { value: "pregnancy", label: "Pregnancy" },
 ] as const
 
 type PresetGroups = {

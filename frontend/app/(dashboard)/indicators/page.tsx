@@ -39,11 +39,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import DisaggregationBuilder from "@/components/indicators/disaggregation-builder"
+import DisaggregationConfigEditor from "@/components/indicators/disaggregation-config-editor"
 import {
-  buildDisaggregationConfigFromPresetKeys,
-  getLegacySubLabelsFromPresetKeys,
-  type DisaggregationPresetKey,
+  createEmptyDisaggregationConfig,
+  type AggregateDisaggregationConfig,
 } from "@/lib/indicators/disaggregation-presets"
 import {
   canIndicatorBeActive,
@@ -79,7 +78,7 @@ const INITIAL_FORM = {
   type: "",
   unit: "",
   options: "",
-  disaggregation_preset_keys: [] as DisaggregationPresetKey[],
+  disaggregation_config: createEmptyDisaggregationConfig() as AggregateDisaggregationConfig,
 }
 
 function toCanonicalIndicatorKey(indicatorId: string | number | null | undefined) {
@@ -331,12 +330,12 @@ export default function IndicatorsPage() {
         options: formData.options
           ? formData.options.split(",").map((opt) => opt.trim()).filter(Boolean)
           : undefined,
-        sub_labels: formData.disaggregation_preset_keys.length
-          ? getLegacySubLabelsFromPresetKeys(formData.disaggregation_preset_keys)
+        // Legacy sub_labels are derived from the config's dimension labels for
+        // backward-compatible readers, but the config is the source of truth.
+        sub_labels: formData.disaggregation_config.enabled
+          ? formData.disaggregation_config.dimensions.map((d) => d.label)
           : undefined,
-        aggregate_disaggregation_config: buildDisaggregationConfigFromPresetKeys(
-          formData.disaggregation_preset_keys,
-        ),
+        aggregate_disaggregation_config: formData.disaggregation_config,
         is_active: false,
       })
       toast({ title: "Indicator created" })
@@ -631,10 +630,11 @@ export default function IndicatorsPage() {
                 />
               </div>
             </div>
-            <DisaggregationBuilder
-              value={formData.disaggregation_preset_keys}
+            <DisaggregationConfigEditor
+              value={formData.disaggregation_config}
+              disabled={isSubmitting}
               onChange={(next) =>
-                setFormData((prev) => ({ ...prev, disaggregation_preset_keys: next }))
+                setFormData((prev) => ({ ...prev, disaggregation_config: next }))
               }
             />
             <DialogFooter>
