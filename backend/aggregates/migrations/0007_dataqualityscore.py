@@ -7,7 +7,10 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('projects', '0020_workbooklayoutsnapshot_and_more'),
+        # DataQualityScore.project only needs the projects table; pin to 0019 (an
+        # ancestor of 0020) so this matches what's applied LIVE and a future
+        # full-stack deploy migrates cleanly. See parity-hotfix deploy notes.
+        ('projects', '0019_workbook_layout'),
         ('aggregates', '0006_alter_aggregatefact_band_alter_aggregatefact_primary_and_more'),
     ]
 

@@ -103,6 +103,11 @@ class ScheduledReport(models.Model):
     next_run = models.DateTimeField()
     last_run = models.DateTimeField(null=True, blank=True)
 
+    # Run-state for the scheduled-report engine (retry + failure visibility).
+    last_status = models.CharField(max_length=16, blank=True, default='')   # success|failed
+    last_error = models.TextField(blank=True, default='')
+    consecutive_failures = models.PositiveIntegerField(default=0)
+
     created_by = models.ForeignKey(
         'users.User',
         on_delete=models.SET_NULL,

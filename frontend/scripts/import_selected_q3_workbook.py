@@ -20,6 +20,7 @@ django.setup()
 from openpyxl import load_workbook  # noqa: E402
 
 from aggregates.models import Aggregate  # noqa: E402
+from aggregates.validation import validate_aggregate_value  # noqa: E402
 from indicators.models import Indicator, IndicatorAlias  # noqa: E402
 from indicator_import_aliases import canonical_resolution_aliases, preferred_duplicate_rank  # noqa: E402
 from organizations.models import Organization  # noqa: E402
@@ -981,6 +982,7 @@ def main():
     updated_indicators = []
     upserted_aggregates = []
     created_project_assignments = 0
+    validation_failed = 0
 
     for sheet_name in selected_sheets:
         org_result = org_match_by_sheet.get(sheet_name)
@@ -999,6 +1001,7 @@ def main():
             "unknown_rows": [],
             "unknown_row_details": [],
             "ambiguous_rows": [],
+            "validation_failed_rows": [],
         }
 
         for item in parsed_rows:
@@ -1023,6 +1026,19 @@ def main():
                 })
                 if near.ambiguous or near.reason == "low_confidence":
                     sheet_report["ambiguous_rows"].append(item["title"])
+                continue
+
+            # P2: every imported value must pass aggregate validation (finite,
+            # non-negative, percentage<=100, overflow cap) before it can be
+            # written. Legacy imports previously bypassed this — an invalid value
+            # is now recorded and skipped, never persisted.
+            try:
+                validate_aggregate_value(item["value"], indicator=indicator)
+            except Exception as exc:  # serializers.ValidationError / coercion errors
+                validation_failed += 1
+                sheet_report["validation_failed_rows"].append(
+                    {"title": item["title"], "code": item["code"], "error": str(exc)[:300]}
+                )
                 continue
 
             matched += 1
@@ -1116,6 +1132,7 @@ def main():
 
     report["summary"] = {
         "matched_rows": matched,
+        "validation_failed": validation_failed,
         "unknown_rows": sum(unknown.values()),
         "unique_unknown_titles": len(unknown),
         "updated_indicator_count": len(set(updated_indicators)),
