@@ -341,16 +341,21 @@ def latest_parity_report():
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────
-def run_all(*, mode="live", frequency="daily", actor=None) -> dict:
+def run_all(*, mode="live", frequency="daily", actor=None, include_duplicate=False) -> dict:
     run_label = f"{date.today().isoformat()}-{frequency}"
     summary = {
         "run_label": run_label, "mode": mode, "frequency": frequency,
         "started_at": timezone.now().isoformat(),
         "consistency": run_coherence_checks(mode=mode, run_label=run_label, actor=actor),
         "anomaly": run_anomaly_checks(mode=mode, run_label=run_label, actor=actor),
-        "duplicate": run_duplicate_checks(mode=mode, run_label=run_label, actor=actor),
         "fact_integrity": run_fact_integrity_checks(mode=mode, run_label=run_label, actor=actor),
     }
+    # Portfolio-wide duplicate-signature detection is noisy at scale (identical
+    # small breakdowns recur legitimately across orgs); the per-submission
+    # copy-paste detector already covers the real case. Off by default in
+    # scheduled runs — opt in explicitly when triaging.
+    if include_duplicate:
+        summary["duplicate"] = run_duplicate_checks(mode=mode, run_label=run_label, actor=actor)
     # Fold the latest monthly parity result into DQ classification (live only —
     # parity is a live-system check).
     if mode in ("live", "all"):
