@@ -23,12 +23,19 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--frequency", choices=["daily", "weekly", "monthly"], default="daily")
         parser.add_argument("--mode", choices=["live", "training", "all"], default="live")
+        parser.add_argument(
+            "--include-duplicate", action="store_true",
+            help="Also run the noisy portfolio-wide duplicate-signature check (off by default).",
+        )
 
     def handle(self, *args, **options):
-        summary = run_all(mode=options["mode"], frequency=options["frequency"])
+        summary = run_all(
+            mode=options["mode"], frequency=options["frequency"],
+            include_duplicate=options["include_duplicate"],
+        )
         self.stdout.write(json.dumps(summary, indent=2))
         self.stdout.write(self.style.SUCCESS(
             f"Data quality run complete: {summary['consistency']} consistency, "
-            f"{summary['anomaly']} anomaly, {summary['duplicate']} duplicate, "
+            f"{summary['anomaly']} anomaly, {summary.get('duplicate', 0)} duplicate, "
             f"{summary['fact_integrity']} fact-integrity findings."
         ))
