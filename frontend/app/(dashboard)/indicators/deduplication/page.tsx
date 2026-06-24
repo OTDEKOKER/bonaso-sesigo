@@ -177,7 +177,7 @@ function MergeDialog({ pair, onClose, onMerged }: MergeDialogProps) {
           <div className="space-y-2">
             <Label>Canonical (master) indicator</Label>
             <Select value={canonicalId} onValueChange={setCanonicalId}>
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -194,17 +194,17 @@ function MergeDialog({ pair, onClose, onMerged }: MergeDialogProps) {
           <div className="rounded-lg border bg-muted/20 p-3 text-sm space-y-1">
             <div className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-              <div>
-                <p className="font-medium">Canonical: {canonical.name}</p>
-                <p className="text-xs text-muted-foreground">{canonical.code}</p>
+              <div className="min-w-0">
+                <p className="font-medium break-words">Canonical: {canonical.name}</p>
+                <p className="text-xs text-muted-foreground break-all">{canonical.code}</p>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-              <div>
-                <p className="font-medium">Will be deprecated: {duplicate.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {duplicate.code} · Name becomes an alias · Historical data preserved
+              <div className="min-w-0">
+                <p className="font-medium break-words">Will be deprecated: {duplicate.name}</p>
+                <p className="text-xs text-muted-foreground break-words">
+                  <span className="break-all">{duplicate.code}</span> · Name becomes an alias · Historical data preserved
                 </p>
               </div>
             </div>

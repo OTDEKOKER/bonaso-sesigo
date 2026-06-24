@@ -35,13 +35,20 @@ class IndicatorSerializer(serializers.ModelSerializer):
         model = Indicator
         fields = [
             'id', 'name', 'code', 'description', 'type', 'category', 'unit',
-            'options', 'sub_labels', 'aggregation_method', 'is_active',
+            'options', 'sub_labels', 'aggregate_disaggregation_config',
+            'aggregation_method', 'is_active',
             'is_deprecated', 'canonical_indicator', 'canonical_indicator_detail',
             'deprecated_variants_count',
             'organizations', 'organizations_count', 'aliases',
             'created_at', 'updated_at', 'created_by', 'created_by_name',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'is_deprecated', 'canonical_indicator']
+        # aggregate_disaggregation_config is the source of truth the reporting
+        # workbook renders from; expose it (read-only) so the indicator module
+        # shows the same disaggregation the workbook does instead of falling back
+        # to legacy sub_labels. It is managed by the workbook/import tooling, not
+        # the indicator form, so keep it read-only here to avoid preset-rebuild
+        # clobbering custom configs (message-type, sites, counselling sessions…).
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'is_deprecated', 'canonical_indicator', 'aggregate_disaggregation_config']
 
     def get_organizations_count(self, obj):
         annotated_count = getattr(obj, 'organizations_count', None)
@@ -72,11 +79,12 @@ class IndicatorListSerializer(serializers.ModelSerializer):
         model = Indicator
         fields = [
             'id', 'name', 'code', 'description', 'type', 'category', 'unit',
-            'options', 'sub_labels', 'aggregation_method', 'is_active',
+            'options', 'sub_labels', 'aggregate_disaggregation_config',
+            'aggregation_method', 'is_active',
             'is_deprecated', 'canonical_indicator',
             'organizations', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'aggregate_disaggregation_config']
 
 
 class IndicatorSimpleSerializer(serializers.ModelSerializer):

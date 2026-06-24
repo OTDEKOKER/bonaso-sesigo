@@ -33,6 +33,7 @@ export type DisaggregationPresetKey =
   | "referral_type"
   | "location"
   | "target_group"
+  | "service_provider_type"
 
 export const DISAGGREGATION_PRESETS: Record<
   DisaggregationPresetKey,
@@ -265,6 +266,12 @@ export const DISAGGREGATION_PRESETS: Record<
       "People Living with HIV",
     ],
   },
+
+  service_provider_type: {
+    key: "service_provider_type",
+    label: "Service Provider Type",
+    values: ["community mobilisers", "M&E Officers", "stakeholders"],
+  },
 }
 
 export const DISAGGREGATION_PRESET_OPTIONS = [
@@ -292,6 +299,7 @@ export const DISAGGREGATION_PRESET_OPTIONS = [
   { value: "referral_type", label: "Referral Type" },
   { value: "location", label: "Location" },
   { value: "target_group", label: "Target Group" },
+  { value: "service_provider_type", label: "Service Provider Type" },
 ] as const
 
 type PresetGroups = {
