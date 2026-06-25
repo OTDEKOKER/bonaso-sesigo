@@ -252,9 +252,10 @@ function normalizeDisaggregateToken(value?: string | null) {
 
 function getIndicatorDisaggregateOptions(indicator?: Indicator): WidgetDisaggregateOption[] {
   if (!indicator) return [];
+  // aggregate_disaggregation_config is the single source of truth (legacy
+  // sub_labels are no longer consulted for reads).
   const config = normalizeAggregateDisaggregationConfig(
     indicator.aggregate_disaggregation_config || undefined,
-    indicator.sub_labels || undefined,
   );
   const seen = new Set<string>();
   return config.dimensions

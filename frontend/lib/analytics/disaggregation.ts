@@ -163,9 +163,10 @@ export function getIndicatorDisaggregationConfig(
   indicator: Indicator | null | undefined,
 ): AggregateDisaggregationConfig | null {
   if (!indicator) return null;
+  // aggregate_disaggregation_config is the single source of truth (legacy
+  // sub_labels are no longer consulted for reads).
   const normalized = normalizeAggregateDisaggregationConfig(
     indicator.aggregate_disaggregation_config || null,
-    indicator.sub_labels || [],
   );
   if (!normalized.enabled || normalized.dimensions.length === 0) return null;
   return normalized;

@@ -69,10 +69,6 @@ function normalizeText(value: string | null | undefined) {
     .trim();
 }
 
-function slugify(value: string) {
-  return normalizeText(value).replace(/\s+/g, "_");
-}
-
 function sortPeriods(periods: string[], mode: AnalyticsFilterState["periodMode"]) {
   const deduped = Array.from(new Set(periods.filter(Boolean)));
   if (mode === "quarter") return deduped.sort(compareQuarterLabels);
@@ -187,23 +183,16 @@ function indicatorInGroup(indicator: Indicator, group: string) {
 function inferDisaggregationOptions(indicators: Indicator[]) {
   const options = new Map<string, string>();
 
+  // aggregate_disaggregation_config is the single source of truth; legacy
+  // sub_labels are no longer read here (all disaggregated indicators carry a
+  // config after the backfill).
   indicators.forEach((indicator) => {
     const dimensions = indicator.aggregate_disaggregation_config?.dimensions || [];
-
-    if (dimensions.length > 0) {
-      dimensions.forEach((dimension) => {
-        const key = String(dimension.key || "").trim();
-        const label = String(dimension.label || key).trim();
-        if (!key || options.has(key)) return;
-        options.set(key, label || key);
-      });
-      return;
-    }
-
-    (indicator.sub_labels || []).forEach((label) => {
-      const key = slugify(String(label));
+    dimensions.forEach((dimension) => {
+      const key = String(dimension.key || "").trim();
+      const label = String(dimension.label || key).trim();
       if (!key || options.has(key)) return;
-      options.set(key, String(label));
+      options.set(key, label || key);
     });
   });
 

@@ -458,9 +458,10 @@ const getConfiguredDisaggregateDimensions = (
   indicator: Indicator | null | undefined,
 ): IndicatorDisaggregateDimensionConfig[] => {
   if (!indicator) return [];
+  // aggregate_disaggregation_config is the single source of truth (legacy
+  // sub_labels are no longer consulted for reads).
   const normalizedConfig = normalizeAggregateDisaggregationConfig(
     indicator.aggregate_disaggregation_config || undefined,
-    indicator.sub_labels || undefined,
   );
   if (!normalizedConfig.enabled || normalizedConfig.dimensions.length === 0) return [];
   return normalizedConfig.dimensions.map((dimension) => {
@@ -1379,9 +1380,9 @@ export function ReportsHub() {
 
   const selectedIndicatorDisaggregateConfig = useMemo(
     () =>
+      // config is the single source of truth (legacy sub_labels not consulted).
       normalizeAggregateDisaggregationConfig(
         selectedDisaggregateIndicator?.aggregate_disaggregation_config,
-        selectedDisaggregateIndicator?.sub_labels,
       ),
     [selectedDisaggregateIndicator],
   );
