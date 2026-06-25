@@ -241,9 +241,25 @@ class MatrixConfig:
 def resolve_matrix_config(indicator) -> MatrixConfig:
     """Resolve an indicator's disaggregation matrix exactly like the capture UI.
 
-    Mirrors ``getAggregateEntryMatrixConfig``: non-special dimensions become the
-    primary (and possibly secondary) axes, the sex dimension is preferred as the
-    secondary axis, and the age dimension becomes the band (column) axis.
+    DISAGGREGATION CONTENT IS 100% UI-CONFIGURED: the dimensions present, their
+    values, their labels and their enabled state come solely from the indicator's
+    ``aggregate_disaggregation_config`` (the single source of truth). Nothing here
+    invents dimensions or values.
+
+    LAYOUT IS A FIXED REPORTING CONVENTION (intentionally NOT per-indicator
+    configurable, by maintainer decision 2026-06-25): to keep one stable NAHPA
+    workbook shape — and to keep the stored ``(primary, secondary, band)`` key
+    mapping consistent with the ~16k existing aggregates — the axes are assigned by
+    role, not by config order:
+
+      * an "age" dimension is the band (column) axis;
+      * a "sex" dimension is preferred as the secondary (row) axis;
+      * any other dimension(s) fill primary then secondary.
+
+    The AYP (10-24) column and TOTAL MALE/FEMALE rows are part of this fixed format.
+    Mirrors the frontend ``getAggregateEntryMatrixConfig`` so the preview, capture
+    grid, workbook and review queue are identical. Changing the axis mapping would
+    require migrating existing aggregate keys and is out of scope here.
     """
     # Percentage indicators RESOLVE AS A VALUE, not a single rate: their config
     # holds the disaggregated COUNT structure (the numerator) and the % is computed
