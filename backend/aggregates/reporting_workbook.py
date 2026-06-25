@@ -477,6 +477,13 @@ def generate_workbook(
         value="Enter whole numbers in the light-blue cells only. Totals fill in automatically. The sheet is protected; do not unprotect, rename or delete sheets.",
     ).font = Font(italic=True, color="808080")
 
+    # Widest band-column count across all indicators → aligns every TOTAL column.
+    band_grid = max(
+        (len(p.config.band_values) for p in indicator_plans
+         if getattr(p.config, "has_disaggregates", False)),
+        default=0,
+    )
+
     row = 5
     current_section = None
     for plan in indicator_plans:
@@ -485,7 +492,8 @@ def generate_workbook(
             row = _write_section_heading(form, row, section)
             current_section = section
         row = _write_indicator_block(
-            form, row, plan, cellmap_rows, number_validation, with_data=with_data
+            form, row, plan, cellmap_rows, number_validation, with_data=with_data,
+            band_grid=band_grid,
         )
         row += 1  # spacer
 
@@ -600,6 +608,12 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
             "Enter whole numbers in the light-blue cells only. Totals fill in automatically.")
     ws.cell(row=3, column=COL_NAME, value=note).font = Font(italic=True, color="808080")
 
+    band_grid = max(
+        (len(p.config.band_values) for p in plans
+         if getattr(p.config, "has_disaggregates", False)),
+        default=0,
+    )
+
     row = 5
     current_section = None
     for plan in plans:
@@ -608,7 +622,8 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
             row = _write_section_heading(ws, row, section)
             current_section = section
         fp = provider_factory(plan.indicator) if provider_factory else None
-        row = _write_indicator_block(ws, row, plan, cellmap_rows, dv, with_data=with_data, formula_provider=fp)
+        row = _write_indicator_block(ws, row, plan, cellmap_rows, dv, with_data=with_data,
+                                     formula_provider=fp, band_grid=band_grid)
         row += 1
 
     if dv._pending_coords:
@@ -824,16 +839,26 @@ def _write_section_heading(ws, start_row, title: str) -> int:
     return start_row + 1
 
 
-def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv, *, with_data, formula_provider=None):
+def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv, *, with_data, formula_provider=None, band_grid=None):
     """Write one indicator in the NAHPA consolidated reporting layout.
 
     Columns: indicator name | key population | sex | age bands… | Sub-total |
     TOTAL (per key population) | AYP (10-24). Followed by a Sub-total row and
     (for sex-disaggregated indicators) TOTAL MALE / TOTAL FEMALE rows. Every
     cell is bordered; only the light-blue age cells are unlocked + numeric.
+
+    ``band_grid`` (the widest band-column count across all indicators on the
+    sheet) aligns the Sub-total/TOTAL/AYP columns to FIXED positions so every
+    indicator's TOTAL lines up in one column regardless of its own band count.
+    When None, each block sizes those columns to its own bands (legacy layout).
     """
     indicator = plan.indicator
     cfg = plan.config
+    # Fixed (aligned) Sub-total / TOTAL / AYP columns, shared by every block.
+    aligned = band_grid is not None and band_grid > 0
+    fixed_sub_col = (COL_BAND_START + band_grid) if aligned else None
+    fixed_total_col = (fixed_sub_col + 1) if aligned else None
+    fixed_ayp_col = (fixed_total_col + 1) if aligned else None
     name = (getattr(indicator, "name", "") or "").strip()
     try:
         category = (indicator.get_category_display() or "").upper()
@@ -851,7 +876,10 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         _merge(ws, start_row, COL_NAME, start_row, COL_KP, name or category,
                fill=_LABEL_FILL, font=_BOLD, align=_LEFT)
         _style(ws.cell(row=start_row, column=COL_SEX, value="Total"), fill=_LABEL_FILL, font=_BOLD)
-        cell = _value_cell(ws, start_row, COL_BAND_START, dv, formula_provider=formula_provider,
+        # Place the single total in the shared TOTAL column so plain indicators
+        # line up with disaggregated ones.
+        total_col = fixed_total_col if aligned else COL_BAND_START
+        cell = _value_cell(ws, start_row, total_col, dv, formula_provider=formula_provider,
                            kind="total", primary=ALL_PRIMARY, secondary=ALL_PRIMARY, band=NO_BAND)
         if with_data and formula_provider is None:
             amount = plan.existing_cells.get((ALL_PRIMARY, ALL_PRIMARY, NO_BAND))
@@ -871,9 +899,15 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
     n_bands = len(bands)
     first_band = COL_BAND_START
     last_band = COL_BAND_START + n_bands - 1
-    col_sub = (last_band + 1) if has_age else None
-    col_total = (col_sub if col_sub else last_band) + 1
-    col_ayp = (col_total + 1) if has_age else None
+    if aligned:
+        # Sub-total/TOTAL/AYP sit in shared fixed columns so all TOTALs align.
+        col_sub = fixed_sub_col if has_age else None
+        col_total = fixed_total_col
+        col_ayp = fixed_ayp_col if has_age else None
+    else:
+        col_sub = (last_band + 1) if has_age else None
+        col_total = (col_sub if col_sub else last_band) + 1
+        col_ayp = (col_total + 1) if has_age else None
     last_col = col_ayp or col_total
 
     for c in range(first_band, last_band + 1):

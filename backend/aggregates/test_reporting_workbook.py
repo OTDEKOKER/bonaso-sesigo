@@ -181,6 +181,30 @@ class WorkbookGenerationTests(_BaseSetup):
         self.assertNotIn("SEX", form_text)
         self.assertNotIn("AGE/SEX", form_text)
 
+    def test_total_column_aligned_across_indicators(self):
+        """Every indicator's TOTAL header must land in the same column, regardless
+        of how many band columns it has (plain, sex+age, and a wider age set)."""
+        wide = Indicator.objects.create(
+            name="Wider age indicator", code="WB_WIDE", type="number", category="hiv_prevention",
+            created_by=self.admin,
+            aggregate_disaggregation_config={"enabled": True, "layout": "matrix", "dimensions": [
+                {"key": "sex", "label": "Sex", "values": ["Male", "Female"]},
+                {"key": "age_band", "label": "Age Range",
+                 "values": ["10-14", "15-19", "20-24", "25-29", "30-34", "35-39"]},
+            ]})
+        pi = ProjectIndicator.objects.create(project=self.project, indicator=wide, q3_target=10)
+        ProjectIndicatorOrganizationTarget.objects.create(
+            project_indicator=pi, organization=self.org, q3_target=10)
+
+        response = self._download_blank()
+        wb = load_workbook(BytesIO(response.content))
+        ws = wb[rw.SHEET_FORM]
+        total_cols = {
+            cell.column for row in ws.iter_rows() for cell in row
+            if isinstance(cell.value, str) and cell.value.strip() == "TOTAL"
+        }
+        self.assertEqual(len(total_cols), 1, f"TOTAL headers not aligned: columns {sorted(total_cols)}")
+
     def test_only_assigned_indicators_are_included(self):
         unassigned = Indicator.objects.create(
             name="Unassigned indicator", code="WB_UNASSIGNED", type="number", created_by=self.admin,
