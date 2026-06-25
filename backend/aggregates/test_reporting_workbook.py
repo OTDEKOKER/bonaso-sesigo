@@ -133,7 +133,10 @@ class WorkbookGenerationTests(_BaseSetup):
         # Age bands from the indicator config appear as column headers.
         self.assertIn("10-14", form_text)
         self.assertIn("15-19", form_text)
-        self.assertIn("AGE/SEX", form_text)
+        # The secondary-axis column header is the indicator config's actual
+        # dimension label (here "Sex"), never a hardcoded "SEX"/"AGE/SEX".
+        self.assertIn("Sex", form_text)
+        self.assertNotIn("AGE/SEX", form_text)
 
         # The cell map carries no bands for the plain indicator and the full
         # sex×age grid (2×3 = 6 cells) for the matrix indicator.
@@ -143,6 +146,40 @@ class WorkbookGenerationTests(_BaseSetup):
         self.assertEqual(len(matrix_cells), 6)
         self.assertEqual(len(plain_cells), 1)
         self.assertEqual(plain_cells[0][2], "total")
+
+    def test_non_sex_secondary_uses_real_dimension_label(self):
+        """A non-sex SECONDARY dimension must render its own label, not 'SEX'.
+
+        The secondary (column C) axis is occupied by a non-sex dimension when an
+        indicator has two non-special dimensions (here Message Type x Key
+        Population). The header for that column must be the config's actual label.
+        """
+        ind = Indicator.objects.create(
+            name="People engaged with NCD messages", code="WB_KP2", type="number",
+            category="media", created_by=self.admin,
+            aggregate_disaggregation_config={
+                "enabled": True, "layout": "matrix", "dimensions": [
+                    {"key": "ncd_prevention_messages", "label": "NCD Prevention Messages",
+                     "values": ["Alcohol", "Tobacco"]},
+                    {"key": "key_population", "label": "Key Population",
+                     "values": ["FSW", "MSM", "PWID"]},
+                ]},
+        )
+        pi = ProjectIndicator.objects.create(project=self.project, indicator=ind, q3_target=10)
+        ProjectIndicatorOrganizationTarget.objects.create(
+            project_indicator=pi, organization=self.org, q3_target=10)
+
+        response = self._download_blank()
+        wb = load_workbook(BytesIO(response.content))
+        form_text = {
+            cell.value for row in wb[rw.SHEET_FORM].iter_rows() for cell in row
+            if isinstance(cell.value, str)
+        }
+        # Real labels/values appear; the secondary column is NOT mislabelled "SEX".
+        self.assertIn("Key Population", form_text)
+        self.assertIn("FSW", form_text)
+        self.assertNotIn("SEX", form_text)
+        self.assertNotIn("AGE/SEX", form_text)
 
     def test_only_assigned_indicators_are_included(self):
         unassigned = Indicator.objects.create(

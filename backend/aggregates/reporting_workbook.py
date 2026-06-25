@@ -872,7 +872,16 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
     # ── Header bar ──
     hr = start_row
     _merge(ws, hr, COL_NAME, hr, COL_KP, category, fill=_HEADER_FILL, font=_WHITE_BOLD, align=_LEFT)
-    _style(ws.cell(row=hr, column=COL_SEX, value="AGE/SEX" if has_age else "SEX"),
+    # The secondary column header must name the actual disaggregation dimension
+    # from the indicator's config (e.g. "Service Provider Type", "Key Population"),
+    # NOT a hardcoded "SEX". Config is the single source of truth for labels too.
+    if has_sex:
+        secondary_header = cfg.secondary_label or "Category"
+    elif has_age:
+        secondary_header = cfg.band_label or "Age Range"
+    else:
+        secondary_header = "Count"
+    _style(ws.cell(row=hr, column=COL_SEX, value=secondary_header),
            fill=_HEADCELL_FILL, font=_BOLD)
     band_cols: dict[str, int] = {}
     for i, band in enumerate(bands):
