@@ -269,13 +269,10 @@ def resolve_matrix_config(indicator) -> MatrixConfig:
         vals = [str(v) for v in (dim.get("values") or [])] if dim else []
         return vals or fallback
 
+    # Values come straight from the indicator's config — never a hardcoded list
+    # (no Male/Female default). A configured dimension always has values.
     primary_values = _values(primary_dim, [ALL_PRIMARY])
-    if secondary_dim is None:
-        secondary_values = [ALL_PRIMARY]
-    elif _is_sex_dimension(secondary_dim):
-        secondary_values = _values(secondary_dim, list(MATRIX_SEXES))
-    else:
-        secondary_values = _values(secondary_dim, [ALL_PRIMARY])
+    secondary_values = _values(secondary_dim, [ALL_PRIMARY]) if secondary_dim else [ALL_PRIMARY]
     # Normalise band-label whitespace and drop the duplicates it produces so a
     # band stored as both "0 - 4" and "0-4" renders as one column (not two).
     band_values = list(dict.fromkeys(normalize_band_label(b) for b in _values(age_dim, [NO_BAND])))
