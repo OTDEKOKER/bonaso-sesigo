@@ -26,9 +26,10 @@ class ValidatorContractTests(SimpleTestCase):
         with self.assertRaises(serializers.ValidationError):
             validate_aggregate_value({"total": -5})
 
-    def test_rejects_percentage_over_100(self):
-        with self.assertRaises(serializers.ValidationError):
-            validate_aggregate_value({"total": 150}, indicator=_Pct())
+    def test_percentage_resolves_as_value_not_capped(self):
+        # Percentage indicators now store disaggregated COUNTS (% computed
+        # downstream), so count values > 100 are accepted, not rejected.
+        self.assertEqual(validate_aggregate_value({"total": 150}, indicator=_Pct()), {"total": 150})
 
     def test_rejects_overflow(self):
         with self.assertRaises(serializers.ValidationError):

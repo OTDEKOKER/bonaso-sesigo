@@ -154,6 +154,20 @@ class SourceOfTruthTests(TestCase):
         self.assertEqual(cfg.primary_values, ["FSW", "MSM"])      # from saved config
         self.assertEqual(cfg.secondary_values, ["Male", "Female"])
 
+    def test_percentage_indicator_resolves_as_value(self):
+        # Percentage indicators use their config (disaggregated numerator counts),
+        # NOT a single rate cell.
+        ind = Indicator.objects.create(
+            name="% referred for testing", code="DC_PCT", type="percentage",
+            aggregate_disaggregation_config={"enabled": True, "dimensions": [
+                {"key": "sex", "label": "Sex", "values": ["Male", "Female"]},
+                {"key": "age_band", "label": "Age Range", "values": ["15-19", "20-24"]},
+            ]},
+        )
+        cfg = resolve_matrix_config(ind)
+        self.assertTrue(cfg.has_disaggregates)          # resolves as a value, not single rate
+        self.assertEqual(cfg.secondary_values, ["Male", "Female"])
+
     def test_no_config_no_disaggregation(self):
         ind = Indicator.objects.create(name="Plain", code="DC_PLAIN", type="number",
                                        aggregate_disaggregation_config={}, sub_labels=["Sex"])

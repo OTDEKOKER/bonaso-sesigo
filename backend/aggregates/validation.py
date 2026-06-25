@@ -120,9 +120,12 @@ def validate_aggregate_value(value, *, indicator=None):
     Returns the (possibly normalised) value, or raises
     ``rest_framework.serializers.ValidationError`` with a user-friendly message.
     """
-    is_percentage = bool(
-        indicator is not None and getattr(indicator, "type", "") == "percentage"
-    )
+    # Percentage indicators RESOLVE AS A VALUE: they store disaggregated COUNTS
+    # (the numerator); the % is computed downstream from achieved ÷ denominator
+    # achieved. So values are NOT capped at 100 — validated like any count
+    # (finite, non-negative, overflow-guarded). ``indicator`` kept for signature
+    # compatibility and future per-type rules.
+    is_percentage = False
 
     if value is None:
         raise serializers.ValidationError("A value is required.")

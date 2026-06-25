@@ -340,9 +340,14 @@ class AggregateValueValidationUnitTests(SimpleTestCase):
         with self.assertRaises(serializers.ValidationError):
             validate_aggregate_value(MAX_AGGREGATE_VALUE + 1)
 
-    def test_percentage_indicator_rejects_over_100(self):
-        with self.assertRaises(serializers.ValidationError):
-            validate_aggregate_value({'total': 150}, indicator=_FakeIndicator('percentage'))
+    def test_percentage_indicator_resolves_as_value_not_capped_at_100(self):
+        # Percentage indicators store disaggregated COUNTS (the numerator); the %
+        # is computed downstream. So count values > 100 are now accepted.
+        value = {'total': 150}
+        self.assertEqual(
+            validate_aggregate_value(value, indicator=_FakeIndicator('percentage')),
+            value,
+        )
 
     def test_percentage_indicator_accepts_within_range(self):
         value = {'total': 87}
