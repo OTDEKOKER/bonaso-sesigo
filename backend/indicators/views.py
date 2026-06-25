@@ -116,8 +116,38 @@ class IndicatorViewSet(viewsets.ModelViewSet):
         return queryset.filter(organizations__isnull=True)
     
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
-    
+        obj = serializer.save(created_by=self.request.user)
+        # Record the initial disaggregation config so the audit stream carries a
+        # full version history (actor + timestamp + snapshot) without a new model.
+        config = obj.aggregate_disaggregation_config or {}
+        if config:
+            self._record_config_change('create', obj, {}, config)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        old_config = (getattr(instance, 'aggregate_disaggregation_config', None) or {}) if instance else {}
+        obj = serializer.save()
+        new_config = obj.aggregate_disaggregation_config or {}
+        if old_config != new_config:
+            self._record_config_change('update', obj, old_config, new_config)
+
+    def _record_config_change(self, action, indicator, old_config, new_config):
+        """Append a disaggregation-config change to the unified audit stream.
+
+        Gives the config a full version history (actor + timestamp + before/after
+        snapshot) without a new model. Best-effort: never breaks the save.
+        """
+        from audit.recording import record_audit_event
+        record_audit_event(
+            action=action,
+            actor=self.request.user,
+            object_type='indicator.disaggregation_config',
+            object_id=indicator.id,
+            request=self.request,
+            description=f'{action.title()}d disaggregation config for indicator {indicator.code}',
+            metadata={'indicator_code': indicator.code, 'old': old_config, 'new': new_config},
+        )
+
     @action(detail=False, methods=['get'])
     def simple(self, request):
         """Get simple list for dropdowns."""

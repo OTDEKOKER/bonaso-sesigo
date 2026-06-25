@@ -186,3 +186,112 @@ class BackfillCommandTests(TestCase):
         self._run("--apply")
         self.legacy.refresh_from_db()
         self.assertEqual(self.legacy.aggregate_disaggregation_config, first)
+
+
+class RepairInvalidConfigTests(TestCase):
+    """Lossless dedupe of case-variant duplicate values, preferring data-present variant."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name="O")
+        cls.project = Project.objects.create(
+            name="P", code="RP1", start_date="2026-01-01", end_date="2026-12-31")
+        cls.user = User.objects.create_user(username="rp", email="rp@x.com", password="P!23456789", role="admin")
+        # Config carries an uppercase + lowercase variant of the same value; stored
+        # data uses the lowercase one.
+        cls.ind = Indicator.objects.create(
+            code="DUP1", name="Dup",
+            aggregate_disaggregation_config={"enabled": True, "layout": "list", "dimensions": [
+                {"key": "ncd", "label": "NCD Screening",
+                 "values": ["BMI", "Waist Circumference", "Waist circumference"]}]},
+        )
+        Aggregate.objects.create(
+            indicator=cls.ind, project=cls.project, organization=cls.org,
+            period_start="2026-01-01", period_end="2026-03-31",
+            value={"disaggregates": {"Waist circumference": {"All": {"All": 3}}}, "total": 3},
+            created_by=cls.user,
+        )
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("repair_disaggregation_configs", *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_changes_nothing(self):
+        self._run()
+        self.ind.refresh_from_db()
+        self.assertEqual(len(self.ind.aggregate_disaggregation_config["dimensions"][0]["values"]), 3)
+
+    def test_apply_keeps_data_present_variant(self):
+        self._run("--apply")
+        self.ind.refresh_from_db()
+        values = self.ind.aggregate_disaggregation_config["dimensions"][0]["values"]
+        self.assertEqual(values, ["BMI", "Waist circumference"])  # lowercase (data) kept
+        # Result is now valid.
+        self.assertEqual(
+            validate_disaggregation_config(self.ind.aggregate_disaggregation_config),
+            self.ind.aggregate_disaggregation_config,
+        )
+
+    def test_valid_config_untouched(self):
+        good = Indicator.objects.create(
+            code="OK1", name="ok",
+            aggregate_disaggregation_config={"enabled": True, "layout": "list", "dimensions": [
+                {"key": "sex", "label": "Sex", "values": ["Male", "Female"]}]})
+        self._run("--apply")
+        good.refresh_from_db()
+        self.assertEqual(good.aggregate_disaggregation_config["dimensions"][0]["values"], ["Male", "Female"])
+
+
+class ConfigChangeAuditTests(TestCase):
+    """Admin config changes are written to the unified audit stream (version history)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = User.objects.create_user(
+            username="cfg_admin", email="ca@x.com", password="P!23456789", role="admin")
+
+    def _patch_config(self, indicator, config):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+
+        from indicators.views import IndicatorViewSet
+        factory = APIRequestFactory()
+        request = factory.patch("/", {"aggregate_disaggregation_config": config}, format="json")
+        force_authenticate(request, user=self.admin)
+        request.user = self.admin
+        view = IndicatorViewSet()
+        view.request = request
+        view.action = "partial_update"
+        view.format_kwarg = None
+        serializer = view.get_serializer(indicator, data={"aggregate_disaggregation_config": config}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        view.perform_update(serializer)
+
+    def test_config_change_is_audited(self):
+        from audit.models import AuditEvent
+
+        ind = Indicator.objects.create(code="AUD1", name="Audited", created_by=self.admin)
+        new_cfg = {"enabled": True, "layout": "list", "dimensions": [
+            {"key": "sex", "label": "Sex", "values": ["Male", "Female"]}]}
+        self._patch_config(ind, new_cfg)
+
+        events = AuditEvent.objects.filter(object_type="indicator.disaggregation_config", object_id=str(ind.id))
+        self.assertEqual(events.count(), 1)
+        event = events.first()
+        self.assertEqual(event.action, "update")
+        self.assertEqual(event.actor, self.admin)
+        self.assertEqual(event.metadata["new"], new_cfg)
+        self.assertEqual(event.metadata["old"], {})
+
+    def test_unchanged_config_is_not_audited(self):
+        from audit.models import AuditEvent
+
+        cfg = {"enabled": True, "layout": "list", "dimensions": [
+            {"key": "sex", "label": "Sex", "values": ["Male", "Female"]}]}
+        ind = Indicator.objects.create(
+            code="AUD2", name="Audited2", aggregate_disaggregation_config=cfg, created_by=self.admin)
+        self._patch_config(ind, cfg)
+        self.assertEqual(
+            AuditEvent.objects.filter(object_type="indicator.disaggregation_config", object_id=str(ind.id)).count(),
+            0,
+        )
