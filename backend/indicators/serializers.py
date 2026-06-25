@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
 from organizations.access import is_organization_admin
-from .disaggregation import validate_disaggregation_config
+from .disaggregation import validate_disaggregation_config, validate_save_consistency
 from .models import (
     Indicator, IndicatorAlias, Assessment, AssessmentQuestion, Question,
 )
@@ -54,8 +54,11 @@ class IndicatorSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'is_deprecated', 'canonical_indicator']
 
     def validate_aggregate_disaggregation_config(self, value):
-        # Structural validation (shape, duplicates, non-empty values, etc.).
-        return validate_disaggregation_config(value)
+        # Structural validation (shape, duplicates, non-empty values, etc.) then
+        # the on-save consistency guard (no dropped dimensions / collapsing columns)
+        # so the UI can never persist a config that renders inconsistently.
+        validate_disaggregation_config(value)
+        return validate_save_consistency(value)
 
     def validate_denominator_indicator(self, value):
         # A percentage indicator cannot be its own denominator.

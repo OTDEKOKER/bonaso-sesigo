@@ -210,6 +210,57 @@ def bootstrap_config(indicator, disaggregate_samples=None) -> tuple[dict, list[s
     return config_from_sub_labels(getattr(indicator, "sub_labels", None))
 
 
+# The reporting workbook/capture matrix represents at most three axes
+# (primary x secondary x band). A config with more dimensions would silently
+# drop one from the generated grid — an inconsistency we reject on save.
+MAX_MATRIX_DIMENSIONS = 3
+
+
+def validate_save_consistency(value):
+    """On-save consistency guard for the Indicator Configuration UI.
+
+    Beyond structural validity, this rejects configs that would produce an
+    INCONSISTENT workbook/capture grid even though every value is individually
+    valid:
+      * more dimensions than the matrix can represent (a dimension would be
+        dropped from the generated workbook);
+      * values that collapse to the same column under the matrix's own
+        normalisation (case/whitespace variants such as "0-4" vs "0 - 4"),
+        which would render as a single merged column.
+
+    Returns the value unchanged when consistent; raises otherwise. Empty/disabled
+    configs are always consistent.
+    """
+    if not has_enabled_config(value):
+        return value
+
+    dimensions = value.get("dimensions", [])
+    if len(dimensions) > MAX_MATRIX_DIMENSIONS:
+        raise serializers.ValidationError(
+            f"A disaggregation matrix supports at most {MAX_MATRIX_DIMENSIONS} dimensions, "
+            f"but this configuration has {len(dimensions)}. The reporting workbook and capture "
+            f"grid cannot represent more, so a dimension would be dropped. Merge or remove dimensions."
+        )
+
+    # Mirror the workbook matrix's own label normalisation so we detect exactly
+    # the values it would collapse (e.g. age bands "0-4" and "0 - 4").
+    from aggregates.reporting_workbook import normalize_band_label
+
+    for dim in dimensions:
+        label = dim.get("label") or dim.get("key")
+        values = dim.get("values") or []
+        normalized = [
+            re.sub(r"\s+", " ", normalize_band_label(str(v)).strip().lower()) for v in values
+        ]
+        if len(set(normalized)) != len(normalized):
+            raise serializers.ValidationError(
+                f"Dimension '{label}' has values that would collapse into one column "
+                f"(case/whitespace variants of the same value). Make each value distinct."
+            )
+
+    return value
+
+
 def validate_disaggregation_config(value):
     """Validate an ``aggregate_disaggregation_config`` payload.
 

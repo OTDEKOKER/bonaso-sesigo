@@ -38,6 +38,10 @@ export type DisaggregationPresetKey =
   | "citizenship"
   | "hiv_status"
   | "pregnancy"
+  | "district"
+  | "facility"
+  | "funding_source"
+  | "partner"
 
 export const DISAGGREGATION_PRESETS: Record<
   DisaggregationPresetKey,
@@ -300,6 +304,37 @@ export const DISAGGREGATION_PRESETS: Record<
     label: "Pregnancy",
     values: ["Pregnant", "Not pregnant", "Breastfeeding"],
   },
+
+  // District uses Botswana's official administrative districts as an editable
+  // starting template; admins refine the list in the UI per indicator.
+  district: {
+    key: "district",
+    label: "District",
+    values: [
+      "Central", "Chobe", "Ghanzi", "Kgalagadi", "Kgatleng", "Kweneng",
+      "North East", "North West", "South East", "Southern",
+      "Gaborone", "Francistown", "Lobatse", "Selibe Phikwe", "Jwaneng",
+    ],
+  },
+
+  // Standard Botswana health-facility tiers (editable template).
+  facility: {
+    key: "facility",
+    label: "Facility",
+    values: ["Health Post", "Clinic", "Primary Hospital", "District Hospital", "Referral Hospital"],
+  },
+
+  funding_source: {
+    key: "funding_source",
+    label: "Funding Source",
+    values: ["Government", "PEPFAR", "Global Fund", "Other"],
+  },
+
+  partner: {
+    key: "partner",
+    label: "Partner",
+    values: ["Implementing Partner", "Sub-recipient"],
+  },
 }
 
 export const DISAGGREGATION_PRESET_OPTIONS = [
@@ -332,6 +367,10 @@ export const DISAGGREGATION_PRESET_OPTIONS = [
   { value: "citizenship", label: "Citizenship" },
   { value: "hiv_status", label: "HIV Status" },
   { value: "pregnancy", label: "Pregnancy" },
+  { value: "district", label: "District" },
+  { value: "facility", label: "Facility" },
+  { value: "funding_source", label: "Funding Source" },
+  { value: "partner", label: "Partner" },
 ] as const
 
 type PresetGroups = {

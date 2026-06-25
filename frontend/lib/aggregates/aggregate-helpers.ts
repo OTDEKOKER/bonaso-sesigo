@@ -256,13 +256,16 @@ function normalizeDimensionValues(values: unknown): string[] {
 function resolveDisaggregationConfig(
   input?: string[] | IndicatorDisaggregationInput,
 ): AggregateDisaggregationConfig {
+  // aggregate_disaggregation_config is the ONLY runtime source for the capture
+  // matrix, review queue and report matrices. Legacy sub_labels (including raw
+  // sub_label arrays) are never read here; an indicator without a config simply
+  // has no disaggregation until one is defined in the Indicator Configuration UI.
   if (Array.isArray(input)) {
-    return normalizeAggregateDisaggregationConfig(undefined, input);
+    return normalizeAggregateDisaggregationConfig(undefined);
   }
 
   return normalizeAggregateDisaggregationConfig(
     input?.aggregate_disaggregation_config ?? undefined,
-    input?.sub_labels ?? undefined,
   );
 }
 
@@ -389,26 +392,6 @@ function getPrimaryDimension(
 ): AggregateDisaggregationDimension | null {
   const dimensions = getNormalizedDimensions(input);
   return dimensions.find((dimension) => !isSexDimension(dimension) && !isAgeDimension(dimension)) || null;
-}
-
-function getFallbackGroupsFromLegacyLabels(labels?: string[] | null): Set<string> {
-  const groups = new Set<string>();
-  (labels || []).forEach((value) => {
-    const token = normalizeDimensionToken(value);
-    if (!token) return;
-    groups.add(token);
-
-    if (token === "sex" || token === "gender") {
-      groups.add("sex");
-    }
-    if (token === "age range" || token === "age band" || token === "age group") {
-      groups.add("age range");
-    }
-    if (token === "key population" || token === "kp") {
-      groups.add("kp");
-    }
-  });
-  return groups;
 }
 
 export function toSafeNumber(value: unknown): number {
@@ -742,8 +725,8 @@ export function getIndicatorDisaggregateGroups(
   );
 
   if (!config.enabled || dimensions.length === 0) {
-    if (Array.isArray(input)) return getFallbackGroupsFromLegacyLabels(input);
-    return getFallbackGroupsFromLegacyLabels(input?.sub_labels || []);
+    // Config-only: an indicator with no enabled config has no disaggregate groups.
+    return new Set<string>();
   }
 
   for (const dimension of dimensions) {

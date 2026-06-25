@@ -22,7 +22,9 @@ from indicators.disaggregation import (
     config_from_sub_labels,
     has_enabled_config,
     validate_disaggregation_config,
+    validate_save_consistency,
 )
+from rest_framework import serializers as drf_serializers
 from indicators.models import Indicator
 from organizations.models import Organization
 from projects.models import Project
@@ -186,6 +188,40 @@ class BackfillCommandTests(TestCase):
         self._run("--apply")
         self.legacy.refresh_from_db()
         self.assertEqual(self.legacy.aggregate_disaggregation_config, first)
+
+
+class SaveConsistencyTests(TestCase):
+    """On-save guard: reject configs that would render an inconsistent grid."""
+
+    def test_too_many_dimensions_rejected(self):
+        cfg = {"enabled": True, "layout": "nested-matrix", "dimensions": [
+            {"key": "a", "label": "A", "values": ["x"]},
+            {"key": "b", "label": "B", "values": ["y"]},
+            {"key": "c", "label": "C", "values": ["z"]},
+            {"key": "d", "label": "D", "values": ["w"]},
+        ]}
+        with self.assertRaises(drf_serializers.ValidationError):
+            validate_save_consistency(cfg)
+
+    def test_three_dimensions_ok(self):
+        cfg = {"enabled": True, "layout": "nested-matrix", "dimensions": [
+            {"key": "sex", "label": "Sex", "values": ["Male", "Female"]},
+            {"key": "kp", "label": "Key Population", "values": ["FSW"]},
+            {"key": "age_band", "label": "Age Range", "values": ["10-14"]},
+        ]}
+        self.assertEqual(validate_save_consistency(cfg), cfg)
+
+    def test_whitespace_collapsing_values_rejected(self):
+        cfg = {"enabled": True, "layout": "list", "dimensions": [
+            {"key": "age_band", "label": "Age Range", "values": ["0-4", "0 - 4"]},
+        ]}
+        with self.assertRaises(drf_serializers.ValidationError):
+            validate_save_consistency(cfg)
+
+    def test_disabled_config_always_consistent(self):
+        self.assertEqual(validate_save_consistency({}), {})
+        self.assertEqual(validate_save_consistency({"enabled": False, "dimensions": []}),
+                         {"enabled": False, "dimensions": []})
 
 
 class RepairInvalidConfigTests(TestCase):
