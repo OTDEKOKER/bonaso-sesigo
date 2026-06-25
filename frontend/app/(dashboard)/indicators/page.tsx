@@ -79,6 +79,7 @@ const INITIAL_FORM = {
   unit: "",
   options: "",
   disaggregation_config: createEmptyDisaggregationConfig() as AggregateDisaggregationConfig,
+  denominator_indicator: null as number | null,
 }
 
 function toCanonicalIndicatorKey(indicatorId: string | number | null | undefined) {
@@ -336,6 +337,8 @@ export default function IndicatorsPage() {
           ? formData.disaggregation_config.dimensions.map((d) => d.label)
           : undefined,
         aggregate_disaggregation_config: formData.disaggregation_config,
+        denominator_indicator:
+          formData.type === "percentage" ? formData.denominator_indicator : null,
         is_active: false,
       })
       toast({ title: "Indicator created" })
@@ -636,6 +639,12 @@ export default function IndicatorsPage() {
               onChange={(next) =>
                 setFormData((prev) => ({ ...prev, disaggregation_config: next }))
               }
+              indicatorType={formData.type}
+              denominatorId={formData.denominator_indicator}
+              onDenominatorChange={(id) =>
+                setFormData((prev) => ({ ...prev, denominator_indicator: id }))
+              }
+              denominatorOptions={indicators.map((i) => ({ id: Number(i.id), name: i.name, code: i.code }))}
             />
             <DialogFooter>
               <Button

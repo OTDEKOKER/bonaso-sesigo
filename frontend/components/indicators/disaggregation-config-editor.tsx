@@ -27,11 +27,22 @@ import {
 } from "@/lib/indicators/disaggregation-presets"
 import { getAggregateEntryMatrixConfig } from "@/lib/aggregates/aggregate-helpers"
 
+type DenominatorOption = { id: number; name: string; code?: string }
+
 type Props = {
   value: AggregateDisaggregationConfig
   onChange: (next: AggregateDisaggregationConfig) => void
   disabled?: boolean
+  // Denominator (percentage indicators only): % = this indicator achieved /
+  // denominator indicator achieved. Rendered when indicatorType === "percentage".
+  indicatorType?: string
+  denominatorId?: number | null
+  onDenominatorChange?: (id: number | null) => void
+  denominatorOptions?: DenominatorOption[]
+  selfId?: number
 }
+
+const NO_DENOMINATOR = "__none__"
 
 function move<T>(arr: T[], from: number, to: number): T[] {
   if (to < 0 || to >= arr.length) return arr
@@ -41,7 +52,10 @@ function move<T>(arr: T[], from: number, to: number): T[] {
   return copy
 }
 
-export default function DisaggregationConfigEditor({ value, onChange, disabled }: Props) {
+export default function DisaggregationConfigEditor({
+  value, onChange, disabled,
+  indicatorType, denominatorId, onDenominatorChange, denominatorOptions = [], selfId,
+}: Props) {
   const config = value && typeof value === "object" ? value : createEmptyDisaggregationConfig()
   const dimensions = Array.isArray(config.dimensions) ? config.dimensions : []
 
@@ -93,6 +107,32 @@ export default function DisaggregationConfigEditor({ value, onChange, disabled }
           />
         </div>
       </div>
+
+      {indicatorType === "percentage" && onDenominatorChange && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+          <Label className="text-xs font-semibold">Denominator (percentage)</Label>
+          <p className="mb-1.5 text-xs text-muted-foreground">
+            % = this indicator&apos;s achieved ÷ the denominator&apos;s achieved (its achieved acts as the target).
+          </p>
+          <Select
+            disabled={disabled}
+            value={denominatorId ? String(denominatorId) : NO_DENOMINATOR}
+            onValueChange={(v) => onDenominatorChange(v === NO_DENOMINATOR ? null : Number(v))}
+          >
+            <SelectTrigger className="h-8"><SelectValue placeholder="Select denominator indicator…" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_DENOMINATOR}>None</SelectItem>
+              {denominatorOptions
+                .filter((o) => o.id !== selfId)
+                .map((o) => (
+                  <SelectItem key={o.id} value={String(o.id)}>
+                    {o.name}{o.code ? ` (${o.code})` : ""}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {config.enabled && (
         <>

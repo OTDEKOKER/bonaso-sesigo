@@ -100,6 +100,22 @@ class Indicator(models.Model):
         help_text='Deprecated indicators are hidden from new assignments but preserved for history.',
     )
 
+    # For percentage indicators: the denominator. The percentage is computed as
+    # this indicator's achieved value ÷ the denominator indicator's achieved
+    # value (which acts as the target). Models a service-pathway cascade — e.g.
+    # "referred for HIV testing" / "eligible for testing".
+    denominator_indicator = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='numerator_indicators',
+        help_text=(
+            'For percentage indicators: the denominator indicator. '
+            '% = this indicator achieved / denominator indicator achieved.'
+        ),
+    )
+
     organizations = models.ManyToManyField(
         'organizations.Organization',
         blank=True,

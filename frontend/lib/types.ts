@@ -136,6 +136,8 @@ export interface Indicator {
   options?: Array<string | { label: string; value: string }>
   sub_labels?: string[]
   aggregate_disaggregation_config?: AggregateDisaggregationConfig
+  denominator_indicator?: number | null
+  denominator_indicator_detail?: { id: number; name: string; code?: string } | null
   aggregation_method?: 'sum' | 'average' | 'count' | 'latest'
   is_active: boolean
   is_deprecated?: boolean

@@ -103,6 +103,43 @@ class AdminGateTests(TestCase):
         self.assertIn("aggregate_disaggregation_config", s.errors)
 
 
+class DenominatorTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = User.objects.create_user(username="dn_admin", email="da@x.com", password="P!23456789", role="admin")
+        cls.officer = User.objects.create_user(username="dn_off", email="do@x.com", password="P!23456789", role="officer")
+        cls.eligible = Indicator.objects.create(name="Eligible for testing", code="DN_ELIG", type="number")
+        cls.referred = Indicator.objects.create(name="Referred for HIV testing", code="DN_REF", type="percentage")
+
+    def test_admin_can_set_denominator(self):
+        s = IndicatorSerializer(self.referred, data={"denominator_indicator": self.eligible.id},
+                                partial=True, context=_ctx(self.admin))
+        self.assertTrue(s.is_valid(), s.errors)
+        s.save()
+        self.referred.refresh_from_db()
+        self.assertEqual(self.referred.denominator_indicator_id, self.eligible.id)
+
+    def test_denominator_detail_serialized(self):
+        self.referred.denominator_indicator = self.eligible
+        self.referred.save()
+        data = IndicatorSerializer(self.referred, context=_ctx(self.admin)).data
+        self.assertEqual(data["denominator_indicator"], self.eligible.id)
+        self.assertEqual(data["denominator_indicator_detail"]["code"], "DN_ELIG")
+
+    def test_non_admin_cannot_change_denominator(self):
+        s = IndicatorSerializer(self.referred, data={"denominator_indicator": self.eligible.id},
+                                partial=True, context=_ctx(self.officer))
+        self.assertTrue(s.is_valid(), s.errors)
+        with self.assertRaises(PermissionDenied):
+            s.save()
+
+    def test_indicator_cannot_be_own_denominator(self):
+        s = IndicatorSerializer(self.referred, data={"denominator_indicator": self.referred.id},
+                                partial=True, context=_ctx(self.admin))
+        self.assertFalse(s.is_valid())
+        self.assertIn("denominator_indicator", s.errors)
+
+
 class SourceOfTruthTests(TestCase):
     def test_workbook_uses_saved_config(self):
         ind = Indicator.objects.create(

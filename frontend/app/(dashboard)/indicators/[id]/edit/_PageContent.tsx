@@ -27,7 +27,7 @@ import QuarterlyTargetsSection from "@/components/indicators/quarterly-targets-s
 
 import { indicatorsService } from "@/lib/api"
 import type { ApiError, UpdateIndicatorRequest } from "@/lib/api"
-import { useAllProjectDetails, useIndicator } from "@/lib/hooks/use-api"
+import { useAllIndicators, useAllProjectDetails, useIndicator } from "@/lib/hooks/use-api"
 import type { Indicator } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
 import { useSmartBack } from "@/lib/hooks/use-smart-back"
@@ -55,6 +55,7 @@ type FormDataState = {
   unit: string
   options: string
   disaggregation_config: AggregateDisaggregationConfig
+  denominator_indicator: number | null
   is_active: boolean
 }
 
@@ -68,6 +69,7 @@ const initialFormData: FormDataState = {
   unit: "",
   options: "",
   disaggregation_config: createEmptyDisaggregationConfig(),
+  denominator_indicator: null,
   is_active: true,
 }
 
@@ -82,6 +84,8 @@ export default function IndicatorEditPage() {
   const handleBack = useSmartBack(isValidId ? `/indicators/${id}` : "/indicators")
 
   const { data: indicator, isLoading, error, mutate } = useIndicator(isValidId ? id : null)
+  const { data: allIndicatorsData } = useAllIndicators()
+  const allIndicators = allIndicatorsData?.results ?? []
   const { data: projectsData } = useAllProjectDetails()
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -108,6 +112,7 @@ export default function IndicatorEditPage() {
         indicator.aggregate_disaggregation_config,
         indicator.sub_labels,
       ),
+      denominator_indicator: indicator.denominator_indicator ?? null,
       is_active: indicator.is_active ?? true,
     })
   }, [indicator])
@@ -241,6 +246,8 @@ export default function IndicatorEditPage() {
           ? formData.disaggregation_config.dimensions.map((d) => d.label)
           : undefined,
         aggregate_disaggregation_config: formData.disaggregation_config,
+        denominator_indicator:
+          formData.type === "percentage" ? formData.denominator_indicator : null,
         is_active: canActivateIndicator ? formData.is_active : false,
       }
 
@@ -470,6 +477,13 @@ export default function IndicatorEditPage() {
               </p>
             </div>
             <DisaggregationConfigEditor
+              indicatorType={formData.type}
+              denominatorId={formData.denominator_indicator}
+              onDenominatorChange={(id) =>
+                setFormData((prev) => ({ ...prev, denominator_indicator: id }))
+              }
+              denominatorOptions={allIndicators.map((i) => ({ id: i.id, name: i.name, code: i.code }))}
+              selfId={indicator?.id}
               value={formData.disaggregation_config}
               disabled={isSubmitting}
               onChange={(next) =>

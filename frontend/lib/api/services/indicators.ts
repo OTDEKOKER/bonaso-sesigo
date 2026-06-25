@@ -52,6 +52,7 @@ export interface CreateIndicatorRequest {
   options?: Array<string | { label: string; value: string }>;
   sub_labels?: string[];
   aggregate_disaggregation_config?: AggregateDisaggregationConfig;
+  denominator_indicator?: number | null;
   aggregation_method?: 'sum' | 'average' | 'count' | 'latest';
   is_active?: boolean;
   organizations?: number[];

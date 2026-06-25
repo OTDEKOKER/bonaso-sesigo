@@ -34,12 +34,17 @@ class IndicatorSerializer(serializers.ModelSerializer):
     aliases = IndicatorAliasSerializer(many=True, read_only=True)
     canonical_indicator_detail = serializers.SerializerMethodField()
     deprecated_variants_count = serializers.SerializerMethodField()
+    denominator_indicator_detail = serializers.SerializerMethodField()
+
+    # Admin-gated config fields — changing these requires an organization admin.
+    _ADMIN_ONLY_FIELDS = ('aggregate_disaggregation_config', 'denominator_indicator')
 
     class Meta:
         model = Indicator
         fields = [
             'id', 'name', 'code', 'description', 'type', 'category', 'unit',
             'options', 'sub_labels', 'aggregate_disaggregation_config',
+            'denominator_indicator', 'denominator_indicator_detail',
             'aggregation_method', 'is_active',
             'is_deprecated', 'canonical_indicator', 'canonical_indicator_detail',
             'deprecated_variants_count',
@@ -52,27 +57,49 @@ class IndicatorSerializer(serializers.ModelSerializer):
         # Structural validation (shape, duplicates, non-empty values, etc.).
         return validate_disaggregation_config(value)
 
+    def validate_denominator_indicator(self, value):
+        # A percentage indicator cannot be its own denominator.
+        if value is not None and self.instance is not None and value.id == self.instance.id:
+            raise serializers.ValidationError("An indicator cannot be its own denominator.")
+        return value
+
+    def get_denominator_indicator_detail(self, obj):
+        denom = getattr(obj, 'denominator_indicator', None)
+        if denom is None:
+            return None
+        return {'id': denom.id, 'name': denom.name, 'code': denom.code}
+
     def _request_user_is_admin(self) -> bool:
         request = self.context.get('request')
         return bool(request and is_organization_admin(getattr(request, 'user', None)))
 
     def create(self, validated_data):
-        # Only admins may set the disaggregation config; for a non-admin we drop
-        # it (the indicator is still created — an admin configures it later).
-        if 'aggregate_disaggregation_config' in validated_data and not self._request_user_is_admin():
-            validated_data.pop('aggregate_disaggregation_config', None)
+        # Only admins may set the admin-only config fields; for a non-admin we drop
+        # them (the indicator is still created — an admin configures it later).
+        if not self._request_user_is_admin():
+            for field in self._ADMIN_ONLY_FIELDS:
+                validated_data.pop(field, None)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        # Non-admins cannot CHANGE the config; an unchanged echo is allowed so they
-        # can still edit other fields. A real change by a non-admin is rejected.
-        if 'aggregate_disaggregation_config' in validated_data:
-            incoming = validated_data['aggregate_disaggregation_config'] or {}
-            current = instance.aggregate_disaggregation_config or {}
-            if incoming != current and not self._request_user_is_admin():
-                raise PermissionDenied(
-                    'Only administrators may change the indicator disaggregation configuration.'
-                )
+        # Non-admins cannot CHANGE the admin-only fields; an unchanged echo is
+        # allowed so they can still edit other fields. A real change is rejected.
+        if not self._request_user_is_admin():
+            for field in self._ADMIN_ONLY_FIELDS:
+                if field in validated_data:
+                    incoming = validated_data[field]
+                    current = getattr(instance, field) if field != 'aggregate_disaggregation_config' \
+                        else (instance.aggregate_disaggregation_config or {})
+                    if field == 'aggregate_disaggregation_config':
+                        incoming = incoming or {}
+                    if field == 'denominator_indicator':
+                        current = getattr(instance, 'denominator_indicator_id', None)
+                        incoming = incoming.id if incoming is not None else None
+                    if incoming != current:
+                        raise PermissionDenied(
+                            'Only administrators may change the indicator configuration '
+                            '(disaggregation / denominator).'
+                        )
         return super().update(instance, validated_data)
 
     def get_organizations_count(self, obj):
