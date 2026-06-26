@@ -190,6 +190,21 @@ class WorkbookLayoutAPITests(WorkbookLayoutSetup):
         resp = client.get("/api/manage/workbook-layouts/available-indicators/?coordinator=NaN")
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_available_indicators_returns_full_palette(self):
+        # The library is a palette: every active canonical indicator is listed
+        # regardless of whether it is assigned to the coordinator's tree. i1/i2/i3
+        # have NO assignments here yet must all appear.
+        inactive = Indicator.objects.create(name="Retired", code="IX", is_active=False)
+        alias = Indicator.objects.create(name="Alias of i1", code="I1A", canonical_indicator=self.i1)
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        resp = client.get(f"/api/manage/workbook-layouts/available-indicators/?coordinator={self.coord.id}")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ids = {row["id"] for row in resp.data}
+        self.assertEqual({self.i1.id, self.i2.id, self.i3.id}, ids)  # all active canonical
+        self.assertNotIn(inactive.id, ids)  # inactive excluded
+        self.assertNotIn(alias.id, ids)  # alias variants folded out
+
     def test_duplicate_indicator_rejected(self):
         client = APIClient()
         client.force_authenticate(self.admin)

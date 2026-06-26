@@ -38,8 +38,6 @@ from organizations.access import is_organization_admin, request_mode_value
 from users.permissions import HasModulePermission
 
 from .models import (
-    ProjectIndicatorAssignment,
-    ProjectIndicatorOrganizationTarget,
     WorkbookLayout,
     WorkbookLayoutItem,
 )
@@ -207,12 +205,19 @@ class WorkbookLayoutViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="available-indicators")
     def available_indicators(self, request):
-        """Indicators available within a coordinator's scope, for the layout editor.
+        """Indicator palette for the layout editor.
 
-        The union of indicators assigned (or targeted) to the coordinator and its
-        sub-organisations, across all projects. Project/period independent —
+        Returns EVERY active, canonical indicator in the system so an admin can
+        compose each coordinator's workbook from the full catalogue. It is
+        intentionally NOT scoped to the coordinator's assignments: placing an
+        indicator in a layout is a display/ordering choice and does not make any
+        organisation responsible for reporting it. Project/period independent —
         matches the layout's project-independent nature. Canonical only (alias
         variants are folded onto their canonical indicator).
+
+        The `coordinator` query param is still required and validated so the
+        editor always loads against a real coordinator (and to keep the
+        front-end contract unchanged).
         """
         coordinator_id = request.query_params.get("coordinator")
         if not coordinator_id:
@@ -231,19 +236,8 @@ class WorkbookLayoutViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Coordinator not found."},
                             status=status.HTTP_404_NOT_FOUND)
 
-        org_ids = [coordinator.id] + [o.id for o in coordinator.get_descendants()]
-        ind_ids = set(
-            ProjectIndicatorAssignment.objects.filter(
-                organization_id__in=org_ids, is_active=True,
-            ).values_list("project_indicator__indicator_id", flat=True)
-        )
-        ind_ids |= set(
-            ProjectIndicatorOrganizationTarget.objects.filter(
-                organization_id__in=org_ids,
-            ).values_list("project_indicator__indicator_id", flat=True)
-        )
         indicators = (
-            Indicator.objects.filter(id__in=ind_ids, is_active=True)
+            Indicator.objects.filter(is_active=True)
             .exclude(canonical_indicator__isnull=False)
             .order_by("category", "name")
         )
