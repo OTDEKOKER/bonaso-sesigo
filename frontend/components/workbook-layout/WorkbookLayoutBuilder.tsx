@@ -672,7 +672,7 @@ export function WorkbookLayoutBuilder({
           </aside>
 
           {/* RIGHT — Workbook */}
-          <section className="flex min-h-0 flex-1 flex-col rounded-xl border bg-card">
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border bg-card">
             <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 rounded-t-xl border-b bg-card p-3">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <Input
@@ -874,7 +874,7 @@ function IconBtn({
   return (
     <Button
       type="button" variant="ghost" size="icon" aria-label={label} title={label}
-      className={cn("h-6 w-6 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100", destructive && "text-destructive")}
+      className={cn("h-6 w-6 shrink-0 opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 group-hover:opacity-100", destructive && "text-destructive")}
       onClick={onClick}
     >
       {children}
