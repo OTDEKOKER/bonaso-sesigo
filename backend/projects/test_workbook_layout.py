@@ -190,6 +190,52 @@ class WorkbookLayoutAPITests(WorkbookLayoutSetup):
         resp = client.get("/api/manage/workbook-layouts/available-indicators/?coordinator=NaN")
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_saving_layout_auto_assigns_placed_indicators(self):
+        # "Placing = assigning": creating/updating a layout assigns its placed,
+        # active, canonical indicators to the coordinator's org tree in the
+        # coordinator's current project.
+        from projects.models import (
+            ProjectIndicator, ProjectIndicatorAssignment, ProjectOrganization,
+        )
+        ProjectOrganization.objects.create(project=self.project, organization=self.coord, is_active=True)
+        ProjectOrganization.objects.create(project=self.project, organization=self.sub, is_active=True)
+
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        resp = client.post("/api/manage/workbook-layouts/", self._create_payload(), format="json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+        pi = ProjectIndicator.objects.filter(project=self.project, indicator=self.i1).first()
+        self.assertIsNotNone(pi, "placed indicator should be linked to the project")
+        assigned_orgs = set(
+            ProjectIndicatorAssignment.objects.filter(
+                project_indicator=pi, is_active=True,
+            ).values_list("organization_id", flat=True)
+        )
+        # Coordinator + its sub (the whole tree in-project) get the assignment.
+        self.assertEqual({self.coord.id, self.sub.id}, assigned_orgs)
+
+    def test_saving_layout_does_not_assign_alias_or_inactive(self):
+        from projects.models import (
+            ProjectIndicator, ProjectOrganization,
+        )
+        ProjectOrganization.objects.create(project=self.project, organization=self.coord, is_active=True)
+        alias = Indicator.objects.create(name="Alias", code="IA", canonical_indicator=self.i1)
+        inactive = Indicator.objects.create(name="Old", code="IO", is_active=False)
+
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        payload = self._create_payload()
+        payload["items"] = [
+            {"indicator": alias.id, "order_index": 0},
+            {"indicator": inactive.id, "order_index": 1},
+        ]
+        resp = client.post("/api/manage/workbook-layouts/", payload, format="json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        # Neither alias nor inactive indicators get project links/assignments.
+        self.assertFalse(ProjectIndicator.objects.filter(
+            project=self.project, indicator_id__in=[alias.id, inactive.id]).exists())
+
     def test_available_indicators_returns_full_palette(self):
         # The library is a palette: every active canonical indicator is listed
         # regardless of whether it is assigned to the coordinator's tree. i1/i2/i3

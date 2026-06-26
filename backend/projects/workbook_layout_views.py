@@ -151,6 +151,87 @@ class WorkbookLayoutSerializer(serializers.ModelSerializer):
         return instance
 
 
+def _auto_assign_layout_indicators(layout):
+    """Make "placing = assigning": ensure every active, canonical indicator placed
+    in ``layout`` is assigned to the coordinator's org tree in its CURRENT project.
+
+    "Current project" = the coordinator's most recent active project matching the
+    layout's environment (live/training), preferring one that is ongoing today.
+    Aliases and inactive indicators are skipped (they can never surface in a
+    generated workbook, so assigning them would only create dead rows).
+
+    Best-effort: a failure here must never block the layout save, so all DB errors
+    are swallowed. Idempotent — re-saving never duplicates assignments.
+    """
+    from datetime import date
+
+    from django.db import DatabaseError
+
+    from organizations.models import Organization
+
+    from .models import Project, ProjectIndicator, ProjectOrganization
+    from .project_indicator_links import ensure_project_indicator_link
+    from .project_indicator_scope_sync import ensure_project_indicator_assignments
+
+    try:
+        coord = Organization.objects.filter(id=layout.coordinator_organization_id).first()
+        if coord is None:
+            return
+
+        is_training = layout.mode == "training"
+        proj_ids = list(
+            ProjectOrganization.objects.filter(
+                organization_id=coord.id, is_active=True,
+            ).values_list("project_id", flat=True)
+        )
+        projects = list(Project.objects.filter(id__in=proj_ids, is_training=is_training))
+        if not projects:
+            return
+
+        today = date.today()
+        ongoing = [
+            p for p in projects
+            if (p.start_date or today) <= today <= (p.end_date or today)
+        ]
+        pool = ongoing or projects
+        project = max(pool, key=lambda p: (p.start_date or date.min))
+
+        tree_ids = {coord.id} | {o.id for o in coord.get_descendants()}
+        proj_org_ids = set(
+            ProjectOrganization.objects.filter(
+                project=project, is_active=True,
+            ).values_list("organization_id", flat=True)
+        )
+        org_ids = tree_ids & proj_org_ids
+        if not org_ids:
+            return
+
+        placed = list(dict.fromkeys(
+            item.indicator_id for item in layout.items.all() if item.indicator_id
+        ))
+        if not placed:
+            return
+        # Only active, canonical indicators can appear in a workbook.
+        assignable = set(
+            Indicator.objects.filter(
+                id__in=placed, is_active=True, canonical_indicator__isnull=True,
+            ).values_list("id", flat=True)
+        )
+        for ind_id in placed:
+            if ind_id not in assignable:
+                continue
+            ensure_project_indicator_link(project, ind_id)
+            pi = ProjectIndicator.objects.filter(
+                project=project, indicator_id=ind_id,
+            ).first()
+            if pi is not None:
+                ensure_project_indicator_assignments(
+                    pi, organization_ids=org_ids, source="workbook_layout",
+                )
+    except DatabaseError:
+        return
+
+
 class WorkbookLayoutViewSet(viewsets.ModelViewSet):
     """CRUD for coordinator Workbook Layouts (indicator ordering templates)."""
 
@@ -189,6 +270,7 @@ class WorkbookLayoutViewSet(viewsets.ModelViewSet):
                 {"detail": "This coordinator already has an active workbook layout. "
                            "Edit the existing layout instead."}
             )
+        _auto_assign_layout_indicators(serializer.instance)
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -198,6 +280,7 @@ class WorkbookLayoutViewSet(viewsets.ModelViewSet):
                 "This layout belongs to a different environment (live/training)."
             )
         serializer.save(updated_by=self.request.user)
+        _auto_assign_layout_indicators(serializer.instance)
 
     def perform_destroy(self, instance):
         self._assert_can_edit(instance.coordinator_organization_id)
