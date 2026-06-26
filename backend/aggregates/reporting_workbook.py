@@ -871,20 +871,32 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
             primary, secondary, band, f"{ws.title}!{cell.coordinate}",
         ])
 
-    # ── Plain (no disaggregation): name | "Total" | single value. ──
+    # ── Plain (no disaggregation): name | ONE merged full-width value cell. ──
+    # The single value is one merged, bordered cell spanning the whole data area
+    # (COL_SEX .. last data column), so plain indicators read flat and their
+    # borders line up with the disaggregated grid. No "Total"/"Count" label.
     if not cfg.has_disaggregates:
         _merge(ws, start_row, COL_NAME, start_row, COL_KP, name or category,
                fill=_LABEL_FILL, font=_BOLD, align=_LEFT)
-        _style(ws.cell(row=start_row, column=COL_SEX, value="Total"), fill=_LABEL_FILL, font=_BOLD)
-        # Place the single total in the shared TOTAL column so plain indicators
-        # line up with disaggregated ones.
-        total_col = fixed_total_col if aligned else COL_BAND_START
-        cell = _value_cell(ws, start_row, total_col, dv, formula_provider=formula_provider,
+        anchor = COL_SEX
+        end_col = fixed_ayp_col if aligned else (COL_BAND_START + 6)
+        cell = _value_cell(ws, start_row, anchor, dv, formula_provider=formula_provider,
                            kind="total", primary=ALL_PRIMARY, secondary=ALL_PRIMARY, band=NO_BAND)
         if with_data and formula_provider is None:
             amount = plan.existing_cells.get((ALL_PRIMARY, ALL_PRIMARY, NO_BAND))
             if amount is not None:
                 cell.value = amount
+        if end_col > anchor:
+            ws.merge_cells(start_row=start_row, start_column=anchor,
+                           end_row=start_row, end_column=end_col)
+            fill = _SUBTOTAL_FILL if formula_provider is not None else _INPUT_FILL
+            locked = formula_provider is not None
+            for cc in range(anchor, end_col + 1):
+                covered = ws.cell(row=start_row, column=cc)
+                covered.border = _BORDER
+                covered.fill = fill
+                covered.alignment = _CENTER
+                covered.protection = _LOCKED if locked else _UNLOCKED
         _record("total", "", "", "", cell)
         return start_row + 1
 
