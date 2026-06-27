@@ -17,7 +17,7 @@ django.setup()
 
 from django.db import transaction  # noqa: E402
 
-from aggregates.models import Aggregate, AggregateChangeLog  # noqa: E402
+from aggregates.models import Aggregate  # noqa: E402
 from indicators.models import Indicator  # noqa: E402
 from projects.models import ProjectIndicator, ProjectIndicatorOrganizationTarget  # noqa: E402
 from users.models import User  # noqa: E402
@@ -199,18 +199,6 @@ def main():
             if not args.dry_run:
                 aggregate.indicator = target
                 aggregate.save(update_fields=["indicator"])
-                AggregateChangeLog.objects.create(
-                    aggregate=aggregate,
-                    action=AggregateChangeLog.ACTION_CORRECTED,
-                    changed_by=changed_by,
-                    comment=(
-                        f"Merged duplicate indicator {source.id} into canonical indicator {target.id}."
-                    ),
-                    changes={
-                        "from_indicator_id": source.id,
-                        "to_indicator_id": target.id,
-                    },
-                )
             target_by_key[key] = aggregate
 
         if args.move_project_targets:
