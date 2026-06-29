@@ -164,13 +164,28 @@ def _content_disposition_filename(value, fallback):
     return fallback
 
 
-def run_aggregate_export_job(job_id):
-    job = ExportJob.objects.select_related("created_by").get(id=job_id)
-    job.status = "processing"
-    job.started_at = job.started_at or timezone.now()
-    job.errors = []
-    job.save(update_fields=["status", "started_at", "errors"])
+def _run_aggregate_view_export(job, *, view_action, request_path, fallback_name):
+    """Shared body for background jobs that download a file from a GET action on
+    :class:`AggregateViewSet`.
 
+    Both the aggregate CSV/Excel export and the coordinator reporting workbook
+    are heavy, synchronous endpoints that exceed the gateway timeout for large
+    payloads. Running them through a detached worker (``process_export_job``)
+    and persisting the result lets the HTTP request return immediately while the
+    file is built off the request path.
+
+    The worker rebuilds the request with ``force_authenticate(user=...)`` and so
+    carries no JWT, yet the signed ``mode`` claim is the sole source of truth for
+    training/live isolation (audit S-1). DRF's ForcedAuthentication exposes the
+    ``token`` arg as ``request._auth`` — exactly where
+    ``organizations.access.token_mode()`` reads the claim — so replaying a
+    ``{"mode": ...}`` token makes the export honour the job's persisted
+    environment instead of silently defaulting to live.
+
+    The job has already been marked ``processing`` by the caller. On success the
+    job is marked ``completed`` with the output file recorded; on a >=400
+    response or a missing user it is marked ``failed``. Returns the job.
+    """
     params = {str(key): str(value) for key, value in (job.parameters or {}).items() if value not in (None, "")}
     params.pop("background", None)
     query = QueryDict(mutable=True)
@@ -188,27 +203,26 @@ def run_aggregate_export_job(job_id):
         job.save(update_fields=["status", "completed_at", "errors"])
         return job
 
-    request = APIRequestFactory().get("/api/aggregates/export/", data=query)
-    # Replay the caller's environment to the export view (audit S-1). The signed
-    # JWT mode claim is the sole source of truth for training/live isolation, but
-    # a force_authenticate'd request carries no JWT. DRF's ForcedAuthentication
-    # exposes the ``token`` arg as ``request._auth``, which is exactly where
-    # organizations.access.token_mode() reads the claim — so passing a
-    # ``{"mode": ...}`` token makes the export honour the job's environment
-    # instead of silently defaulting to live.
+    request = APIRequestFactory().get(request_path, data=query)
     mode = job.mode if job.mode in {"live", "training"} else "live"
     force_authenticate(request, user=user, token={"mode": mode})
-    response = AggregateViewSet.as_view({"get": "export"})(request)
+    response = AggregateViewSet.as_view({"get": view_action})(request)
 
     if getattr(response, "status_code", 500) >= 400:
+        detail = ""
+        try:
+            data = getattr(response, "data", None)
+            if isinstance(data, dict):
+                detail = str(data.get("detail") or "")
+        except Exception:
+            detail = ""
         job.status = "failed"
         job.completed_at = timezone.now()
-        job.errors = [{"error": "Aggregate export failed", "status_code": response.status_code}]
+        job.errors = [{"error": "Aggregate export failed", "status_code": response.status_code, "detail": detail}]
         job.save(update_fields=["status", "completed_at", "errors"])
         return job
 
     content_type = response.get("Content-Type", "application/octet-stream")
-    fallback_name = "aggregates_export.xlsx" if params.get("file_format") == "excel" else "aggregates_export.csv"
     file_name = _content_disposition_filename(response.get("Content-Disposition", ""), fallback_name)
     output_dir = Path(settings.BASE_DIR) / "reports" / "export-jobs"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -220,7 +234,10 @@ def run_aggregate_export_job(job_id):
     job.output_file = str(output_path)
     job.file_name = file_name
     job.content_type = content_type
-    job.result = {"size_bytes": output_path.stat().st_size}
+    job.result = {
+        **(job.result if isinstance(job.result, dict) else {}),
+        "size_bytes": output_path.stat().st_size,
+    }
     job.errors = []
     job.save(
         update_fields=[
@@ -234,3 +251,42 @@ def run_aggregate_export_job(job_id):
         ]
     )
     return job
+
+
+def run_aggregate_export_job(job_id):
+    job = ExportJob.objects.select_related("created_by").get(id=job_id)
+    job.status = "processing"
+    job.started_at = job.started_at or timezone.now()
+    job.errors = []
+    job.save(update_fields=["status", "started_at", "errors"])
+
+    params = job.parameters or {}
+    fallback_name = "aggregates_export.xlsx" if str(params.get("file_format")) == "excel" else "aggregates_export.csv"
+    return _run_aggregate_view_export(
+        job,
+        view_action="export",
+        request_path="/api/aggregates/export/",
+        fallback_name=fallback_name,
+    )
+
+
+def run_coordinator_workbook_job(job_id):
+    """Build a coordinator reporting workbook in the background.
+
+    The coordinator workbook fans out one reporting-form sheet per
+    sub-organisation plus a cross-sheet TOTAL sheet; for large coordinators the
+    synchronous endpoint exceeds the gateway timeout (~120s) and 502s. This runs
+    the same generation off the request path and persists the .xlsx for download.
+    """
+    job = ExportJob.objects.select_related("created_by").get(id=job_id)
+    job.status = "processing"
+    job.started_at = job.started_at or timezone.now()
+    job.errors = []
+    job.save(update_fields=["status", "started_at", "errors"])
+
+    return _run_aggregate_view_export(
+        job,
+        view_action="coordinator_workbook",
+        request_path="/api/aggregates/coordinator-workbook/",
+        fallback_name="coordinator_workbook.xlsx",
+    )

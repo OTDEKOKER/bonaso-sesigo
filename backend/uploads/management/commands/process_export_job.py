@@ -1,7 +1,13 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from uploads.jobs import run_aggregate_export_job
+from uploads.jobs import run_aggregate_export_job, run_coordinator_workbook_job
 from uploads.models import ExportJob
+
+
+JOB_RUNNERS = {
+    "aggregate_export": run_aggregate_export_job,
+    "coordinator_workbook": run_coordinator_workbook_job,
+}
 
 
 class Command(BaseCommand):
@@ -17,10 +23,11 @@ class Command(BaseCommand):
         except ExportJob.DoesNotExist as exc:
             raise CommandError(f"ExportJob not found: {job_id}") from exc
 
-        if job.job_type != "aggregate_export":
+        runner = JOB_RUNNERS.get(job.job_type)
+        if runner is None:
             raise CommandError(f"Unsupported export job type: {job.job_type}")
 
-        processed = run_aggregate_export_job(job.id)
+        processed = runner(job.id)
         self.stdout.write(
             self.style.SUCCESS(f"ExportJob {processed.id} finished with status {processed.status}")
         )

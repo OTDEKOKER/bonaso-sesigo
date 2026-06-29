@@ -656,9 +656,11 @@ class ExportJobViewSet(viewsets.ModelViewSet):
             return ExportJob.objects.all()
         return ExportJob.objects.filter(created_by=user)
 
+    SUPPORTED_EXPORT_JOB_TYPES = {"aggregate_export", "coordinator_workbook"}
+
     def create(self, request, *args, **kwargs):
         job_type = str(request.data.get("job_type") or "aggregate_export")
-        if job_type != "aggregate_export":
+        if job_type not in self.SUPPORTED_EXPORT_JOB_TYPES:
             return Response({"error": "Unsupported export job type."}, status=status.HTTP_400_BAD_REQUEST)
 
         parameters = request.data.get("parameters") or {}
@@ -697,8 +699,8 @@ class ExportJobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def retry(self, request, pk=None):
         job = self.get_object()
-        if job.job_type != "aggregate_export":
-            return Response({"error": "Only aggregate export jobs can be retried."}, status=status.HTTP_400_BAD_REQUEST)
+        if job.job_type not in self.SUPPORTED_EXPORT_JOB_TYPES:
+            return Response({"error": "This export job type cannot be retried."}, status=status.HTTP_400_BAD_REQUEST)
         if job.status not in {"failed", "pending", "processing"}:
             return Response({"error": "Only failed or stuck export jobs can be retried."}, status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(job.parameters, dict):

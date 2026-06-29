@@ -27,6 +27,7 @@ import {
   aggregatesService,
   type ReportingWorkbookImportResult,
 } from "@/lib/api/services/aggregates";
+import { uploadsService } from "@/lib/api/services/uploads";
 
 type Option = { id: string | number; name?: string; code?: string };
 /** Project options carry dates so the dialog can show only projects active in the chosen period. */
@@ -338,20 +339,54 @@ export function ReportingWorkbookDialog({
     }
     setBusy("coordinator");
     try {
-      const blob = await aggregatesService.downloadCoordinatorWorkbook({
-        project,
-        coordinator,
-        quarter,
-        fiscal_year: fiscalYear,
-        periodType,
-        month,
+      // A coordinator workbook fans out one sheet per sub-organisation plus a
+      // cross-sheet TOTAL; for large coordinators it exceeds the gateway timeout
+      // and 502s if generated inline. Build it in a background export job and
+      // poll for the result instead.
+      const job = await uploadsService.createExportJob({
+        job_type: "coordinator_workbook",
+        parameters: {
+          project,
+          coordinator,
+          quarter,
+          fiscal_year: fiscalYear,
+          period_type: periodType,
+          ...(periodType === "month" ? { month } : {}),
+        },
       });
+      toast({
+        title: "Preparing coordinator workbook…",
+        description: "This can take a couple of minutes for large coordinators. The download will start automatically.",
+      });
+
+      // Poll until the worker finishes. ~2.5s × 240 = up to 10 minutes, well
+      // beyond the synchronous endpoint's ceiling.
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      let current = job;
+      for (let attempt = 0; attempt < 240 && (current.status === "pending" || current.status === "processing"); attempt += 1) {
+        await sleep(2500);
+        current = await uploadsService.getExportJob(job.id);
+      }
+
+      if (current.status !== "completed") {
+        const detail = Array.isArray(current.errors) && current.errors.length
+          ? (current.errors[0] as { detail?: string; error?: string })?.detail
+            || (current.errors[0] as { detail?: string; error?: string })?.error
+          : undefined;
+        throw new Error(
+          current.status === "failed"
+            ? detail || "Coordinator workbook generation failed."
+            : "Coordinator workbook is taking longer than expected. Check back shortly.",
+        );
+      }
+
+      const blob = await uploadsService.downloadExportJob(job.id);
       const selectedCoord = coordinatorOptions.find((o) => String(o.id) === coordinator);
       const orgName = selectedCoord?.code || selectedCoord?.name || "coordinator";
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `coordinator_workbook_${orgName}_${quarter}_${fiscalYear}.xlsx`;
+      link.download = current.file_name || `coordinator_workbook_${orgName}_${quarter}_${fiscalYear}.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
