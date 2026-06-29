@@ -622,8 +622,14 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
             row = _write_section_heading(ws, row, section)
             current_section = section
         fp = provider_factory(plan.indicator) if provider_factory else None
+        # band_grid is intentionally NOT used for fixed Sub-total/TOTAL/AYP
+        # placement: pinning them to the widest indicator's column left empty
+        # gap columns between the age bands and the TOTAL for narrower / no-age
+        # indicators (the "split"). Each indicator block carries its own header,
+        # so placing Sub-total/TOTAL/AYP immediately after its own age bands
+        # reads cleanly with no gap.
         row = _write_indicator_block(ws, row, plan, cellmap_rows, dv, with_data=with_data,
-                                     formula_provider=fp, band_grid=band_grid)
+                                     formula_provider=fp, band_grid=None)
         row += 1
 
     if dv._pending_coords:
