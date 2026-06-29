@@ -22,7 +22,6 @@ from projects.models import (
     WorkbookLayoutItem,
 )
 from projects.workbook_layout import (
-    UNORDERED_SECTION,
     order_plans_by_layout,
     resolve_layout_for_org,
 )
@@ -303,19 +302,30 @@ class OrderingTests(WorkbookLayoutSetup):
         ordered = order_plans_by_layout([_plan(self.i1)], layout)
         self.assertEqual([p.indicator.id for p in ordered], [self.i1.id])
 
-    def test_new_indicator_appended_under_unordered(self):
+    def test_indicator_not_in_layout_is_excluded(self):
+        # The Workbook Builder layout is the single source of truth for what is
+        # reported: an indicator that is assignable but NOT placed in the layout
+        # must be excluded from the workbook (no "Unordered Indicators" fallback).
         layout = self._layout()
         WorkbookLayoutItem.objects.create(layout=layout, indicator=self.i1, order_index=0)
-        # i3 is applicable but not yet in the layout.
+        # i3 is applicable/assigned but not placed in the layout → must not appear.
         ordered = order_plans_by_layout([_plan(self.i1), _plan(self.i3)], layout)
-        self.assertEqual([p.indicator.id for p in ordered], [self.i1.id, self.i3.id])
-        self.assertEqual(ordered[-1].section, UNORDERED_SECTION)
+        self.assertEqual([p.indicator.id for p in ordered], [self.i1.id])
 
     def test_missing_layout_falls_back_to_default(self):
         plans = [_plan(self.i1), _plan(self.i2)]
         ordered = order_plans_by_layout(plans, None)
         self.assertEqual([p.indicator.id for p in ordered], [self.i1.id, self.i2.id])
         self.assertTrue(all(p.section == "" for p in ordered))
+
+    def test_empty_layout_falls_back_to_default(self):
+        # A layout with no indicator rows (unconfigured) must not produce a blank
+        # workbook — fall back to default ordering of the applicable plans.
+        layout = self._layout()
+        WorkbookLayoutItem.objects.create(layout=layout, section_title="HIV Testing", order_index=0)
+        plans = [_plan(self.i1), _plan(self.i2)]
+        ordered = order_plans_by_layout(plans, layout)
+        self.assertEqual([p.indicator.id for p in ordered], [self.i1.id, self.i2.id])
 
     def test_sub_org_inherits_coordinator_layout(self):
         layout = self._layout()

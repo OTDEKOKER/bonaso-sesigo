@@ -1,19 +1,20 @@
 """Workbook Layout resolution + plan ordering.
 
 A :class:`~projects.models.WorkbookLayout` is a coordinator-level template that
-defines ONLY the order (and optional section grouping) of indicators in a
-generated reporting workbook. It is deliberately independent of project, year,
-quarter, month and period type — those are supplied at download time to fetch
-the data, never to define the saved order.
+is the AUTHORITATIVE definition of the reporting workbook: it determines both
+which indicators an organisation reports on AND the order (with optional section
+grouping). It is deliberately independent of project, year, quarter, month and
+period type — those are supplied at download time to fetch the data, never to
+define the saved set/order.
 
 This module is the single source of truth for:
 
   * resolving which layout applies to an organisation at download time
     (a sub-organisation inherits its coordinator's layout), and
-  * reordering a list of ``IndicatorPlan`` objects by that layout, skipping
-    layout indicators that are not applicable to the current selection and
-    appending newly-applicable indicators under an "Unordered Indicators"
-    section so workbook generation never breaks when indicators are added.
+  * filtering + reordering a list of ``IndicatorPlan`` objects by that layout.
+    Only indicators placed in the layout appear; an indicator that is assigned
+    but not placed means the organisation is not reporting on it, so it is
+    excluded (there is no "Unordered Indicators" fallback).
 """
 from __future__ import annotations
 
@@ -22,8 +23,6 @@ from collections import defaultdict
 from django.db import DatabaseError
 
 from .models import ProjectOrganizationHierarchy, WorkbookLayout
-
-UNORDERED_SECTION = "Unordered Indicators"
 
 
 def get_active_layout(coordinator_org_id, mode: str = "live"):
@@ -104,20 +103,30 @@ def resolve_layout_for_org(project, organization, mode: str = "live"):
 def order_plans_by_layout(plans, layout):
     """Reorder ``plans`` (a list of ``IndicatorPlan``) by ``layout``.
 
-    Rules (see the feature spec):
+    The Workbook Builder layout is the single source of truth for *what is
+    reported* and in *what order*:
       * Layout items are walked in ``order_index``. Heading items set the current
         section; indicator items emit the matching plan (if applicable) under it.
       * A layout indicator that is NOT in ``plans`` (not applicable to the
         selected project/org) is skipped.
-      * A plan whose indicator is not in the layout is appended at the bottom
-        under an "Unordered Indicators" section.
+      * A plan whose indicator is NOT placed in the layout is EXCLUDED from the
+        workbook. An indicator that is assigned but not arranged means the
+        organisation is not reporting on it, so it must not appear in the
+        download (no "Unordered Indicators" fallback section).
       * Each returned plan carries its ``section`` so the generator can render
         heading rows.
 
-    ``layout`` may be ``None`` → returns ``plans`` unchanged (default ordering),
-    with no sections set.
+    ``layout`` may be ``None`` — or contain no indicator rows (an unconfigured
+    layout) — in which case ``plans`` are returned unchanged (default ordering)
+    rather than producing a blank workbook.
     """
     if layout is None:
+        return list(plans)
+
+    items = sorted(layout.items.all(), key=lambda i: (i.order_index, i.id))
+    if not any(item.indicator_id is not None for item in items):
+        # Unconfigured layout (headings only / empty) → fall back to default
+        # ordering instead of emitting an empty workbook.
         return list(plans)
 
     by_indicator = {}
@@ -129,7 +138,7 @@ def order_plans_by_layout(plans, layout):
     ordered = []
     used: set[int] = set()
     current_section = ""
-    for item in sorted(layout.items.all(), key=lambda i: (i.order_index, i.id)):
+    for item in items:
         if item.indicator_id is None:
             # Section heading row.
             current_section = (item.section_title or "").strip()
@@ -141,10 +150,6 @@ def order_plans_by_layout(plans, layout):
         ordered.append(plan)
         used.add(item.indicator_id)
 
-    # Applicable indicators not yet placed → append under "Unordered Indicators".
-    leftovers = [p for p in plans if getattr(p.indicator, "id", None) not in used]
-    for plan in leftovers:
-        plan.section = UNORDERED_SECTION
-        ordered.append(plan)
-
+    # Indicators assigned but NOT placed in the layout are intentionally omitted:
+    # "not arranged" means the organisation is not reporting on them.
     return ordered
