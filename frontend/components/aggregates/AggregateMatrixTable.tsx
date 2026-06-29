@@ -372,8 +372,37 @@ function renderMatrixGroupCard(
   );
 }
 
+const GROUP_BATCH = 20;  // indicator matrices rendered per lazy batch
+
 export function AggregateMatrixTable(props: AggregateMatrixTableProps) {
   const { aggregateGroups, projectNameById, indicatorById, onViewChart } = props;
+
+  // Lazy render: building hundreds of indicator matrices into the DOM at once
+  // freezes the page. Render a batch, then reveal more as the user scrolls.
+  const [visibleCount, setVisibleCount] = React.useState(GROUP_BATCH);
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    setVisibleCount(GROUP_BATCH);
+  }, [aggregateGroups]);
+
+  React.useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((c) => Math.min(c + GROUP_BATCH, aggregateGroups.length));
+        }
+      },
+      { rootMargin: "800px" },
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, [aggregateGroups.length, visibleCount]);
+
+  const visibleGroups = aggregateGroups.slice(0, visibleCount);
+  const hasMore = visibleCount < aggregateGroups.length;
 
   return (
     <div className="space-y-6">
@@ -384,22 +413,32 @@ export function AggregateMatrixTable(props: AggregateMatrixTableProps) {
           <p className="mt-1 text-muted-foreground">Try adjusting your filters or add new entries</p>
         </div>
       ) : (
-        aggregateGroups.map((group) => {
-          const disaggregates = mergeDisaggregatesForGroup(group.items);
-          const context = summarizeGroupContext(group, projectNameById);
+        <>
+          {visibleGroups.map((group) => {
+            const disaggregates = mergeDisaggregatesForGroup(group.items);
+            const context = summarizeGroupContext(group, projectNameById);
 
-          if (!disaggregates) {
-            return renderSimpleGroupCard(group, context, onViewChart);
-          }
+            if (!disaggregates) {
+              return renderSimpleGroupCard(group, context, onViewChart);
+            }
 
-          return renderMatrixGroupCard(
-            group,
-            context,
-            disaggregates,
-            indicatorById,
-            onViewChart,
-          );
-        })
+            return renderMatrixGroupCard(
+              group,
+              context,
+              disaggregates,
+              indicatorById,
+              onViewChart,
+            );
+          })}
+          {hasMore && (
+            <div
+              ref={sentinelRef}
+              className="flex items-center justify-center py-6 text-sm text-muted-foreground"
+            >
+              Loading more… ({visibleCount} of {aggregateGroups.length} indicator groups)
+            </div>
+          )}
+        </>
       )}
     </div>
   );
