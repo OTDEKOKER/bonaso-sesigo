@@ -588,7 +588,8 @@ export const aggregatesService = {
     if (params.periodType === 'month' && params.month != null) search.set('month', String(params.month));
     const response = await fetchWithAuth(
       withTrainingQuery(`/aggregates/coordinator-workbook/?${search.toString()}`),
-      { timeoutMs: 180_000 }, // many sheets + cross-sheet rollup formulas — allow several minutes
+      // never serve a stale cached workbook — the saved layout may have just changed
+      { timeoutMs: 180_000, cache: 'no-store' }, // many sheets + cross-sheet rollup formulas — allow several minutes
     );
     if (!response.ok) {
       const contentType = response.headers.get('content-type');

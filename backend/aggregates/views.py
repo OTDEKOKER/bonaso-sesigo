@@ -1658,6 +1658,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Cache-Control'] = 'no-store'
         return response
 
     @action(detail=False, methods=['get'], url_path='coordinator-workbook')
@@ -1726,6 +1727,10 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        # Freshly generated from the saved layout every time — never let the
+        # browser/proxy serve a cached copy (a re-arranged layout must reflect
+        # immediately on re-download).
+        response['Cache-Control'] = 'no-store'
         return response
 
     @action(detail=False, methods=['post'], url_path='import-reporting-workbook')
