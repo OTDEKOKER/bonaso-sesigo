@@ -628,7 +628,7 @@ export function WorkbookLayoutBuilder({
                         <div
                           key={a.id}
                           draggable={false}
-                          className="flex h-9 items-center gap-2 border-b px-2.5 last:border-b-0 hover:bg-muted/40"
+                          className="flex min-h-9 items-center gap-2 border-b px-2.5 py-1 last:border-b-0 hover:bg-muted/40"
                         >
                           <Checkbox
                             checked={selected.has(a.id)}
@@ -642,7 +642,7 @@ export function WorkbookLayoutBuilder({
                             title={a.code}
                             className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[13px]"
                           >
-                            <span className="truncate">{a.name}</span>
+                            <span className="whitespace-normal break-words">{a.name}</span>
                           </button>
                           <Plus
                             className="h-3.5 w-3.5 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
@@ -866,14 +866,14 @@ function SectionCard({
                   onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onRowDrop(flatIndex) }}
                   onDragEnd={() => setDrag(null)}
                   className={cn(
-                    "group flex h-9 items-center gap-2 border-b px-2 last:border-b-0 hover:bg-muted/40",
+                    "group flex min-h-9 items-center gap-2 border-b px-2 py-1 last:border-b-0 hover:bg-muted/40",
                     drag?.kind === "row" && drag.key === item.key && "opacity-40",
                     isRowDrop && "border-t-2 border-t-primary",
                   )}
                 >
                   <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing" />
                   <span className="w-7 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">{number}.</span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]" title={item.indicator_code || item.indicator_name}>
+                  <span className="min-w-0 flex-1 whitespace-normal break-words text-[13px]" title={item.indicator_code || item.indicator_name}>
                     {item.indicator_name}
                   </span>
                   <IconBtn label="Remove" onClick={() => onRemoveRow(item.key)} destructive>
