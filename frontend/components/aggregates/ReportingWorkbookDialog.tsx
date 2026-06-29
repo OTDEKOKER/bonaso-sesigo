@@ -199,8 +199,17 @@ export function ReportingWorkbookDialog({
 
   // Coordinator options = hierarchy parents in the selected project (∩ permission scope).
   // Falls back to the page-supplied list when the project has no hierarchy links yet.
+  const projectDetailLoaded = !!project && String(projectDetail?.id) === project;
   const coordinatorOptions = useMemo<Option[]>(() => {
-    if (activeLinks.length === 0) return coordinators;
+    if (activeLinks.length === 0) {
+      // A project is selected but its hierarchy hasn't loaded yet: do NOT show
+      // the global coordinator fallback (it isn't scoped to this project and can
+      // include orgs that don't implement it, e.g. BONELA in NSC 2026/27). Wait
+      // for the hierarchy; only use the fallback when no project is selected or
+      // the project genuinely has no hierarchy links.
+      if (project && !projectDetailLoaded) return [];
+      return coordinators;
+    }
     const byId = new Map<string, Option>();
     activeLinks.forEach((link) => {
       const id = String(link.parent_organization);
@@ -210,7 +219,7 @@ export function ReportingWorkbookDialog({
     return Array.from(byId.values()).sort((a, b) =>
       String(a.name || "").localeCompare(String(b.name || "")),
     );
-  }, [activeLinks, coordinators, allowedOrgIds]);
+  }, [activeLinks, coordinators, allowedOrgIds, project, projectDetailLoaded]);
 
   // (3) Coordinator → its subtree of organizations, derived from the project hierarchy.
   const orgsByCoordinator = useMemo<Record<string, Option[]>>(() => {
