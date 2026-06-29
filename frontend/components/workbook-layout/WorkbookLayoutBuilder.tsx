@@ -244,6 +244,24 @@ export function WorkbookLayoutBuilder({
     [sections],
   )
 
+  // The library search also narrows the PLACED side: when searching, show only
+  // sections whose rows match, so an indicator can be found whether it is
+  // already placed (right) or still in the library (left).
+  const displaySections = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return sections
+    return sections
+      .map((s) => ({
+        ...s,
+        rows: s.rows.filter((r) =>
+          `${r.item.indicator_name ?? ""} ${r.item.indicator_code ?? ""}`
+            .toLowerCase()
+            .includes(q),
+        ),
+      }))
+      .filter((s) => s.rows.length > 0)
+  }, [sections, search])
+
   const categories = useMemo(() => {
     const set = new Map<string, string>()
     available.forEach((a) => set.set(a.category, a.category_display || a.category || "Uncategorised"))
@@ -705,8 +723,13 @@ export function WorkbookLayoutBuilder({
                   <Layers className="h-8 w-8 opacity-40" />
                   <p>Empty workbook. Add indicators from the library, create a section, or Reset to the default order.</p>
                 </div>
+              ) : search.trim() && displaySections.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 p-10 text-center text-sm text-muted-foreground">
+                  <Search className="h-8 w-8 opacity-40" />
+                  <p>No placed indicators match “{search.trim()}”. Check the library on the left.</p>
+                </div>
               ) : (
-                sections.map((s) => (
+                displaySections.map((s) => (
                   <SectionCard
                     key={s.key}
                     section={s}
