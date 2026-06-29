@@ -202,6 +202,10 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', not 
 SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', not DEBUG)
 SECURE_REFERRER_POLICY = os.getenv('SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
 X_FRAME_OPTIONS = os.getenv('X_FRAME_OPTIONS', 'DENY')
+# Explicit (Django defaults this True, but state it so it can't silently regress
+# and as defence-in-depth alongside the upload extension allowlist): browsers
+# must not MIME-sniff responses into an executable content-type.
+SECURE_CONTENT_TYPE_NOSNIFF = env_bool('SECURE_CONTENT_TYPE_NOSNIFF', True)
 
 # Production safety guards (audit findings L2, L4). When DEBUG is off we refuse
 # to start with a wide-open CORS policy or on the SQLite dev database, so a

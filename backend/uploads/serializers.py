@@ -1,14 +1,41 @@
+import os
+
+from django.conf import settings
 from rest_framework import serializers
 from .models import Upload, ImportJob, ExportJob
 
 
+# SEC: allowlist of permitted upload extensions. Uploaded files are stored under
+# MEDIA and served back from the same origin, so an unrestricted FileField is a
+# stored-XSS vector: a user could upload .html/.svg/.js that the browser renders
+# (and X-Content-Type-Options: nosniff does NOT help when the file is *served*
+# with an active content-type such as text/html or image/svg+xml). We allowlist
+# the business document/image/spreadsheet types the product actually uses and
+# reject everything else, rather than chasing a denylist of dangerous types.
+ALLOWED_UPLOAD_EXTENSIONS = frozenset({
+    # documents
+    '.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.ppt', '.pptx',
+    # spreadsheets
+    '.xlsx', '.xls', '.xlsm', '.csv', '.ods',
+    # images
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff',
+})
+
+# Hard cap on uploaded file size. DATA/FILE_UPLOAD_MAX_MEMORY_SIZE only control
+# the in-memory threshold (larger files stream to a temp file) — they are not a
+# size limit. This is the actual ceiling. Default 50 MiB; override via env.
+MAX_UPLOAD_BYTES = getattr(settings, 'MAX_UPLOAD_BYTES', None) or int(
+    os.getenv('MAX_UPLOAD_BYTES', str(50 * 1024 * 1024))
+)
+
+
 class UploadSerializer(serializers.ModelSerializer):
     """Serializer for Upload model."""
-    
+
     organization_name = serializers.CharField(source='organization.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     file_url = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Upload
         fields = [
@@ -18,7 +45,22 @@ class UploadSerializer(serializers.ModelSerializer):
             'created_at', 'created_by', 'created_by_name'
         ]
         read_only_fields = ['id', 'file_size', 'file_type', 'created_at', 'created_by']
-    
+
+    def validate_file(self, value):
+        ext = os.path.splitext(getattr(value, 'name', '') or '')[1].lower()
+        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            raise serializers.ValidationError(
+                f"File type '{ext or 'unknown'}' is not allowed. Permitted types: "
+                + ', '.join(sorted(e.lstrip('.') for e in ALLOWED_UPLOAD_EXTENSIONS))
+                + '.'
+            )
+        size = getattr(value, 'size', 0) or 0
+        if size > MAX_UPLOAD_BYTES:
+            raise serializers.ValidationError(
+                f"File is too large ({size} bytes). Maximum allowed is {MAX_UPLOAD_BYTES} bytes."
+            )
+        return value
+
     def get_file_url(self, obj):
         if obj.file:
             request = self.context.get('request')
