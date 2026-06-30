@@ -250,7 +250,7 @@ function DashboardShell({
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { isAuthenticated, isLoading, accessLoadFailed } = useAuth()
+  const { isAuthenticated, isLoading, accessLoadFailed, logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true)
 
@@ -289,21 +289,27 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, pathname, router])
 
-  // Hard failure: no cached session AND the profile/permission fetch failed.
-  // Give the user a clear, actionable message instead of a blank shell.
+  // Hard failure: no cached session AND the profile/permission fetch failed (or
+  // timed out — see the auth-context watchdog). The token is still valid, so this
+  // is a recoverable network/server problem: give the user a clear message and
+  // two concrete actions instead of a blank shell or an endless spinner.
   if (accessLoadFailed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="max-w-md space-y-3 text-center">
-          <p className="text-sm font-medium text-foreground">
-            Unable to load your module access.
+        <div className="max-w-md space-y-4 text-center">
+          <p className="text-base font-semibold text-foreground">
+            Unable to verify your session
           </p>
           <p className="text-sm text-muted-foreground">
-            Please refresh the page or contact an administrator if this keeps happening.
+            The server may be temporarily unavailable or your connection dropped.
+            Your session is still active — retry, or return to the login screen.
           </p>
-          <Button variant="outline" onClick={() => window.location.reload()}>
-            Refresh
-          </Button>
+          <div className="flex items-center justify-center gap-2">
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+            <Button variant="outline" onClick={() => logout()}>
+              Return to login
+            </Button>
+          </div>
         </div>
       </div>
     )

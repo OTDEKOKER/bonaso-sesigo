@@ -492,13 +492,25 @@ async function performTokenRefresh(): Promise<string | null> {
   if (!refresh) return null;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/users/token/refresh/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refresh }),
-    });
+    // Bound (and cancel) the refresh request. Unlike normal requests it does not
+    // go through fetchWithAuth, so without this it had NO timeout — a stalled
+    // backend on /token/refresh would hang the 401-retry path indefinitely and,
+    // on a cold start, strand the auth loader (see auth-context watchdog).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/users/token/refresh/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       clearAuthTokens();
