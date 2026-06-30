@@ -23,17 +23,9 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import { useRouter } from 'next/navigation';
 import { authService, type LoginCredentials } from '@/lib/api';
 import type { User } from '@/lib/types';
+import { AUTH_REVALIDATE_TIMEOUT_MS } from '@/lib/config/timeouts';
 
 const CACHED_USER_KEY = 'cached_user';
-
-/**
- * Hard cap on the on-mount profile revalidation fetch. getCurrentUser() itself
- * has no timeout, so without this a momentarily-unresponsive backend (e.g. right
- * after a deploy) could hang the fetch indefinitely and, on a cold start with no
- * cached user, strand the shell on "Loading your access…" forever. After this we
- * give up and fall into the catch path (actionable access-load-failed screen).
- */
-const AUTH_REVALIDATE_TIMEOUT_MS = 12_000;
 
 /** Read the cached current user, but only if a still-valid token backs it. */
 function readCachedUser(): User | null {

@@ -5,6 +5,7 @@
  * Configure NEXT_PUBLIC_API_URL (or NEXT_PUBLIC_API_BASE_URL) in your environment variables.
  */
 import { enqueueMutation, scheduleMutationSync } from '@/lib/offline/mutation-queue';
+import { API_REQUEST_TIMEOUT_MS, REFRESH_REQUEST_TIMEOUT_MS } from '@/lib/config/timeouts';
 
 function normalizeApiBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
@@ -29,7 +30,6 @@ function normalizeApiBaseUrl(baseUrl: string): string {
 const API_BASE_URL = normalizeApiBaseUrl(
   process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'https://sesigo.org.bw/api',
 );
-const API_REQUEST_TIMEOUT_MS = 15_000;
 type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;
 };
@@ -497,7 +497,7 @@ async function performTokenRefresh(): Promise<string | null> {
     // backend on /token/refresh would hang the 401-retry path indefinitely and,
     // on a cold start, strand the auth loader (see auth-context watchdog).
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), REFRESH_REQUEST_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetch(`${API_BASE_URL}/users/token/refresh/`, {

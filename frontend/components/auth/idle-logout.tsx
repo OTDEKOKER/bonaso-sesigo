@@ -30,11 +30,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { IDLE_TIMEOUT_MS, IDLE_WARNING_MS } from "@/lib/config/timeouts"
 
-/** Total inactivity allowed before logout. */
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000
-/** How long before logout the warning modal is shown (the countdown window). */
-const WARNING_MS = 60 * 1000
+/** Window (before the idle logout) in which the warning modal counts down. */
+const WARNING_MS = IDLE_WARNING_MS
 /** localStorage key used to broadcast activity timestamps across tabs. */
 const LAST_ACTIVITY_KEY = "session_last_activity_at"
 /** sessionStorage flag the login page reads to explain the redirect. */
