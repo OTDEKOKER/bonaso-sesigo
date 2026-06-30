@@ -78,19 +78,35 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
-  // Hydrate synchronously from cache so modules render on first paint.
-  const [user, setUser] = useState<User | null>(() => readCachedUser());
-  const hadCachedUser = useRef(user !== null);
-  // If we already have a cached user we are NOT blocking the UI; only show the
-  // full-screen loader when we have nothing to render yet.
-  const [isLoading, setIsLoading] = useState(() => !hadCachedUser.current);
-  const [hasResolvedAccess, setHasResolvedAccess] = useState(() => hadCachedUser.current);
+  // The cached user lives in localStorage, which only exists on the client.
+  // Reading it in the initial state would make the client's first render
+  // diverge from the server-rendered HTML (always logged-out) and throw a
+  // hydration mismatch (React #418), forcing a full client re-render. So we
+  // start from the server-consistent state and adopt the cache in the mount
+  // effect below — it runs immediately after hydration, so the correct modules
+  // still render on first paint without waiting on the revalidation fetch.
+  const [user, setUser] = useState<User | null>(null);
+  const hadCachedUser = useRef(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasResolvedAccess, setHasResolvedAccess] = useState(false);
   const [accessLoadFailed, setAccessLoadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Revalidate the cached user on mount (and populate it on a cold start).
+  // Adopt the cached user (client-only) on mount, then revalidate against the
+  // backend (and populate it on a cold start).
   useEffect(() => {
     let cancelled = false;
+
+    // Synchronously adopt the last-known user from cache so the correct modules
+    // render on the first client paint, before the revalidation round-trip.
+    const cachedUser = readCachedUser();
+    hadCachedUser.current = cachedUser !== null;
+    if (cachedUser) {
+      setUser(cachedUser);
+      setIsLoading(false);
+      setHasResolvedAccess(true);
+    }
+
     const checkAuth = async () => {
       if (!authService.isAuthenticated()) {
         // Token missing/expired: drop any stale cache and finish loading.
