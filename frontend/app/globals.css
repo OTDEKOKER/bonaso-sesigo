@@ -203,3 +203,13 @@
     letter-spacing: -0.01em;
   }
 }
+
+/* Workbook Layout editor: briefly flash a row when the user jumps to a
+   duplicate-indicator occurrence from the warning banner. */
+@keyframes wb-row-flash {
+  0%, 100% { background-color: color-mix(in oklch, var(--destructive) 12%, transparent); }
+  35%      { background-color: color-mix(in oklch, var(--destructive) 50%, transparent); }
+}
+.wb-row-flash {
+  animation: wb-row-flash 1.2s ease-in-out 1;
+}

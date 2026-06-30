@@ -256,6 +256,66 @@ class WorkbookLayoutViewSet(viewsets.ModelViewSet):
                 "You may only edit the workbook layout for your own coordinator."
             )
 
+    def _duplicate_indicators_response(self, request):
+        """If the payload places the same indicator more than once, return a
+        structured 400 the editor can act on — naming each duplicated indicator
+        and the 1-based positions (indicator order, headings excluded) where it
+        appears — instead of an opaque text error. Returns None when clean.
+
+        ``WorkbookLayoutSerializer.validate_items`` remains the last-resort
+        text safety net for any caller that bypasses the view.
+        """
+        items = request.data.get("items")
+        if not isinstance(items, list):
+            return None
+        positions: dict[int, list[int]] = {}
+        num = 0
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            indicator = item.get("indicator")
+            if indicator in (None, ""):
+                continue  # section heading / blank row
+            num += 1
+            try:
+                ind_id = int(indicator)
+            except (TypeError, ValueError):
+                continue
+            positions.setdefault(ind_id, []).append(num)
+        dups = {ind_id: pos for ind_id, pos in positions.items() if len(pos) > 1}
+        if not dups:
+            return None
+        names = dict(
+            Indicator.objects.filter(id__in=dups.keys()).values_list("id", "name")
+        )
+        return Response(
+            {
+                "error": "duplicate_indicators",
+                "duplicates": [
+                    {
+                        "indicator_id": ind_id,
+                        "indicator_name": names.get(ind_id, f"Indicator {ind_id}"),
+                        "positions": pos,
+                    }
+                    for ind_id, pos in dups.items()
+                ],
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def create(self, request, *args, **kwargs):
+        dup = self._duplicate_indicators_response(request)
+        if dup is not None:
+            return dup
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        # Covers PUT and PATCH (DRF routes partial_update through update()).
+        dup = self._duplicate_indicators_response(request)
+        if dup is not None:
+            return dup
+        return super().update(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         coordinator_org = serializer.validated_data.get("coordinator_organization")
         self._assert_can_edit(getattr(coordinator_org, "id", None))

@@ -63,6 +63,19 @@ interface RenderSection {
   rows: { item: EditorItem; flatIndex: number; number: number }[]
 }
 
+/** One placement of a duplicated indicator (row key, 1-based position, section). */
+interface DuplicateOccurrence {
+  key: string
+  position: number
+  section: string
+}
+/** An indicator that appears more than once, with all of its placements. */
+interface DuplicateGroup {
+  indicatorId: number
+  name: string
+  occurrences: DuplicateOccurrence[]
+}
+
 const UNGROUPED_KEY = "__ungrouped__"
 
 let _seq = 0
@@ -212,6 +225,53 @@ export function WorkbookLayoutBuilder({
     [items],
   )
 
+  // Indicators placed more than once. The backend rejects a layout where the
+  // same indicator id appears twice, so detect collisions here to drive the
+  // warning banner (name, count, section + position of every occurrence),
+  // highlight EVERY offending row, and let the user jump straight to each one.
+  // Positions use the same running 1..N indicator numbering shown on each row;
+  // section is the heading the row falls under ("Ungrouped" before the first).
+  const duplicateInfo = useMemo(() => {
+    const acc = new Map<number, DuplicateGroup>()
+    let section = "Ungrouped"
+    let num = 0
+    for (const item of items) {
+      if (item.type === "heading") {
+        section = item.section_title.trim() || "Untitled section"
+        continue
+      }
+      num += 1
+      if (item.indicator == null) continue
+      const group = acc.get(item.indicator) ?? {
+        indicatorId: item.indicator,
+        name: item.indicator_name || `Indicator ${item.indicator}`,
+        occurrences: [],
+      }
+      if (item.indicator_name) group.name = item.indicator_name
+      group.occurrences.push({ key: item.key, position: num, section })
+      acc.set(item.indicator, group)
+    }
+    const groups: DuplicateGroup[] = []
+    acc.forEach((g) => { if (g.occurrences.length > 1) groups.push(g) })
+    const keys = new Set<string>(groups.flatMap((g) => g.occurrences.map((o) => o.key)))
+    // Flat, position-ordered list of every duplicate occurrence — drives the
+    // Previous/Next stepper.
+    const occurrences = groups
+      .flatMap((g) => g.occurrences.map((o) => ({ ...o, indicatorId: g.indicatorId, name: g.name })))
+      .sort((a, b) => a.position - b.position)
+    return { groups, keys, occurrences }
+  }, [items])
+  const hasDuplicates = duplicateInfo.groups.length > 0
+
+  // Banner "jump to duplicate" navigation: which occurrence is active, and a
+  // transient flash applied to the row we just scrolled to.
+  const [activeDupIndex, setActiveDupIndex] = useState(0)
+  const [flashKey, setFlashKey] = useState<string | null>(null)
+  useEffect(() => {
+    // Keep the stepper index in range as duplicates are resolved.
+    if (activeDupIndex >= duplicateInfo.occurrences.length) setActiveDupIndex(0)
+  }, [duplicateInfo.occurrences.length, activeDupIndex])
+
   // Flat list → section view, with a leading "ungrouped" bucket for indicators
   // placed before the first heading. Running 1..N numbering is global (it is the
   // order indicators appear in the generated workbook).
@@ -243,6 +303,39 @@ export function WorkbookLayoutBuilder({
     () => sections.filter((s) => s.headingKey !== null).length,
     [sections],
   )
+
+  // Jump to a specific duplicate occurrence: reveal it (expand its section and
+  // clear any search filter that hides it), scroll it into view, and flash it.
+  const goToOccurrence = useCallback((rowKey: string) => {
+    const idx = duplicateInfo.occurrences.findIndex((o) => o.key === rowKey)
+    if (idx >= 0) setActiveDupIndex(idx)
+    setSearch("")
+    const sectionKey = sections.find((s) => s.rows.some((r) => r.item.key === rowKey))?.key
+    if (sectionKey) {
+      setCollapsedSections((prev) => {
+        if (!prev.has(sectionKey)) return prev
+        const next = new Set(prev)
+        next.delete(sectionKey)
+        return next
+      })
+    }
+    setFlashKey(rowKey)
+    // Two frames: let the section expand / search clear re-render before we
+    // measure and scroll to the row.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        document.getElementById(`wb-row-${rowKey}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+      }),
+    )
+    window.setTimeout(() => setFlashKey((k) => (k === rowKey ? null : k)), 1300)
+  }, [duplicateInfo.occurrences, sections])
+
+  const stepDuplicate = useCallback((dir: 1 | -1) => {
+    const list = duplicateInfo.occurrences
+    if (list.length === 0) return
+    const next = (activeDupIndex + dir + list.length) % list.length
+    goToOccurrence(list[next].key)
+  }, [duplicateInfo.occurrences, activeDupIndex, goToOccurrence])
 
   // The library search also narrows the PLACED side: when searching, show only
   // sections whose rows match, so an indicator can be found whether it is
@@ -309,8 +402,16 @@ export function WorkbookLayoutBuilder({
   }, [items])
 
   // ── Mutations ─────────────────────────────────────────────────────────────
+  // Idempotent: an indicator already in the layout is never appended again
+  // (the backend rejects a layout with the same indicator twice). This matches
+  // the guard in addSelectedToSection/addAllUnplaced and prevents creating a
+  // duplicate when the library is in "All" mode (which lists placed indicators).
   const addIndicatorToEnd = (a: WorkbookLayoutAvailableIndicator) =>
-    mutate((prev) => [...prev, toEditorItem(a)])
+    mutate((prev) =>
+      prev.some((i) => i.type === "indicator" && i.indicator === a.id)
+        ? prev
+        : [...prev, toEditorItem(a)],
+    )
 
   const addSelectedToSection = (headingKey: string | null) => {
     if (selected.size === 0) return
@@ -444,6 +545,12 @@ export function WorkbookLayoutBuilder({
       toast({ title: "Empty section", description: "Every section needs a name.", variant: "destructive" })
       return
     }
+    if (hasDuplicates) {
+      // Save is disabled while duplicates exist; if we still get here, point the
+      // user at the first one (the banner above lists them all).
+      goToOccurrence(duplicateInfo.occurrences[0].key)
+      return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -466,7 +573,27 @@ export function WorkbookLayoutBuilder({
       toast({ title: "Workbook layout saved", description: `${saved.name} updated.` })
     } catch (err) {
       const status = (err as { status?: number })?.status
-      if (status === 409) {
+      const body = (err as { errors?: unknown })?.errors
+      const serverDup =
+        body && typeof body === "object" && (body as { error?: string }).error === "duplicate_indicators"
+          ? (body as { duplicates?: { indicator_name?: string; positions?: number[] }[] }).duplicates ?? []
+          : null
+      if (serverDup) {
+        // Backend safety net caught a duplicate (the reactive banner normally
+        // catches it first). Jump to the first local occurrence if we have one,
+        // otherwise surface the server's position list.
+        if (duplicateInfo.occurrences.length > 0) {
+          goToOccurrence(duplicateInfo.occurrences[0].key)
+        } else {
+          toast({
+            title: "Cannot save layout",
+            description: serverDup
+              .map((d) => `${d.indicator_name ?? "Indicator"} (positions ${(d.positions ?? []).join(", ")})`)
+              .join("; "),
+            variant: "destructive",
+          })
+        }
+      } else if (status === 409) {
         toast({
           title: "Layout changed elsewhere",
           description: "Someone saved a newer version. Reload the page to get it, then re-apply your changes.",
@@ -508,7 +635,12 @@ export function WorkbookLayoutBuilder({
         {focusMode ? <Minimize2 className="mr-1.5 h-4 w-4" /> : <Maximize2 className="mr-1.5 h-4 w-4" />}
         {focusMode ? "Exit focus" : "Focus"}
       </Button>
-      <Button size="sm" onClick={handleSave} disabled={saving || loading || (!dirty && layoutId !== null)}>
+      <Button
+        size="sm"
+        onClick={handleSave}
+        disabled={saving || loading || hasDuplicates || (!dirty && layoutId !== null)}
+        title={hasDuplicates ? "Resolve the duplicate indicators before saving" : undefined}
+      >
         {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
         Save layout
       </Button>
@@ -624,11 +756,16 @@ export function WorkbookLayoutBuilder({
                         <span className="truncate">{label}</span>
                         <Badge variant="secondary" className="ml-auto h-4 px-1.5 text-[10px]">{list.length}</Badge>
                       </button>
-                      {!isCollapsed && list.map((a) => (
+                      {!isCollapsed && list.map((a) => {
+                        const isPlaced = usedIndicatorIds.has(a.id)
+                        return (
                         <div
                           key={a.id}
                           draggable={false}
-                          className="flex min-h-9 items-center gap-2 border-b px-2.5 py-1 last:border-b-0 hover:bg-muted/40"
+                          className={cn(
+                            "flex min-h-9 items-center gap-2 border-b px-2.5 py-1 last:border-b-0 hover:bg-muted/40",
+                            isPlaced && "opacity-60",
+                          )}
                         >
                           <Checkbox
                             checked={selected.has(a.id)}
@@ -639,17 +776,23 @@ export function WorkbookLayoutBuilder({
                           <button
                             type="button"
                             onClick={() => addIndicatorToEnd(a)}
-                            title={a.code}
-                            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[13px]"
+                            disabled={isPlaced}
+                            title={isPlaced ? `${a.code} — already in the layout` : a.code}
+                            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[13px] disabled:cursor-default"
                           >
                             <span className="whitespace-normal break-words">{a.name}</span>
                           </button>
-                          <Plus
-                            className="h-3.5 w-3.5 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                            onClick={() => addIndicatorToEnd(a)}
-                          />
+                          {isPlaced ? (
+                            <Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[10px]">Placed</Badge>
+                          ) : (
+                            <Plus
+                              className="h-3.5 w-3.5 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                              onClick={() => addIndicatorToEnd(a)}
+                            />
+                          )}
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )
                 })
@@ -703,6 +846,12 @@ export function WorkbookLayoutBuilder({
                   {indicatorCount} indicator{indicatorCount === 1 ? "" : "s"}
                   {sectionCount > 0 && ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}`}
                 </span>
+                {hasDuplicates && (
+                  <Badge variant="destructive" className="h-5 shrink-0 gap-1 px-1.5 text-[10px] font-semibold" title="The same indicator is placed more than once — remove the highlighted duplicates before saving">
+                    <AlertTriangle className="h-3 w-3" />
+                    {duplicateInfo.groups.length} duplicate{duplicateInfo.groups.length === 1 ? "" : "s"}
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <Button size="sm" variant="outline" className="h-8" onClick={addHeading}>
@@ -716,6 +865,54 @@ export function WorkbookLayoutBuilder({
                 </Button>
               </div>
             </div>
+
+            {hasDuplicates && (
+              <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive" role="alert">
+                <div className="flex flex-wrap items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="text-sm font-semibold">
+                    Cannot save layout — {duplicateInfo.groups.length} duplicate indicator{duplicateInfo.groups.length === 1 ? "" : "s"}
+                  </span>
+                  {duplicateInfo.occurrences.length > 1 && (
+                    <div className="ml-auto flex items-center gap-1">
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => stepDuplicate(-1)}>
+                        Previous
+                      </Button>
+                      <span className="text-[11px] tabular-nums">
+                        {activeDupIndex + 1} / {duplicateInfo.occurrences.length}
+                      </span>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => stepDuplicate(1)}>
+                        Next
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <ul className="mt-1.5 space-y-1 text-xs">
+                  {duplicateInfo.groups.map((g) => (
+                    <li key={g.indicatorId}>
+                      <span className="font-medium">{g.name}</span>
+                      <span className="text-destructive/80"> — appears {g.occurrences.length} times: </span>
+                      {g.occurrences.map((o, i) => (
+                        <span key={o.key}>
+                          {i > 0 && <span className="text-destructive/50">, </span>}
+                          <button
+                            type="button"
+                            onClick={() => goToOccurrence(o.key)}
+                            className="rounded underline decoration-dotted underline-offset-2 hover:bg-destructive/15 hover:decoration-solid focus-visible:outline focus-visible:outline-1"
+                            title="Jump to this occurrence"
+                          >
+                            {o.section} → Position {o.position}
+                          </button>
+                        </span>
+                      ))}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-[11px] text-destructive/80">
+                  Remove the extra copies (each indicator may appear only once), then save. Click a position to jump to it.
+                </p>
+              </div>
+            )}
 
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
               {items.length === 0 ? (
@@ -739,6 +936,8 @@ export function WorkbookLayoutBuilder({
                     onRemoveSection={() => s.headingKey && removeSection(s.headingKey)}
                     onMoveSection={(dir) => s.headingKey && moveSection(s.headingKey, dir)}
                     onRemoveRow={removeItem}
+                    duplicateKeys={duplicateInfo.keys}
+                    flashKey={flashKey}
                     drag={drag}
                     setDrag={setDrag}
                     dropTarget={dropTarget}
@@ -785,7 +984,7 @@ export function WorkbookLayoutBuilder({
 // ── Section card ────────────────────────────────────────────────────────────
 function SectionCard({
   section, collapsed, onToggleCollapse, onTitleChange, onRemoveSection, onMoveSection,
-  onRemoveRow, drag, setDrag, dropTarget, setDropTarget, onRowDrop, onSectionDrop,
+  onRemoveRow, duplicateKeys, flashKey, drag, setDrag, dropTarget, setDropTarget, onRowDrop, onSectionDrop,
 }: {
   section: RenderSection
   collapsed: boolean
@@ -794,6 +993,8 @@ function SectionCard({
   onRemoveSection: () => void
   onMoveSection: (dir: -1 | 1) => void
   onRemoveRow: (key: string) => void
+  duplicateKeys: Set<string>
+  flashKey: string | null
   drag: DragPayload
   setDrag: (d: DragPayload) => void
   dropTarget: string | null
@@ -855,9 +1056,11 @@ function SectionCard({
           ) : (
             section.rows.map(({ item, flatIndex, number }) => {
               const isRowDrop = dropTarget === `row:${item.key}` && drag?.kind === "row" && drag.key !== item.key
+              const isDuplicate = duplicateKeys.has(item.key)
               return (
                 <div
                   key={item.key}
+                  id={`wb-row-${item.key}`}
                   draggable
                   onDragStart={(e) => { e.stopPropagation(); setDrag({ kind: "row", key: item.key }) }}
                   onDragOver={(e) => {
@@ -869,6 +1072,8 @@ function SectionCard({
                     "group flex min-h-9 items-center gap-2 border-b px-2 py-1 last:border-b-0 hover:bg-muted/40",
                     drag?.kind === "row" && drag.key === item.key && "opacity-40",
                     isRowDrop && "border-t-2 border-t-primary",
+                    isDuplicate && "border border-destructive/60 bg-destructive/10 hover:bg-destructive/15",
+                    flashKey === item.key && "wb-row-flash",
                   )}
                 >
                   <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing" />
@@ -876,6 +1081,12 @@ function SectionCard({
                   <span className="min-w-0 flex-1 whitespace-normal break-words text-[13px]" title={item.indicator_code || item.indicator_name}>
                     {item.indicator_name}
                   </span>
+                  {isDuplicate && (
+                    <Badge variant="destructive" className="h-5 shrink-0 gap-1 px-1.5 text-[10px] font-semibold" title="This indicator appears more than once — remove the extra before saving">
+                      <AlertTriangle className="h-3 w-3" />
+                      Duplicate
+                    </Badge>
+                  )}
                   <IconBtn label="Remove" onClick={() => onRemoveRow(item.key)} destructive>
                     <Trash2 className="h-4 w-4" />
                   </IconBtn>
