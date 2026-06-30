@@ -51,6 +51,19 @@ function LoginForm() {
     }
   }, [router, mode])
 
+  // If we were redirected here by the inactivity auto-logout, explain why.
+  // Read in an effect (sessionStorage is client-only) to stay hydration-safe.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("inactivity_logout") === "1") {
+        sessionStorage.removeItem("inactivity_logout")
+        setError("You were signed out due to inactivity. Please sign in again.")
+      }
+    } catch {
+      /* sessionStorage unavailable — skip the notice */
+    }
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)

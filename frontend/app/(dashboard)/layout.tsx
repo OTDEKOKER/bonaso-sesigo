@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
+import { IdleLogout } from "@/components/auth/idle-logout"
 import { SessionModeProvider, useSessionMode } from "@/lib/contexts/session-mode-context"
 import { isTrainingMode, isSharedLiveRoute } from "@/lib/training-mode"
 import { useModulePermissions } from "@/lib/permissions/module-permissions"
@@ -321,6 +322,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <ModuleRouteGuard>
+      <IdleLogout />
       <DashboardShell
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
