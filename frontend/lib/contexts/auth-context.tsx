@@ -24,6 +24,7 @@ import { useRouter } from 'next/navigation';
 import { authService, type LoginCredentials } from '@/lib/api';
 import type { User } from '@/lib/types';
 import { AUTH_REVALIDATE_TIMEOUT_MS } from '@/lib/config/timeouts';
+import { broadcastAuthEvent, subscribeAuthEvents } from '@/lib/auth/auth-sync';
 
 const CACHED_USER_KEY = 'cached_user';
 
@@ -186,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(loggedInUser);
         setHasResolvedAccess(true);
         setAccessLoadFailed(false);
+        broadcastAuthEvent('login');
       }
       router.push('/dashboard');
     } catch (err) {
@@ -205,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setHasResolvedAccess(false);
       setIsLoading(false);
+      broadcastAuthEvent('logout');
       router.push('/login');
     }
   }, [router]);
@@ -222,6 +225,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
   }, []);
+
+  // Cross-tab sync: react to auth transitions broadcast by OTHER tabs. A logout
+  // anywhere (manual, idle, or session expiry) clears this tab's state and sends
+  // it to /login; a login elsewhere adopts the now-shared session. These handlers
+  // do NOT call login()/logout() (which would re-broadcast) — they only reconcile
+  // local state, so there is no echo loop.
+  useEffect(() => {
+    return subscribeAuthEvents((event) => {
+      if (event === 'logout') {
+        writeCachedUser(null);
+        setUser(null);
+        setHasResolvedAccess(false);
+        setAccessLoadFailed(false);
+        setIsLoading(false);
+        router.replace('/login');
+      } else if (event === 'login') {
+        void refreshUser();
+      }
+    });
+  }, [router, refreshUser]);
 
   const clearError = useCallback(() => {
     setError(null);
