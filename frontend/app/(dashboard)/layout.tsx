@@ -102,15 +102,20 @@ function DashboardShell({
   setDesktopSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>
 }) {
   const pathname = usePathname()
-  const [showDisclaimerFromLogin, setShowDisclaimerFromLogin] = useState(() => {
-    if (typeof window === "undefined") return false
-    const shouldShow = sessionStorage.getItem("show_login_disclaimer") === "1"
-    if (shouldShow) {
-      sessionStorage.removeItem("show_login_disclaimer")
-    }
-    return shouldShow
-  })
+  // sessionStorage is client-only; reading it in the initial state would diverge
+  // from the server-rendered HTML (→ hydration mismatch). Start false and read
+  // the just-logged-in flag in a mount effect. Doing the read+clear in an effect
+  // also keeps the initializer pure (it previously mutated sessionStorage, which
+  // runs twice under StrictMode).
+  const [showDisclaimerFromLogin, setShowDisclaimerFromLogin] = useState(false)
   const [dismissedPathname, setDismissedPathname] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (sessionStorage.getItem("show_login_disclaimer") === "1") {
+      sessionStorage.removeItem("show_login_disclaimer")
+      setShowDisclaimerFromLogin(true)
+    }
+  }, [])
 
   const isDashboardHome = pathname === "/dashboard"
   const showDisclaimer =

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { AnalyticsComparisonMode, AnalyticsPeriodMode } from "@/lib/analytics/query-builder";
 import type { AnalyticsScopeMode } from "@/lib/analytics/org-scope";
 
@@ -71,20 +71,27 @@ export function AnalyticsFiltersProvider(props: {
     [initialState],
   );
 
-  const [filters, setFiltersState] = useState<AnalyticsFilterState>(() => {
-    if (typeof window === "undefined") return mergedDefaults;
+  // Start from defaults so the server render and the client's first render
+  // produce identical markup; the persisted filters (localStorage is client-
+  // only) are hydrated in the mount effect below to avoid a hydration mismatch.
+  const [filters, setFiltersState] = useState<AnalyticsFilterState>(mergedDefaults);
+
+  const hydratedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Load persisted filters once per storage key, after mount.
+    if (hydratedKeyRef.current === storageKey) return;
+    hydratedKeyRef.current = storageKey;
     try {
       const raw = window.localStorage.getItem(storageKey);
-      if (!raw) return mergedDefaults;
+      if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<AnalyticsFilterState>;
-      return {
-        ...mergedDefaults,
-        ...(parsed || {}),
-      };
+      if (parsed && typeof parsed === "object") {
+        setFiltersState({ ...mergedDefaults, ...parsed });
+      }
     } catch {
-      return mergedDefaults;
+      // Ignore corrupt storage and keep defaults.
     }
-  });
+  }, [storageKey, mergedDefaults]);
 
   const setFilters = useCallback((next: Partial<AnalyticsFilterState>) => {
     setFiltersState((previous) => ({

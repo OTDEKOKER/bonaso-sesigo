@@ -647,7 +647,12 @@ function DashboardPageContent({
 }) {
   const { toast } = useToast();
   const { isTrainingMode, trainingProjectId } = useSessionMode();
-  const initialPreferences = useMemo(() => readHomeDashboardPreferences(storageKey), [storageKey]);
+  // Seed from defaults (NOT the localStorage cache) so the server render and the
+  // client's first render match — readHomeDashboardPreferences touches
+  // localStorage, which is client-only and would cause a hydration mismatch if
+  // read during render. The cached preferences are applied in the mount effect
+  // below, and the server-truth effect further down reconciles after that.
+  const initialPreferences = defaultHomeDashboardPreferences;
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [widgetDialogOpen, setWidgetDialogOpen] = useState(false);
   const [dashboardFilters, setDashboardFilters] = useState<HomeDashboardFilters>(
@@ -659,6 +664,14 @@ function DashboardPageContent({
   const [activeUpdatesTab, setActiveUpdatesTab] = useState<UpdatesTab>(
     initialPreferences.defaultUpdatesTab,
   );
+  // Apply the client-only cached preferences after mount (kept out of render to
+  // avoid a hydration mismatch). Declared before the server-truth effect below
+  // so that, when the user's saved preferences resolve, the server value wins.
+  useEffect(() => {
+    const cached = readHomeDashboardPreferences(storageKey);
+    setDashboardPreferences(cached);
+    setActiveUpdatesTab(cached.defaultUpdatesTab);
+  }, [storageKey]);
   const [widgetBuilderType, setWidgetBuilderType] = useState<DashboardCustomWidget["type"]>(
     DEFAULT_DASHBOARD_CUSTOM_WIDGET_TYPE,
   );

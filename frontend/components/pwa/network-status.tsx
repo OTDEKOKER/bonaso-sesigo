@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react"
 
 export function NetworkStatus() {
-  const [isOnline, setIsOnline] = useState(() => {
-    if (typeof window === "undefined") return true
-    return window.navigator.onLine
-  })
+  // Start optimistically "online" so the server-rendered HTML and the client's
+  // first render agree (navigator.onLine is client-only and would otherwise
+  // diverge → hydration mismatch). The mount effect reconciles to the real
+  // status immediately.
+  const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
+
+    // Reconcile to the actual connectivity state on mount.
+    setIsOnline(window.navigator.onLine)
 
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
