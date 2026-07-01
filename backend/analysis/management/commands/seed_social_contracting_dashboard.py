@@ -66,21 +66,38 @@ CHART_SPECS: list[ChartSpec] = [
     ChartSpec("Reach", "People reached with PEP messages by sex", [["reached with pep messages"]]),
     ChartSpec("Reach", "People reached with PrEP messages by sex", [["reached with prep messages"]]),
     ChartSpec("Reach", "People reached with condom use messages by sex", [["reached with", "condom use"]]),
+    ChartSpec("Reach", "People reached with ARV-based prevention messages", [["reached with arv based prevention"]]),
+    ChartSpec("Reach", "People reached with EMTCT messages", [["reached with emtct"]]),
+    ChartSpec("Reach", "People reached with treatment literacy messages", [["treatment literacy"]]),
+    ChartSpec("Reach", "People reached with psychoeducation", [["reached with psychoeducation"]]),
     ChartSpec("Reach", "People reached with GBV messages by sex", [["reached with gbv messages"]]),
-    ChartSpec("Reach", "People engaged with NCD prevention messages", [["engaged with ncd"]], legend="age_band"),
+    ChartSpec("Reach", "People reached with NCD prevention messages", [["reached with ncd"]]),
+    ChartSpec("Reach", "People engaged with NCD messages (social media)", [["engaged with ncd"]], legend="age_band"),
     ChartSpec("Reach", "People reached with stigma reduction messages", [["reached with stigma reduction"]]),
     # --- HIV testing cascade ---
     ChartSpec("HIV testing", "Referred for HIV testing by sex", [["referred for hiv testing"]]),
     ChartSpec("HIV testing", "Tested for HIV by sex", [["people tested for hiv"]]),
     ChartSpec("HIV testing", "Tested positive for HIV", [["tested positive for hiv"]], legend="age_band"),
+    ChartSpec("HIV testing", "Initiated on ART by sex", [["people initiated on art"]]),
     ChartSpec("HIV testing", "Linked to care by sex", [["people linked to care"]]),
+    # --- STI ---
+    ChartSpec("STI", "Screened for syndromic STIs by sex", [["screened for syndromic stis"]]),
+    ChartSpec("STI", "STI positive referred for services", [["screened positive for stis referred"]]),
     # --- PrEP / PEP ---
+    ChartSpec("PrEP/PEP", "Assessed for PrEP eligibility by sex", [["assessed for prep"]]),
     ChartSpec("PrEP/PEP", "Eligible for PrEP by sex", [["eligible for prep"]]),
     ChartSpec("PrEP/PEP", "Referred for PrEP by sex", [["referred for prep"]]),
+    ChartSpec("PrEP/PEP", "Assessed for PEP eligibility by sex", [["assessed for pep"]]),
     ChartSpec("PrEP/PEP", "Eligible for PEP by sex", [["eligible for pep"]]),
     ChartSpec("PrEP/PEP", "Referred for PEP by sex", [["referred for pep"]]),
+    # --- Treatment continuity (tracing) ---
+    ChartSpec("Treatment continuity", "Missed appointments (1-13 days) followed", [["missed appointment", "followed"]]),
+    ChartSpec("Treatment continuity", "ART defaulters (14-89 days) followed", [["art defaulters", "followed"]]),
+    ChartSpec("Treatment continuity", "LTFU (90+ days) followed", [["ltfu", "followed"]]),
     # --- Condoms & lubricants ---
     ChartSpec("Condoms", "Condoms distributed by sex", [["number of condoms distributed"]], exclude=["brailed", "non-traditional"]),
+    ChartSpec("Condoms", "Condoms distributed via non-traditional sites", [["non-traditional sites"]], legend="non_traditional_sites"),
+    ChartSpec("Condoms", "Brailed condoms distributed to PWDs", [["brailed condoms"]]),
     ChartSpec("Condoms", "Collecting condoms for a repeated time", [["collecting condoms for a repea"]]),
     ChartSpec("Condoms", "Lubricants distributed by sex", [["lubricants distributed"]]),
     # --- GBV cascade ---
@@ -96,11 +113,15 @@ CHART_SPECS: list[ChartSpec] = [
     ChartSpec("TB", "PLHIV interrupting TB treatment reinitiated", [["tb treatment interrupters reinitiated"]]),
     # --- NCD screening ---
     ChartSpec("NCD", "Screened for NCD risk factors by sex", [["screened for ncds risk factors"]]),
+    ChartSpec("NCD", "Suspected of NCD biological risk factors", [["suspected", "ncds risk factors"]]),
     ChartSpec("NCD", "Screened for NCD behavioural risk factors (tobacco)", [["screened for ncds behavioural risk factors("]], legend="tobacco_use"),
     ChartSpec("NCD", "Screened for NCD behavioural risk factors (alcohol)", [["screened for ncds behavioural risk factors "]], legend="alcohol_use"),
     ChartSpec("NCD", "Eligible for tobacco cessation program", [["eligible for tobacco cessation"]]),
+    ChartSpec("NCD", "Referred for tobacco cessation program", [["referred for tobacco cessation"]]),
     ChartSpec("NCD", "Eligible for alcohol management program", [["eligible for alcohol management"]]),
+    ChartSpec("NCD", "Referred for alcohol management program", [["referred for alcohol management"]]),
     ChartSpec("NCD", "Eligible for breast cancer screening by sex", [["eligible for breast cancer screening"]]),
+    ChartSpec("NCD", "Screened for breast cancer by sex", [["screened for breast cancer"]]),
     # --- Mental health ---
     ChartSpec("Mental health", "Screened for mental health by sex", [["screened for mental health"]]),
     ChartSpec("Mental health", "Receiving counselling by sex", [["people receiving counselling"]]),
@@ -109,7 +130,12 @@ CHART_SPECS: list[ChartSpec] = [
     ChartSpec("Mental health", "Referred for mental health management/services", [["referred for mental health management"]], legend="mental_health_management_treatment_services"),
     # --- Human rights / redress ---
     ChartSpec("Rights", "Community leaders sensitised on human rights", [["community leaders sensitised"]]),
+    ChartSpec("Rights", "People sensitised on basic human rights and HIV", [["sensitised on basic human rights"]]),
     ChartSpec("Rights", "People who sought redress", [["sought redress"]]),
+    # --- Capacity building / trainings (per coordinator) ---
+    ChartSpec("Trainings", "Service providers receiving training by coordinator", [["service providers receiving training"]], legend="organization"),
+    ChartSpec("Trainings", "CSOs who received refresher training by coordinator", [["refresher training"]], legend="organization"),
+    ChartSpec("Trainings", "Healthcare workers trained on medical ethics/human rights", [["healthcare workers trained"]], legend="organization"),
     # --- Targets vs achievement (per coordinator) ---
     ChartSpec("Targets", "HIV testing achieved vs target by coordinator", [["people tested for hiv"]], legend="organization", use_target=True),
     ChartSpec("Targets", "Condoms distributed achieved vs target by coordinator", [["number of condoms distributed"]], legend="organization", use_target=True, exclude=["brailed", "non-traditional"]),
