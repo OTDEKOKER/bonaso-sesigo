@@ -25,7 +25,7 @@ export const REFRESH_REQUEST_TIMEOUT_MS = 15_000;
 export const AUTH_REVALIDATE_TIMEOUT_MS = 18_000;
 
 /** Inactivity duration before automatic logout. */
-export const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+export const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** How long before the idle logout the warning countdown is shown. */
 export const IDLE_WARNING_MS = 60 * 1000;
