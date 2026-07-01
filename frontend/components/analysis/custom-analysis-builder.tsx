@@ -135,20 +135,20 @@ const COMPARE_WITH_OPTIONS: Array<SelectOption> = [
   { value: "secondary_breakdown", label: "Secondary breakdown" },
 ];
 
-const PERIOD_MODE_OPTIONS: Array<SelectOption> = [
+export const PERIOD_MODE_OPTIONS: Array<SelectOption> = [
   { value: "quarter", label: "Quarter" },
   { value: "month", label: "Month" },
   { value: "date-range", label: "Date range" },
 ];
 
-const ORG_SCOPE_OPTIONS: Array<{ value: AnalyticsScopeMode; label: string }> = [
+export const ORG_SCOPE_OPTIONS: Array<{ value: AnalyticsScopeMode; label: string }> = [
   { value: "all_orgs", label: "All organizations" },
   { value: "parent_org", label: "Parent + descendants" },
   { value: "selected_orgs", label: "Selected sub-grantees" },
   { value: "self_only", label: "Self only" },
 ];
 
-function buildGeneratedPeriodOptions(mode: CustomAnalysisState["periodMode"]) {
+export function buildGeneratedPeriodOptions(mode: CustomAnalysisState["periodMode"]) {
   const now = new Date();
   const currentYear = now.getFullYear();
 

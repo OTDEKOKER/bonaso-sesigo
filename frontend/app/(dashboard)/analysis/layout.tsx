@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/shared/page-header";
 const TABS = [
   { href: "/analysis/reports", label: "Reports", icon: FileSpreadsheet },
   { href: "/analysis/dashboards", label: "Dashboards", icon: LayoutDashboard },
-  { href: "/analysis/visualizer", label: "Data Visualizer", icon: BarChart3 },
+  { href: "/analysis/visualizer", label: "Create Chart", icon: BarChart3 },
   { href: "/analysis/line-lists", label: "Line Lists", icon: List },
 ];
 
@@ -22,7 +22,7 @@ export default function AnalysisLayout({ children }: { children: React.ReactNode
       <div className="mb-4">
         <PageHeader
           title="Analysis"
-          description="Reports, dashboards, ad-hoc visualizations, and row-level line lists for program performance review."
+          description="Reports, dashboards, point-and-click chart creation, and row-level line lists for program performance review."
         />
       </div>
 

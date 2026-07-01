@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import type { CustomAnalysisState } from "@/components/analysis/custom-analysis-builder";
+import {
+  createDefaultCustomAnalysisState,
+  type CustomAnalysisState,
+} from "@/components/analysis/custom-analysis-builder";
+import { SimpleChartBuilder } from "@/components/analysis/simple-chart-builder";
+import { ChartTemplateGallery } from "@/components/analysis/chart-template-gallery";
+import { applyTemplate, type ChartTemplate } from "@/lib/analytics/chart-templates";
+import { getDisaggregationLabel, getUnionDisaggregationKeys } from "@/lib/analytics/disaggregation";
+import type { ChartFieldName } from "@/lib/api";
+import type { Indicator, Organization } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,7 +27,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
   dashboardSettingsService,
@@ -204,13 +212,16 @@ export function DashboardChartSettingsDialog(
   const [useTrendLine, setUseTrendLine] = useState(false);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
-  const [customJson, setCustomJson] = useState("{}");
+  const [customState, setCustomState] = useState<CustomAnalysisState>(() =>
+    createDefaultCustomAnalysisState(null),
+  );
+  const [customTemplateId, setCustomTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
 
     const mode = inferExistingMode(existing, initialCustomAnalysis);
-    const customState = buildExistingCustomState(existing, initialCustomAnalysis);
+    const existingCustomState = buildExistingCustomState(existing, initialCustomAnalysis);
     const existingChart = existing as LegacyExistingChart | null | undefined;
 
     setAnalysisTemplate(mode);
@@ -234,7 +245,8 @@ export function DashboardChartSettingsDialog(
     setStart(existingChart?.date_from ?? "");
     setEnd(existingChart?.date_to ?? "");
     setIndicatorSearch("");
-    setCustomJson(JSON.stringify(customState, null, 2));
+    setCustomState({ ...createDefaultCustomAnalysisState(null), ...existingCustomState });
+    setCustomTemplateId(null);
   }, [existing, initialCustomAnalysis, open]);
 
   const filteredIndicators = useMemo(() => {
@@ -257,6 +269,31 @@ export function DashboardChartSettingsDialog(
     () => buildFieldOptions(selectedIndicators),
     [selectedIndicators],
   );
+
+  // Derived inputs for the Custom tab's simple builder. Mirrors the Data
+  // Visualizer so a custom dashboard chart is built the same way everywhere.
+  const indicatorList = indicators as unknown as Indicator[];
+  const organizationList = organizations as unknown as Organization[];
+  const customSelectedIndicators = useMemo(
+    () => indicatorList.filter((indicator) => customState.indicatorIds.includes(String(indicator.id))),
+    [indicatorList, customState.indicatorIds],
+  );
+  const customBreakdownFields = useMemo(() => {
+    const source = customSelectedIndicators.length > 0 ? customSelectedIndicators : indicatorList;
+    return getUnionDisaggregationKeys(source).map((key) => ({
+      value: key as ChartFieldName,
+      label: getDisaggregationLabel(key, source),
+    }));
+  }, [indicatorList, customSelectedIndicators]);
+  const customParentOrganizations = useMemo(
+    () => organizationList.filter((org) => organizationList.some((candidate) => candidate.parentId === org.id)),
+    [organizationList],
+  );
+
+  const handleSelectCustomTemplate = (template: ChartTemplate) => {
+    setCustomTemplateId(template.id);
+    setCustomState((current) => applyTemplate(current, template));
+  };
 
   const canAverage =
     selectedIndicatorIds.length === 1 &&
@@ -359,24 +396,11 @@ export function DashboardChartSettingsDialog(
       };
 
       if (analysisTemplate === "custom") {
-        let parsedCustomState: Record<string, unknown>;
-        try {
-          parsedCustomState = JSON.parse(customJson);
-        } catch {
-          toast({
-            title: "Invalid custom JSON",
-            description: "Custom analysis JSON is not valid.",
-            variant: "destructive",
-          });
-          setSaving(false);
-          return;
-        }
-
         const payload = {
           ...(existing ?? {}),
           name: name.trim() || (existing as LegacyExistingChart | null | undefined)?.name || "Custom analysis",
           template_mode: "custom",
-          custom_analysis: parsedCustomState,
+          custom_analysis: { ...customState, title: name.trim() || customState.title },
         };
 
         if (existing?.id) {
@@ -624,15 +648,23 @@ export function DashboardChartSettingsDialog(
             </TabsContent>
 
             <TabsContent value="custom" className="space-y-4 pt-4">
-              <div className="grid gap-2">
-                <Label htmlFor="custom-analysis-json">Custom analysis JSON</Label>
-                <Textarea
-                  id="custom-analysis-json"
-                  value={customJson}
-                  onChange={(event) => setCustomJson(event.target.value)}
-                  className="min-h-[22rem] font-mono text-xs"
+              <div className="space-y-2">
+                <Label>Start from a pattern</Label>
+                <ChartTemplateGallery
+                  selectedId={customTemplateId}
+                  onSelect={handleSelectCustomTemplate}
+                  availableDimensions={customBreakdownFields.map((field) => String(field.value))}
                 />
               </div>
+              <SimpleChartBuilder
+                value={customState}
+                onChange={setCustomState}
+                indicators={indicatorList}
+                projects={projects as unknown as Array<{ id: string | number; name?: string }>}
+                organizations={organizationList}
+                breakdownFields={customBreakdownFields}
+                parentOrganizations={customParentOrganizations}
+              />
             </TabsContent>
           </Tabs>
         </div>

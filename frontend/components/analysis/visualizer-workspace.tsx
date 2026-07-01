@@ -5,10 +5,12 @@ import { Download, Home, Loader2, Save } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 
 import {
-  CustomAnalysisBuilder,
   createDefaultCustomAnalysisState,
   type CustomAnalysisState,
 } from "@/components/analysis/custom-analysis-builder";
+import { SimpleChartBuilder } from "@/components/analysis/simple-chart-builder";
+import { ChartTemplateGallery } from "@/components/analysis/chart-template-gallery";
+import { applyTemplate, type ChartTemplate } from "@/lib/analytics/chart-templates";
 import { KPIGrid } from "@/components/analysis/kpi-grid";
 import { SmartChartRenderer } from "@/components/analysis/smart-chart-renderer";
 import { ConsolidatedMatrixTable } from "@/components/analysis/consolidated-matrix-table";
@@ -67,6 +69,7 @@ export function VisualizerWorkspace() {
   const { user } = useAuth();
 
   const [state, setState] = useState<CustomAnalysisState>(buildVisualizerInitialState);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveDashboardId, setSaveDashboardId] = useState<string>("");
@@ -303,6 +306,11 @@ export function VisualizerWorkspace() {
     }
   };
 
+  const handleSelectTemplate = (template: ChartTemplate) => {
+    setSelectedTemplateId(template.id);
+    setState((current) => applyTemplate(current, template));
+  };
+
   const renderPreview = () => {
     if (!hasIndicators) {
       return (
@@ -345,19 +353,28 @@ export function VisualizerWorkspace() {
         <div>
           <h2 className="text-lg font-semibold text-foreground">Build a visualization</h2>
           <p className="text-sm text-muted-foreground">
-            Pick your data, period, organisation scope, and how to break it down — the preview updates live.
+            Start from a pattern, choose your data, and the preview updates live.
           </p>
         </div>
-        <CustomAnalysisBuilder
+
+        <section className="rounded-[1.5rem] border border-border bg-card p-4 shadow-sm">
+          <h3 className="mb-1 text-base font-semibold text-foreground">Start from a pattern</h3>
+          <p className="mb-3 text-sm text-muted-foreground">Pick a common chart shape, then adjust below.</p>
+          <ChartTemplateGallery
+            selectedId={selectedTemplateId}
+            onSelect={handleSelectTemplate}
+            availableDimensions={breakdownFields.map((field) => String(field.value))}
+          />
+        </section>
+
+        <SimpleChartBuilder
           value={state}
           onChange={setState}
-          dashboard={null}
           indicators={indicators}
           projects={projects}
           organizations={organizations}
           breakdownFields={breakdownFields}
           parentOrganizations={parentOrganizations}
-          standalone
         />
       </div>
 
