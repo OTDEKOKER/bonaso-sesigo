@@ -166,10 +166,10 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
 
         <div className="grid gap-4 py-1">
           <div className="grid gap-2 md:grid-cols-2">
-            <div className="grid gap-2">
+            <div className="grid gap-2 min-w-0">
               <Label>Project</Label>
               <Select value={form.projectId} onValueChange={(value) => setForm((current) => ({ ...current, projectId: value }))}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
@@ -182,13 +182,13 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
               </Select>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-2 min-w-0">
               <Label>Coordinator</Label>
               <Select
                 value={form.coordinatorId}
                 onValueChange={(value) => setForm((current) => ({ ...current, coordinatorId: value }))}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
                   <SelectValue placeholder="Select coordinator" />
                 </SelectTrigger>
                 <SelectContent>
