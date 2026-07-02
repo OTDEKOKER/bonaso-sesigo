@@ -55,7 +55,7 @@ export function CoordinatorTargetsFilterBar(props: CoordinatorTargetsFilterBarPr
         ) : null}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         <Select value={filters.projectId} onValueChange={(value) => onFiltersChange({ projectId: value })}>
           <SelectTrigger>
             <SelectValue placeholder="Project" />
