@@ -654,6 +654,18 @@ export function useCoordinatorTargetRollup(
   );
 }
 
+export function useCoordinatorTargetOptions(
+  projectId: string | null,
+  year: string | null,
+  config?: SWRConfiguration,
+) {
+  return useSWR(
+    projectId && projectId !== "all" ? ["coordinator-target-options", projectId, year] : null,
+    () => coordinatorTargetsService.options(projectId!, year ?? undefined),
+    { ...defaultConfig, ...config },
+  );
+}
+
 export function useProjectCoordinators(projectId: string | null, config?: SWRConfiguration) {
   return useSWR(
     projectId && projectId !== "all" ? ["project-coordinators", projectId] : null,

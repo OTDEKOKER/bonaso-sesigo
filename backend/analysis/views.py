@@ -939,6 +939,30 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         results = self._coordinator_rollup_rows()
         return Response({'count': len(results), 'next': None, 'previous': None, 'results': results})
 
+    @action(detail=False, methods=['get'])
+    def options(self, request):
+        """Distinct indicators + coordinators (id + name) that have a target
+        under the scoped filters — used to populate the filter/dialog dropdowns.
+
+        This deliberately avoids the full list endpoint's per-row rollup-actuals
+        computation + heavy serialization, which is the page's slowest call. One
+        flat ``values_list`` query, no actuals.
+        """
+        qs = self.filter_queryset(self.get_queryset())
+        indicators: dict[int, str] = {}
+        coordinators: dict[int, str] = {}
+        for indicator_id, indicator_name, coordinator_id, coordinator_name in qs.values_list(
+            'indicator_id', 'indicator__name', 'coordinator_id', 'coordinator__name'
+        ):
+            if indicator_id and indicator_id not in indicators:
+                indicators[indicator_id] = indicator_name or f'Indicator {indicator_id}'
+            if coordinator_id and coordinator_id not in coordinators:
+                coordinators[coordinator_id] = coordinator_name or f'Coordinator {coordinator_id}'
+        return Response({
+            'indicators': [{'id': str(k), 'name': v} for k, v in indicators.items()],
+            'coordinators': [{'id': str(k), 'name': v} for k, v in coordinators.items()],
+        })
+
     def _allowed_org_ids_for_user(self):
         if is_organization_admin(self.request.user):
             return None

@@ -131,6 +131,22 @@ export const coordinatorTargetsService = {
     return data;
   },
 
+  // Lightweight dropdown options (distinct indicators + coordinators that have
+  // a target) for a project (+ optional year). Cheap: no rollup actuals — this
+  // replaces the slow page_size=1000 list fetch the filters used to make.
+  async options(
+    projectId: string | number,
+    year?: string | number,
+  ): Promise<{ indicators: Array<{ id: string; name: string }>; coordinators: Array<{ id: string; name: string }> }> {
+    const params: Record<string, string> = { project_id: String(projectId) };
+    if (year !== undefined && year !== "" && String(year) !== "all") params.year = String(year);
+    const { data } = await api.get<{
+      indicators: Array<{ id: string; name: string }>;
+      coordinators: Array<{ id: string; name: string }>;
+    }>(`${ENDPOINT}options/`, params);
+    return data;
+  },
+
   // "All coordinators" rollup: one row per indicator (per year/quarter) summing
   // the configured targets and the certified server-side actuals across the
   // project's coordinators. Backend is the single source of truth (readiness

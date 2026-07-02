@@ -16,6 +16,7 @@ import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import {
   useAllProjects,
   useCoordinatorTargets,
+  useCoordinatorTargetOptions,
   useCoordinatorTargetRollup,
   useProjectCoordinators,
 } from "@/lib/hooks/use-api";
@@ -189,20 +190,14 @@ export function CoordinatorTargetsPage() {
     mutate: mutateCoordinatorTargets,
   } = useCoordinatorTargets(targetFilters);
 
-  // Unfiltered-by-coordinator/indicator list (scoped only to project + year) used
-  // to populate the Coordinator and Indicator dropdowns from the data that
-  // actually exists for the project — so every coordinator/indicator with a
-  // target is selectable (independent of org-tree/hierarchy_overrides).
-  const optionFilters = useMemo<CoordinatorTargetFilters>(
-    () => ({
-      project_id: filters.projectId !== "all" ? filters.projectId : undefined,
-      year: filters.year !== "all" ? filters.year : undefined,
-      page_size: "1000",
-    }),
-    [filters.projectId, filters.year],
+  // Distinct indicators + coordinators (scoped to project + year) that have a
+  // target, for the dropdowns — served by a lightweight endpoint (no rollup
+  // actuals) instead of fetching 1000 fully-computed rows, which was the page's
+  // slowest call.
+  const { data: optionsData } = useCoordinatorTargetOptions(
+    filters.projectId !== "all" ? filters.projectId : null,
+    filters.year !== "all" ? filters.year : null,
   );
-  const { data: optionTargetsData } = useCoordinatorTargets(optionFilters);
-  const optionTargets = (optionTargetsData?.results ?? EMPTY_ITEMS) as CoordinatorTarget[];
   const { data: allProjectsData } = useAllProjects();
 
   // Project-hierarchy coordinators (ProjectOrganization.is_coordinator) for the
@@ -276,15 +271,11 @@ export function CoordinatorTargetsPage() {
   const projectContextMissing = !hasProjects || filters.projectId === "all";
 
   const coordinatorOptions = useMemo<NamedOption[]>(() => {
-    const seen = new Map<string, string>();
-    for (const target of optionTargets) {
-      const id = coerceId(target.coordinator_id);
-      if (id && !seen.has(id)) seen.set(id, String(target.coordinator_name || `Coordinator ${id}`));
-    }
-    return Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) =>
-      a.label.localeCompare(b.label),
-    );
-  }, [optionTargets]);
+    return (optionsData?.coordinators ?? [])
+      .map((coordinator) => ({ value: coerceId(coordinator.id), label: coordinator.name }))
+      .filter((option) => option.value)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [optionsData]);
 
   // The coordinator FILTER lists only the selected project's actual coordinators
   // (project hierarchy). It intentionally differs from `coordinatorOptions`
@@ -301,15 +292,11 @@ export function CoordinatorTargetsPage() {
   }, [filters.projectId, projectCoordinatorsData, coordinatorOptions]);
 
   const indicatorOptions = useMemo<NamedOption[]>(() => {
-    const seen = new Map<string, string>();
-    for (const target of optionTargets) {
-      const id = coerceId(target.indicator_id);
-      if (id && !seen.has(id)) seen.set(id, String(target.indicator_name || `Indicator ${id}`));
-    }
-    return Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) =>
-      a.label.localeCompare(b.label),
-    );
-  }, [optionTargets]);
+    return (optionsData?.indicators ?? [])
+      .map((indicator) => ({ value: coerceId(indicator.id), label: indicator.name }))
+      .filter((option) => option.value)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [optionsData]);
 
   const fiscalYears = useMemo(
     () =>
