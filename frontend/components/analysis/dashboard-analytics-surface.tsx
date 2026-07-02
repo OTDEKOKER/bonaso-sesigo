@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Loader2, Pencil, RotateCcw } from "lucide-react";
 
 import { CompactAnalyticsFilterBar } from "@/components/analysis/compact-analytics-filter-bar";
+import { StickyFilterBar } from "@/components/analysis/dashboard-primitives";
 import type { CustomAnalysisState } from "@/components/analysis/custom-analysis-builder";
 import { KPIGrid } from "@/components/analysis/kpi-grid";
 import { RawRecordsTable } from "@/components/analysis/raw-records-table";
@@ -828,18 +829,20 @@ export function DashboardAnalyticsSurface(props: DashboardAnalyticsSurfaceProps)
 
   return (
     <section className="space-y-8">
-      <CompactAnalyticsFilterBar
-        filters={filters}
-        projects={projects}
-        organizations={organizations}
-        indicators={groupedIndicators}
-        periodOptions={periodOptions}
-        indicatorGroupOptions={groupOptions}
-        parentOrganizations={parentOrganizations}
-        onChangeFilters={setFilters}
-        onResetFilters={resetFilters}
-        recordCount={facts.length}
-      />
+      <StickyFilterBar>
+        <CompactAnalyticsFilterBar
+          filters={filters}
+          projects={projects}
+          organizations={organizations}
+          indicators={groupedIndicators}
+          periodOptions={periodOptions}
+          indicatorGroupOptions={groupOptions}
+          parentOrganizations={parentOrganizations}
+          onChangeFilters={setFilters}
+          onResetFilters={resetFilters}
+          recordCount={facts.length}
+        />
+      </StickyFilterBar>
 
       <DashboardVisualizationPanels
         key={drilldownResetKey}

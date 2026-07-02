@@ -13,6 +13,7 @@ import {
 
 import { DashboardAnalyticsSurface } from "@/components/analysis/dashboard-analytics-surface";
 import { DashboardChartCard } from "@/components/analysis/dashboard-chart-card";
+import { DashboardGrid, DashboardGridSkeleton } from "@/components/analysis/dashboard-primitives";
 import { DashboardChartSettingsDialog } from "@/components/analysis/dashboard-chart-settings-dialog";
 import type { CustomAnalysisState } from "@/components/analysis/custom-analysis-builder";
 import { DashboardSettingsDialog } from "@/components/analysis/dashboard-settings-dialog";
@@ -270,13 +271,11 @@ export function DashboardWorkspace() {
             </div>
 
             {detailLoading && !selectedDashboardDetail ? (
-              <div className="flex min-h-[10rem] items-center justify-center rounded-xl border border-border bg-card">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
+              <DashboardGridSkeleton count={6} columns={3} />
             ) : (
               <>
                 {chartCount > 0 && (
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <DashboardGrid columns={3}>
                     {currentDashboard.charts!.map((chart) => (
                       <DashboardChartCard
                         key={chart.id}
@@ -288,7 +287,7 @@ export function DashboardWorkspace() {
                         deleteDisabled={deletingChartId === chart.id}
                       />
                     ))}
-                  </div>
+                  </DashboardGrid>
                 )}
 
                 <DashboardAnalyticsSurface

@@ -26,8 +26,8 @@ export function DashboardPanel({
       <div className="mb-4 flex min-w-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{eyebrow}</p>
-          <h2 className="mt-2 min-w-0 break-words text-lg font-semibold tracking-tight text-foreground">{title}</h2>
-          {subtitle ? <p className="mt-1 min-w-0 break-words text-xs text-muted-foreground">{subtitle}</p> : null}
+          <h2 title={title} className="mt-2 min-w-0 truncate text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+          {subtitle ? <p title={subtitle} className="mt-1 min-w-0 truncate text-xs text-muted-foreground">{subtitle}</p> : null}
         </div>
         {actions ? <div className="ml-auto min-w-0 max-w-full">{actions}</div> : null}
       </div>

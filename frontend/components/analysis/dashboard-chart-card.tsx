@@ -46,6 +46,7 @@ import type {
 } from "@/components/analysis/chart-card-types";
 import { ChartHeader } from "@/components/analysis/chart-header";
 import { ConsolidatedMatrixTable } from "@/components/analysis/consolidated-matrix-table";
+import { CardFooterMeta } from "@/components/analysis/dashboard-primitives";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -3081,8 +3082,8 @@ export function DashboardChartCard(props: DashboardChartCardProps) {
             : "w-full overflow-hidden border-[#d7dee8] bg-[#fcfdff] text-card-foreground shadow-[0_14px_36px_rgba(15,23,42,0.07)] hover:shadow-[0_18px_42px_rgba(15,23,42,0.10)]"
         }
       >
-      <div className="h-2 w-full bg-[linear-gradient(90deg,#2f73b8_0%,#7eaad6_55%,#d7e5f4_100%)]" />
-      <CardHeader className="border-b border-[#e5eaf1] bg-[#f8fbff] px-4 py-4">
+      <div className="h-1 w-full bg-[linear-gradient(90deg,#2f73b8_0%,#7eaad6_55%,#d7e5f4_100%)]" />
+      <CardHeader className="border-b border-[#e5eaf1] bg-[#f8fbff] px-4 py-3">
         <ChartHeader
           title={chartTitle}
           subtitle={chartSubtitle}
@@ -3180,28 +3181,36 @@ export function DashboardChartCard(props: DashboardChartCardProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            {chart.chart_type !== "pie" ? (
-              <div className="inline-flex rounded-md border border-[#cfd8e3] bg-white p-0.5">
-                {(["quarter", "month"] as const).map((axisOption) => {
-                  const active = selectedAxis === axisOption;
-                  return (
-                    <button
-                      key={axisOption}
-                      type="button"
-                      onClick={() => setSelectedAxis(axisOption)}
-                      className="rounded-[5px] px-2.5 py-1 text-[11px] font-semibold transition-colors"
-                      style={{
-                        backgroundColor: active ? "#2f73b8" : "transparent",
-                        color: active ? "#ffffff" : "#475569",
-                      }}
-                    >
-                      {axisOption === "quarter" ? "Quarter" : "Month"}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-            {chart.chart_type !== "pie" && availablePeriods.length > 0 ? (
+            </div>
+          }
+        />
+      </CardHeader>
+
+      <CardContent className="space-y-3 bg-[#fcfdff] p-4">
+        {/* Per-chart controls relocated out of the header so the title keeps full
+            width and stays on a single line. Compact toolbar above the chart. */}
+        {chart.chart_type !== "pie" ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="inline-flex rounded-md border border-[#cfd8e3] bg-white p-0.5">
+              {(["quarter", "month"] as const).map((axisOption) => {
+                const active = selectedAxis === axisOption;
+                return (
+                  <button
+                    key={axisOption}
+                    type="button"
+                    onClick={() => setSelectedAxis(axisOption)}
+                    className="rounded-[5px] px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                    style={{
+                      backgroundColor: active ? "#2f73b8" : "transparent",
+                      color: active ? "#ffffff" : "#475569",
+                    }}
+                  >
+                    {axisOption === "quarter" ? "Quarter" : "Month"}
+                  </button>
+                );
+              })}
+            </div>
+            {availablePeriods.length > 0 ? (
               <Select
                 value={selectedPeriod}
                 onValueChange={(value) => {
@@ -3222,16 +3231,14 @@ export function DashboardChartCard(props: DashboardChartCardProps) {
                 </SelectContent>
               </Select>
             ) : null}
-            {chart.chart_type !== "pie" ? (
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => handleDatePeriodSelect(event.target.value)}
-                className="h-9 w-[9.75rem] border-[#cfd8e3] bg-white text-xs text-[#334155]"
-                aria-label="Select specific date"
-              />
-            ) : null}
-            {chart.chart_type !== "pie" && compareByGroupingMode === "coordinator" && coordinatorOptions.length > 0 ? (
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => handleDatePeriodSelect(event.target.value)}
+              className="h-9 w-[9.75rem] border-[#cfd8e3] bg-white text-xs text-[#334155]"
+              aria-label="Select specific date"
+            />
+            {compareByGroupingMode === "coordinator" && coordinatorOptions.length > 0 ? (
               <Select value={selectedCoordinator} onValueChange={setSelectedCoordinator}>
                 <SelectTrigger className="h-9 min-w-[12rem] border-[#cfd8e3] bg-white text-xs font-medium text-[#334155]">
                   <SelectValue placeholder="All coordinators" />
@@ -3246,12 +3253,8 @@ export function DashboardChartCard(props: DashboardChartCardProps) {
                 </SelectContent>
               </Select>
             ) : null}
-            </div>
-          }
-        />
-      </CardHeader>
-
-      <CardContent className="space-y-3 bg-[#fcfdff] p-4">
+          </div>
+        ) : null}
         {dataLoading ? (
           <div
             className="flex h-[112px] items-center justify-center rounded-[1rem] border"
@@ -4197,6 +4200,24 @@ export function DashboardChartCard(props: DashboardChartCardProps) {
           </Popover>
         </div>
       </CardContent>
+      <CardFooterMeta
+        items={[
+          {
+            label: "Project",
+            value:
+              dashboard.project_name ||
+              (dashboard.project ? `Project ${dashboard.project}` : null),
+          },
+          {
+            label: "Org",
+            value: dashboard.organization_name
+              ? dashboard.cascade_organization
+                ? `${dashboard.organization_name} + subgrantees`
+                : dashboard.organization_name
+              : null,
+          },
+        ]}
+      />
       </Card>
     </div>
     {zoomable ? (

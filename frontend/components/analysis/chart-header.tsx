@@ -12,14 +12,20 @@ export function ChartHeader(props: ChartHeaderProps) {
   const { title, subtitle, rightContent } = props;
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <div className="space-y-1">
-          <h3 className="text-lg font-semibold tracking-[-0.02em] text-foreground sm:text-xl">
+        <div className="space-y-0.5">
+          {/* Single-line title: truncate gracefully, full text on hover. */}
+          <h3
+            title={title}
+            className="truncate text-[15px] font-semibold tracking-[-0.02em] text-foreground sm:text-base"
+          >
             {title}
           </h3>
           {subtitle ? (
-            <p className="max-w-4xl text-sm leading-5 text-muted-foreground">{subtitle}</p>
+            <p title={subtitle} className="truncate text-xs leading-5 text-muted-foreground">
+              {subtitle}
+            </p>
           ) : null}
         </div>
       </div>
