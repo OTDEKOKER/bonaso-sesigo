@@ -121,6 +121,26 @@ export const coordinatorTargetsService = {
     return data;
   },
 
+  // Project-hierarchy coordinators (ProjectOrganization.is_coordinator) for a
+  // single project — used to populate the coordinator filter with only the
+  // project's actual coordinators, not every org that has a target.
+  async coordinators(projectId: string | number): Promise<Array<{ id: string; name: string }>> {
+    const { data } = await api.get<Array<{ id: string; name: string }>>(`${ENDPOINT}coordinators/`, {
+      project_id: String(projectId),
+    });
+    return data;
+  },
+
+  // "All coordinators" rollup: one row per indicator (per year/quarter) summing
+  // the configured targets and the certified server-side actuals across the
+  // project's coordinators. Backend is the single source of truth (readiness
+  // R3); each coordinator appears as a contribution on the rolled-up row.
+  async rollup(filters?: CoordinatorTargetFilters): Promise<PaginatedResponse<CoordinatorTarget>> {
+    const params = filters as Record<string, string> | undefined;
+    const { data } = await api.get<PaginatedResponse<CoordinatorTarget>>(`${ENDPOINT}rollup/`, params);
+    return data;
+  },
+
   async create(request: CreateCoordinatorTargetRequest): Promise<CoordinatorTarget> {
     const { data } = await api.post<CoordinatorTarget>(ENDPOINT, request);
     return data;

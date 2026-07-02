@@ -16,6 +16,8 @@ import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import {
   useAllProjects,
   useCoordinatorTargets,
+  useCoordinatorTargetRollup,
+  useProjectCoordinators,
 } from "@/lib/hooks/use-api";
 import { useDefaultProject } from "@/lib/hooks/use-default-project";
 import { NoProjectEmptyState } from "@/components/shared/no-project-empty-state";
@@ -125,7 +127,9 @@ function mapTargetsToRows(targets: CoordinatorTarget[]): CoordinatorPerformanceR
       const quarterDiff =
         (quarterSortWeight[right.target.quarter] || 0) - (quarterSortWeight[left.target.quarter] || 0);
       if (quarterDiff !== 0) return quarterDiff;
-      return left.coordinatorName.localeCompare(right.coordinatorName);
+      const coordinatorDiff = left.coordinatorName.localeCompare(right.coordinatorName);
+      if (coordinatorDiff !== 0) return coordinatorDiff;
+      return left.indicatorName.localeCompare(right.indicatorName);
     });
 }
 
@@ -201,12 +205,33 @@ export function CoordinatorTargetsPage() {
   const optionTargets = (optionTargetsData?.results ?? EMPTY_ITEMS) as CoordinatorTarget[];
   const { data: allProjectsData } = useAllProjects();
 
+  // Project-hierarchy coordinators (ProjectOrganization.is_coordinator) for the
+  // selected project. The coordinator filter must list only the project's
+  // actual coordinators — not every org that happens to have a target — so we
+  // scope the dropdown to this authoritative set once a project is chosen.
+  const { data: projectCoordinatorsData } = useProjectCoordinators(
+    filters.projectId !== "all" ? filters.projectId : null,
+  );
+
+  // "All coordinators" within a project → per-indicator rollup (server-side).
+  // A specific coordinator (or no project) keeps the normal per-target list.
+  const isRollupView = filters.projectId !== "all" && filters.coordinatorId === "all";
+  const {
+    data: rollupData,
+    error: rollupError,
+    isLoading: rollupLoading,
+  } = useCoordinatorTargetRollup(isRollupView ? targetFilters : null);
+
   const coordinatorTargetsUnavailable = isBackendUnavailable(coordinatorTargetsError);
 
-  const targets = coordinatorTargetsData?.results ?? EMPTY_ITEMS;
-  const totalCount = coordinatorTargetsData?.count ?? 0;
-  const hasPrevPage = Boolean(coordinatorTargetsData?.previous);
-  const hasNextPage = Boolean(coordinatorTargetsData?.next);
+  const activeData = isRollupView ? rollupData : coordinatorTargetsData;
+  const activeError = isRollupView ? rollupError : coordinatorTargetsError;
+  const activeLoading = isRollupView ? rollupLoading : coordinatorTargetsLoading;
+
+  const targets = activeData?.results ?? EMPTY_ITEMS;
+  const totalCount = activeData?.count ?? 0;
+  const hasPrevPage = Boolean(activeData?.previous);
+  const hasNextPage = Boolean(activeData?.next);
 
   const projects = (allProjectsData?.results ?? EMPTY_ITEMS) as Project[];
 
@@ -260,6 +285,20 @@ export function CoordinatorTargetsPage() {
       a.label.localeCompare(b.label),
     );
   }, [optionTargets]);
+
+  // The coordinator FILTER lists only the selected project's actual coordinators
+  // (project hierarchy). It intentionally differs from `coordinatorOptions`
+  // above, which still spans every org with a target so existing targets remain
+  // editable. Fall back to the target-derived set when no project is chosen.
+  const filterCoordinatorOptions = useMemo<NamedOption[]>(() => {
+    if (filters.projectId !== "all" && projectCoordinatorsData) {
+      return projectCoordinatorsData
+        .map((coordinator) => ({ value: coerceId(coordinator.id), label: coordinator.name }))
+        .filter((option) => option.value)
+        .sort((a, b) => a.label.localeCompare(b.label));
+    }
+    return coordinatorOptions;
+  }, [filters.projectId, projectCoordinatorsData, coordinatorOptions]);
 
   const indicatorOptions = useMemo<NamedOption[]>(() => {
     const seen = new Map<string, string>();
@@ -373,9 +412,9 @@ export function CoordinatorTargetsPage() {
   };
 
   const tableError =
-    coordinatorTargetsError && !coordinatorTargetsUnavailable
-      ? coordinatorTargetsError instanceof Error
-        ? coordinatorTargetsError.message
+    activeError && !coordinatorTargetsUnavailable
+      ? activeError instanceof Error
+        ? activeError.message
         : "Unable to load coordinator targets."
       : null;
 
@@ -469,10 +508,10 @@ export function CoordinatorTargetsPage() {
             filters={filters}
             onFiltersChange={applyFilters}
             projects={projectOptions}
-            coordinators={coordinatorOptions}
+            coordinators={filterCoordinatorOptions}
             indicators={indicatorOptions}
             years={fiscalYears}
-            pending={coordinatorTargetsLoading}
+            pending={activeLoading}
           />
 
           {/* Current-project context / guidance (risk R7) */}
@@ -504,9 +543,9 @@ export function CoordinatorTargetsPage() {
             <CardContent className="space-y-4 p-4">
               <CoordinatorTargetsTable
                 rows={performanceRows}
-                loading={coordinatorTargetsLoading}
+                loading={activeLoading}
                 error={tableError}
-                canEdit={canEditTargets}
+                canEdit={canEditTargets && !isRollupView}
                 onEdit={(target) => withEditGuard(() => setEditTarget(target))}
                 onDelete={(target) => withEditGuard(() => setDeleteTarget(target))}
               />

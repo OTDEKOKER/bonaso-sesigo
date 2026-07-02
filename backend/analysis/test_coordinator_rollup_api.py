@@ -33,7 +33,7 @@ from analysis.services.coordinator_rollups import (
 )
 from indicators.models import Indicator
 from organizations.models import Organization
-from projects.models import Project
+from projects.models import Project, ProjectOrganization
 from users.models import User
 
 
@@ -311,6 +311,94 @@ class CoordinatorTargetApiTests(CoordinatorTargetTableMixin, TestCase):
             'indicator_id': self.indicator.id, 'year': 2026, 'quarter': 'Q1', 'target_value': 100,
         }, format='json')
         self.assertEqual(resp.status_code, 403)
+
+    def test_coordinators_endpoint_lists_only_project_coordinators(self):
+        # Only orgs flagged is_coordinator in the project hierarchy — NOT every
+        # org that happens to have a target.
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.coord, role='coordinator', is_coordinator=True,
+        )
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.child, role='sub_grantee', is_coordinator=False,
+        )
+        # A target on the (non-coordinator) child must not make it a coordinator.
+        self._target(coordinator=self.child, quarter='Q4')
+
+        resp = self.client.get('/api/analysis/coordinator-targets/coordinators/', {'project_id': self.project.id})
+        self.assertEqual(resp.status_code, 200)
+        ids = {row['id'] for row in resp.data}
+        self.assertEqual(ids, {str(self.coord.id)})
+
+    def test_coordinators_endpoint_requires_project(self):
+        resp = self.client.get('/api/analysis/coordinator-targets/coordinators/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, [])
+
+    def test_rollup_sums_targets_and_actuals_across_coordinators(self):
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.coord, role='coordinator', is_coordinator=True,
+        )
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.other_coord, role='coordinator', is_coordinator=True,
+        )
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.child, role='sub_grantee', is_coordinator=False,
+        )
+        self._agg(self.coord, 80)
+        self._agg(self.other_coord, 150)
+        self._target(coordinator=self.coord, target_value=100, quarter='Q1')
+        self._target(coordinator=self.other_coord, target_value=200, quarter='Q1')
+        # A non-coordinator target must be excluded from the rollup sum.
+        self._target(coordinator=self.child, target_value=999, quarter='Q1')
+
+        resp = self.client.get('/api/analysis/coordinator-targets/rollup/', {
+            'project_id': self.project.id, 'year': 2026, 'quarter': 'Q1',
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['count'], 1)
+        row = resp.data['results'][0]
+        self.assertEqual(row['coordinator_name'], 'All coordinators')
+        self.assertEqual(row['target_value'], 300.0)          # 100 + 200, child's 999 excluded
+        self.assertEqual(row['actual_value'], 230.0)          # 80 + 150
+        self.assertAlmostEqual(row['achievement_percent'], 230.0 / 300.0 * 100)
+        self.assertEqual(row['performance_status'], 'behind')
+        contributions = {c['organization_id']: c['actual_value'] for c in row['child_contributions']}
+        self.assertEqual(contributions, {self.coord.id: 80.0, self.other_coord.id: 150.0})
+
+    def test_rollup_requires_project(self):
+        resp = self.client.get('/api/analysis/coordinator-targets/rollup/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['results'], [])
+
+    def test_export_mirrors_rollup_when_all_coordinators(self):
+        # Export with a project but no coordinator selected must match the
+        # on-screen "All coordinators" rollup, not the raw per-coordinator rows.
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.coord, role='coordinator', is_coordinator=True,
+        )
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.other_coord, role='coordinator', is_coordinator=True,
+        )
+        self._agg(self.coord, 80)
+        self._agg(self.other_coord, 150)
+        self._target(coordinator=self.coord, target_value=100, quarter='Q1')
+        self._target(coordinator=self.other_coord, target_value=200, quarter='Q1')
+
+        rollup = self.client.get('/api/analysis/coordinator-targets/rollup/', {
+            'project_id': self.project.id, 'year': 2026, 'quarter': 'Q1',
+        }).data['results'][0]
+
+        export_resp = self.client.get('/api/analysis/coordinator-targets/export/', {
+            'project_id': self.project.id, 'year': 2026, 'quarter': 'Q1',
+        })
+        self.assertEqual(export_resp.status_code, 200)
+        rows = list(csv.DictReader(io.StringIO(export_resp.content.decode('utf-8'))))
+        self.assertEqual(len(rows), 1)  # one rolled-up row, not two per-coordinator rows
+        row = rows[0]
+        self.assertEqual(row['coordinator'], 'All coordinators')
+        self.assertEqual(float(row['target_value']), rollup['target_value'])
+        self.assertEqual(float(row['actual_value']), rollup['actual_value'])
+        self.assertEqual(float(row['achievement_percent']), round(rollup['achievement_percent'], 2))
 
     def test_no_n_plus_one_as_targets_grow(self):
         # The query count must be bounded by the number of distinct

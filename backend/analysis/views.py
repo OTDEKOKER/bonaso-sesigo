@@ -33,7 +33,7 @@ from projects.scope import (
     filter_queryset_by_assigned_projects,
 )
 from .serializers import ReportSerializer, SavedQuerySerializer, ScheduledReportSerializer, CoordinatorTargetSerializer
-from .services.coordinator_rollups import get_coordinator_performance
+from .services.coordinator_rollups import get_coordinator_performance, performance_status as coordinator_performance_status
 from audit.recording import record_audit_event
 from aggregates.models import Aggregate
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, should_include_training, training_view_mode, is_training_only_request
@@ -785,6 +785,160 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             qs = qs.filter(is_active=(params.get('is_active') == 'true'))
         return qs
 
+    @action(detail=False, methods=['get'])
+    def coordinators(self, request):
+        """Return the project's coordinator organizations, per the project
+        hierarchy (ProjectOrganization.is_coordinator). The targets filter uses
+        this to list only actual coordinators, not every organization that
+        happens to have a coordinator target assigned to it."""
+        from projects.models import ProjectOrganization
+
+        project_id = (request.query_params.get('project_id') or '').strip()
+        if not project_id or project_id.lower() == 'all':
+            return Response([])
+
+        rows = ProjectOrganization.objects.filter(
+            project_id=project_id,
+            is_coordinator=True,
+            is_active=True,
+        )
+
+        # Same project-assignment gate as the target list: non-admins only see
+        # coordinators for projects they are assigned to.
+        user = request.user
+        if not (user.is_superuser or user.is_staff or getattr(user, 'role', None) == 'admin'):
+            rows = filter_queryset_by_assigned_projects(rows, user, 'project_id')
+
+        rows = rows.select_related('organization').order_by('organization__name')
+        seen = set()
+        coordinators = []
+        for row in rows:
+            org = row.organization
+            if not org or org.id in seen:
+                continue
+            seen.add(org.id)
+            coordinators.append({'id': str(org.id), 'name': org.name or f'Coordinator {org.id}'})
+        return Response(coordinators)
+
+    def _project_coordinator_ids(self, project_id):
+        """The org ids that are coordinators in this project (project hierarchy
+        role, ProjectOrganization.is_coordinator)."""
+        from projects.models import ProjectOrganization
+
+        return set(
+            ProjectOrganization.objects.filter(
+                project_id=project_id,
+                is_coordinator=True,
+                is_active=True,
+            ).values_list('organization_id', flat=True)
+        )
+
+    def _is_rollup_request(self):
+        """True when the caller is viewing "All coordinators" within a single
+        project (project set, no specific coordinator) — the on-screen state
+        that collapses to one row per indicator."""
+        params = self.request.query_params
+        project_id = (params.get('project_id') or '').strip()
+        coordinator_id = (params.get('coordinator_id') or '').strip().lower()
+        return bool(project_id) and project_id.lower() != 'all' and coordinator_id in ('', 'all')
+
+    def _coordinator_rollup_rows(self):
+        """Per-indicator rollup rows across the project's coordinators.
+
+        Collapse every coordinator's targets into one row per (indicator, year,
+        quarter), summing the configured targets and the certified server-side
+        actuals across the project's coordinators (project hierarchy).
+        Coordinator subtrees are disjoint by construction, so summing does not
+        double-count. Each coordinator appears as a contribution entry on the
+        rolled-up row. Shared by the ``rollup`` action and the CSV export so the
+        two can never disagree.
+        """
+        project_id = (self.request.query_params.get('project_id') or '').strip()
+        if not project_id or project_id.lower() == 'all':
+            return []
+
+        coordinator_ids = self._project_coordinator_ids(project_id)
+        if not coordinator_ids:
+            return []
+
+        # Reuse the scoped/training/permission-filtered queryset, then narrow to
+        # this project's coordinators only.
+        qs = self.filter_queryset(self.get_queryset()).filter(coordinator_id__in=coordinator_ids)
+        qs = qs.select_related('project', 'coordinator', 'indicator')
+
+        targets = list(qs)
+        actuals = get_coordinator_performance(targets)
+
+        groups = {}
+        order = []
+        for target in targets:
+            key = (target.indicator_id, target.year, target.quarter)
+            if key not in groups:
+                groups[key] = {
+                    'indicator_id': target.indicator_id,
+                    'indicator_name': getattr(target.indicator, 'name', None) or f'Indicator {target.indicator_id}',
+                    'project_id': target.project_id,
+                    'project_name': getattr(target.project, 'name', None) or f'Project {target.project_id}',
+                    'year': target.year,
+                    'quarter': target.quarter,
+                    'target_value': 0.0,
+                    'actual_value': 0.0,
+                    'own_actual_value': 0.0,
+                    'contributions': [],
+                }
+                order.append(key)
+            g = groups[key]
+            perf = actuals.get(target.id, {})
+            g['target_value'] += float(target.target_value or 0)
+            g['actual_value'] += float(perf.get('actual_value', 0.0) or 0.0)
+            g['own_actual_value'] += float(perf.get('own_actual_value', 0.0) or 0.0)
+            g['contributions'].append({
+                'organization_id': target.coordinator_id,
+                'organization_name': getattr(target.coordinator, 'name', None) or f'Coordinator {target.coordinator_id}',
+                'actual_value': float(perf.get('actual_value', 0.0) or 0.0),
+            })
+
+        results = []
+        for key in order:
+            g = groups[key]
+            target_value = g['target_value']
+            actual_value = g['actual_value']
+            own_value = g['own_actual_value']
+            achievement = (actual_value / target_value * 100) if target_value > 0 else None
+            contributions = sorted(g['contributions'], key=lambda row: row['actual_value'], reverse=True)
+            for entry in contributions:
+                entry['share_percent'] = (entry['actual_value'] / actual_value * 100) if actual_value > 0 else 0.0
+            results.append({
+                'id': f"rollup-{g['indicator_id']}-{g['year']}-{g['quarter']}",
+                'project_id': g['project_id'],
+                'project_name': g['project_name'],
+                'coordinator_id': None,
+                'coordinator_name': 'All coordinators',
+                'indicator_id': g['indicator_id'],
+                'indicator_name': g['indicator_name'],
+                'year': g['year'],
+                'quarter': g['quarter'],
+                'target_value': target_value,
+                'is_active': True,
+                'own_actual_value': own_value,
+                'own_contribution': own_value,
+                'subgrantee_contribution': actual_value - own_value,
+                'actual_value': actual_value,
+                'achievement_percent': achievement,
+                'variance': actual_value - target_value,
+                'performance_status': coordinator_performance_status(target_value, achievement),
+                'child_contributions': contributions,
+            })
+
+        return results
+
+    @action(detail=False, methods=['get'])
+    def rollup(self, request):
+        """Per-indicator rollup across the project's coordinators (the "All
+        coordinators" view). See ``_coordinator_rollup_rows`` for the mechanics."""
+        results = self._coordinator_rollup_rows()
+        return Response({'count': len(results), 'next': None, 'previous': None, 'results': results})
+
     def _allowed_org_ids_for_user(self):
         if is_organization_admin(self.request.user):
             return None
@@ -971,12 +1125,9 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         Export certification (readiness R3): values come from the SAME
         ``get_coordinator_performance`` engine and the SAME scoped queryset as
         the list endpoint, so an exported file can never disagree with the
-        dashboard. No rollup math is duplicated here.
+        dashboard. No rollup math is duplicated here. When the caller is viewing
+        "All coordinators" the file mirrors the on-screen per-indicator rollup.
         """
-        queryset = self.filter_queryset(self.get_queryset())
-        targets = list(queryset)
-        actuals = get_coordinator_performance(targets)
-
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="coordinator-targets.csv"'
         writer = csv.writer(response)
@@ -985,6 +1136,36 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             'target_value', 'actual_value', 'own_contribution',
             'subgrantee_contribution', 'achievement_percent', 'performance_status',
         ])
+
+        if self._is_rollup_request():
+            rows = self._coordinator_rollup_rows()
+            for row in rows:
+                achievement = row.get('achievement_percent')
+                writer.writerow([
+                    row.get('project_name', ''),
+                    row.get('coordinator_name', 'All coordinators'),
+                    row.get('indicator_name', ''),
+                    row.get('year', ''),
+                    row.get('quarter', ''),
+                    row.get('target_value', 0.0),
+                    row.get('actual_value', 0.0),
+                    row.get('own_contribution', 0.0),
+                    row.get('subgrantee_contribution', 0.0),
+                    '' if achievement is None else round(achievement, 2),
+                    row.get('performance_status', 'no_target'),
+                ])
+            record_audit_event(
+                action='export',
+                request=request,
+                object_type='coordinator_target',
+                description=f'Exported {len(rows)} coordinator rollup row(s) to CSV.',
+                metadata={'count': len(rows), 'mode': 'rollup'},
+            )
+            return response
+
+        queryset = self.filter_queryset(self.get_queryset())
+        targets = list(queryset)
+        actuals = get_coordinator_performance(targets)
         for target in targets:
             payload = actuals.get(target.id, {})
             achievement = payload.get('achievement_percent')

@@ -643,6 +643,25 @@ export function useAllCoordinatorTargets(filters?: CoordinatorTargetFilters, con
   );
 }
 
+export function useCoordinatorTargetRollup(
+  filters: CoordinatorTargetFilters | null,
+  config?: SWRConfiguration,
+) {
+  return useSWR(
+    filters ? ["coordinator-targets-rollup", filters] : null,
+    () => coordinatorTargetsService.rollup(filters!),
+    { ...defaultConfig, ...config },
+  );
+}
+
+export function useProjectCoordinators(projectId: string | null, config?: SWRConfiguration) {
+  return useSWR(
+    projectId && projectId !== "all" ? ["project-coordinators", projectId] : null,
+    () => coordinatorTargetsService.coordinators(projectId!),
+    { ...defaultConfig, ...config },
+  );
+}
+
 export function useCoordinatorTarget(id: number | null, config?: SWRConfiguration) {
   return useSWR(
     id ? ['coordinator-target', id] : null,
