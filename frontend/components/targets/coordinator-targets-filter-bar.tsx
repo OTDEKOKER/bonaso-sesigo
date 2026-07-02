@@ -57,7 +57,7 @@ export function CoordinatorTargetsFilterBar(props: CoordinatorTargetsFilterBarPr
 
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         <Select value={filters.projectId} onValueChange={(value) => onFiltersChange({ projectId: value })}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0 [&>span]:truncate">
             <SelectValue placeholder="Project" />
           </SelectTrigger>
           <SelectContent className={constrainedSelectContentClassName}>
@@ -73,7 +73,7 @@ export function CoordinatorTargetsFilterBar(props: CoordinatorTargetsFilterBarPr
         </Select>
 
         <Select value={filters.coordinatorId} onValueChange={(value) => onFiltersChange({ coordinatorId: value })}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0 [&>span]:truncate">
             <SelectValue placeholder="Coordinator" />
           </SelectTrigger>
           <SelectContent className={constrainedSelectContentClassName}>
@@ -89,7 +89,7 @@ export function CoordinatorTargetsFilterBar(props: CoordinatorTargetsFilterBarPr
         </Select>
 
         <Select value={filters.indicatorId} onValueChange={(value) => onFiltersChange({ indicatorId: value })}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0 [&>span]:truncate">
             <SelectValue placeholder="Indicator" />
           </SelectTrigger>
           <SelectContent className={constrainedSelectContentClassName}>
@@ -105,7 +105,7 @@ export function CoordinatorTargetsFilterBar(props: CoordinatorTargetsFilterBarPr
         </Select>
 
         <Select value={filters.year} onValueChange={(value) => onFiltersChange({ year: value })}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0 [&>span]:truncate">
             <SelectValue placeholder="Year" />
           </SelectTrigger>
           <SelectContent className={constrainedSelectContentClassName}>
@@ -122,7 +122,7 @@ export function CoordinatorTargetsFilterBar(props: CoordinatorTargetsFilterBarPr
           value={filters.quarter}
           onValueChange={(value) => onFiltersChange({ quarter: value as CoordinatorTargetQuarter | "all" })}
         >
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0 [&>span]:truncate">
             <SelectValue placeholder="Quarter" />
           </SelectTrigger>
           <SelectContent className={constrainedSelectContentClassName}>
@@ -135,7 +135,7 @@ export function CoordinatorTargetsFilterBar(props: CoordinatorTargetsFilterBarPr
         </Select>
 
         <Select value={filters.isActive} onValueChange={(value) => onFiltersChange({ isActive: value as "all" | "true" | "false" })}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0 [&>span]:truncate">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent className={constrainedSelectContentClassName}>
