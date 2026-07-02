@@ -77,7 +77,7 @@ export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {
 
             return (
               <TableRow key={row.target.id}>
-                <TableCell className="max-w-[20rem] truncate">{row.indicatorName}</TableCell>
+                <TableCell className="max-w-[24rem] whitespace-normal break-words align-top">{row.indicatorName}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatNumber(Number(row.target.target_value || 0))}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   <div>{formatNumber(row.actualValue)}</div>
