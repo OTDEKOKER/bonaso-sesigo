@@ -42,7 +42,7 @@ import {
 } from "@/components/targets/coordinator-target-bulk-assign-dialog";
 import {
   CoordinatorTargetFormDialog,
-  type CoordinatorTargetFormValue,
+  type CoordinatorTargetSaveItem,
 } from "@/components/targets/coordinator-target-form-dialog";
 import { CoordinatorTargetsFilterBar } from "@/components/targets/coordinator-targets-filter-bar";
 import { CoordinatorTargetsTable } from "@/components/targets/coordinator-targets-table";
@@ -344,24 +344,34 @@ export function CoordinatorTargetsPage() {
     });
   };
 
-  const handleSaveTarget = async (value: CoordinatorTargetFormValue) => {
+  const handleSaveTarget = async (items: CoordinatorTargetSaveItem[]) => {
     setSaving(true);
     try {
-      if (editTarget) {
-        await coordinatorTargetsService.update(editTarget.id, value);
-      } else {
-        await coordinatorTargetsService.create(value);
+      let created = 0;
+      let updated = 0;
+      // One row per quarter: update when an existing target id is supplied,
+      // otherwise create. Sequential so a failure surfaces the offending quarter.
+      for (const item of items) {
+        const { id, ...value } = item;
+        if (id) {
+          await coordinatorTargetsService.update(id, value);
+          updated += 1;
+        } else {
+          await coordinatorTargetsService.create(value);
+          created += 1;
+        }
       }
       await mutateCoordinatorTargets();
       setCreateOpen(false);
       setEditTarget(null);
       toast({
-        title: editTarget ? "Coordinator target updated" : "Coordinator target created",
+        title: "Coordinator targets saved",
+        description: `${created} created, ${updated} updated.`,
       });
     } catch (error) {
       toast({
         title: "Save failed",
-        description: error instanceof Error ? error.message : "Unable to save coordinator target.",
+        description: error instanceof Error ? error.message : "Unable to save coordinator targets.",
         variant: "destructive",
       });
     } finally {

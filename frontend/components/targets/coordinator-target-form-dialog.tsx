@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, Search } from "lucide-react";
 
-import type { CoordinatorTarget, CoordinatorTargetQuarter } from "@/lib/api";
+import { coordinatorTargetsService, type CoordinatorTarget, type CoordinatorTargetQuarter } from "@/lib/api";
 import { getCurrentFiscalYear } from "@/components/targets/coordinator-targets-utils";
 import type { NamedOption } from "@/components/targets/coordinator-targets-types";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,16 @@ export type CoordinatorTargetFormValue = {
   is_active: boolean;
 };
 
+// One upsert per quarter. `id` present => update that existing target, else
+// create a new one. The dialog edits all four quarters on a single page.
+export type CoordinatorTargetSaveItem = CoordinatorTargetFormValue & { id?: number };
+
+const QUARTERS: CoordinatorTargetQuarter[] = ["Q1", "Q2", "Q3", "Q4"];
+
+function emptyQuarterValues(): Record<CoordinatorTargetQuarter, string> {
+  return { Q1: "", Q2: "", Q3: "", Q4: "" };
+}
+
 type CoordinatorTargetFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -53,7 +63,7 @@ type CoordinatorTargetFormDialogProps = {
   /** Project from the page context; pre-fills a new target so it can't be
    * created under a different project than the one the user is working in. */
   defaultProjectId?: string;
-  onSubmit: (value: CoordinatorTargetFormValue) => Promise<void> | void;
+  onSubmit: (items: CoordinatorTargetSaveItem[]) => Promise<void> | void;
 };
 
 type FormState = {
@@ -61,8 +71,7 @@ type FormState = {
   coordinatorId: string;
   indicatorId: string;
   year: string;
-  quarter: CoordinatorTargetQuarter;
-  targetValue: string;
+  quarterValues: Record<CoordinatorTargetQuarter, string>;
   notes: string;
   isActive: boolean;
 };
@@ -72,21 +81,23 @@ const DEFAULT_FORM: FormState = {
   coordinatorId: "",
   indicatorId: "",
   year: String(getCurrentFiscalYear()),
-  quarter: "Q1",
-  targetValue: "",
+  quarterValues: emptyQuarterValues(),
   notes: "",
   isActive: true,
 };
 
 function toFormState(existing?: CoordinatorTarget | null, defaultProjectId?: string): FormState {
-  if (!existing) return { ...DEFAULT_FORM, projectId: defaultProjectId || "" };
+  if (!existing) {
+    return { ...DEFAULT_FORM, projectId: defaultProjectId || "", quarterValues: emptyQuarterValues() };
+  }
+  const quarterValues = emptyQuarterValues();
+  quarterValues[existing.quarter] = String(existing.target_value ?? "");
   return {
     projectId: String(existing.project_id),
     coordinatorId: String(existing.coordinator_id),
     indicatorId: String(existing.indicator_id),
     year: String(existing.year),
-    quarter: existing.quarter,
-    targetValue: String(existing.target_value ?? ""),
+    quarterValues,
     notes: existing.notes || "",
     isActive: existing.is_active !== false,
   };
@@ -98,6 +109,45 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
   const [errorMessage, setErrorMessage] = useState("");
   const [indicatorSearchOpen, setIndicatorSearchOpen] = useState(false);
   const [indicatorSearch, setIndicatorSearch] = useState("");
+  // Existing target row per quarter (id => update, absent => create) for the
+  // currently-selected project + coordinator + indicator + year.
+  const [quarterMeta, setQuarterMeta] = useState<Partial<Record<CoordinatorTargetQuarter, { id: number }>>>({});
+  const [loadingQuarters, setLoadingQuarters] = useState(false);
+
+  const { projectId, coordinatorId, indicatorId, year } = form;
+
+  // Load the existing quarterly targets whenever the key fields are all set, so
+  // every quarter shows its current value and saves route to update vs create.
+  useEffect(() => {
+    if (!open || !projectId || !coordinatorId || !indicatorId || !year) {
+      setQuarterMeta({});
+      return;
+    }
+    let cancelled = false;
+    setLoadingQuarters(true);
+    coordinatorTargetsService
+      .list({ project_id: projectId, coordinator_id: coordinatorId, indicator_id: indicatorId, year, page_size: "10" })
+      .then((response) => {
+        if (cancelled) return;
+        const meta: Partial<Record<CoordinatorTargetQuarter, { id: number }>> = {};
+        const values = emptyQuarterValues();
+        for (const target of response.results || []) {
+          meta[target.quarter] = { id: target.id };
+          values[target.quarter] = String(target.target_value ?? "");
+        }
+        setQuarterMeta(meta);
+        setForm((current) => ({ ...current, quarterValues: values }));
+      })
+      .catch(() => {
+        if (!cancelled) setQuarterMeta({});
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingQuarters(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, projectId, coordinatorId, indicatorId, year]);
 
   const filteredIndicators = useMemo(() => {
     const query = indicatorSearch.trim().toLowerCase();
@@ -118,34 +168,46 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
       form.coordinatorId &&
       form.indicatorId &&
       form.year &&
-      form.quarter &&
-      form.targetValue.trim(),
+      QUARTERS.some((quarter) => form.quarterValues[quarter].trim() !== ""),
   );
 
   const submit = async () => {
     setErrorMessage("");
-    const parsedTargetValue = Number(form.targetValue);
     const parsedYear = Number(form.year);
 
-    if (!Number.isFinite(parsedTargetValue)) {
-      setErrorMessage("Target value must be a valid number.");
-      return;
-    }
     if (!Number.isFinite(parsedYear) || parsedYear < 2000 || parsedYear > 2100) {
       setErrorMessage("Year must be a valid fiscal year.");
       return;
     }
 
-    await onSubmit({
-      project_id: Number(form.projectId),
-      coordinator_id: Number(form.coordinatorId),
-      indicator_id: Number(form.indicatorId),
-      year: parsedYear,
-      quarter: form.quarter,
-      target_value: parsedTargetValue,
-      notes: form.notes.trim() || undefined,
-      is_active: form.isActive,
-    });
+    const items: CoordinatorTargetSaveItem[] = [];
+    for (const quarter of QUARTERS) {
+      const raw = form.quarterValues[quarter].trim();
+      if (raw === "") continue; // Blank quarter => leave unchanged.
+      const value = Number(raw);
+      if (!Number.isFinite(value)) {
+        setErrorMessage(`Target for ${quarter} must be a valid number.`);
+        return;
+      }
+      items.push({
+        id: quarterMeta[quarter]?.id,
+        project_id: Number(form.projectId),
+        coordinator_id: Number(form.coordinatorId),
+        indicator_id: Number(form.indicatorId),
+        year: parsedYear,
+        quarter,
+        target_value: value,
+        notes: form.notes.trim() || undefined,
+        is_active: form.isActive,
+      });
+    }
+
+    if (items.length === 0) {
+      setErrorMessage("Enter a target for at least one quarter.");
+      return;
+    }
+
+    await onSubmit(items);
   };
 
   const handleIndicatorSelect = (value: string) => {
@@ -158,9 +220,9 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
     <Dialog open={open} onOpenChange={(nextOpen) => !submitting && onOpenChange(nextOpen)}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{existing ? "Edit Coordinator Target" : "New Coordinator Target"}</DialogTitle>
+          <DialogTitle>{existing ? "Edit Coordinator Targets" : "New Coordinator Targets"}</DialogTitle>
           <DialogDescription>
-            Targets are unique per project, coordinator, indicator, fiscal year, and quarter.
+            Set targets for all four quarters of a coordinator + indicator + fiscal year on one page.
           </DialogDescription>
         </DialogHeader>
 
@@ -202,7 +264,7 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_200px] md:items-start">
+          <div className="grid gap-3">
             <div className="grid gap-2 min-w-0">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label>Indicator</Label>
@@ -271,47 +333,44 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
                 ) : null}
               </div>
             </div>
-
-            <div className="grid gap-2 min-w-0">
-              <Label>Target Value</Label>
-              <Input
-                className="w-full"
-                type="number"
-                inputMode="decimal"
-                value={form.targetValue}
-                onChange={(event) => setForm((current) => ({ ...current, targetValue: event.target.value }))}
-                placeholder="0"
-              />
-            </div>
           </div>
 
-          <div className="grid gap-2 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label>Fiscal Year</Label>
-              <Input
-                type="number"
-                value={form.year}
-                onChange={(event) => setForm((current) => ({ ...current, year: event.target.value }))}
-              />
-            </div>
+          <div className="grid gap-2 sm:max-w-[220px]">
+            <Label>Fiscal Year</Label>
+            <Input
+              type="number"
+              value={form.year}
+              onChange={(event) => setForm((current) => ({ ...current, year: event.target.value }))}
+            />
+          </div>
 
-            <div className="grid gap-2">
-              <Label>Quarter</Label>
-              <Select
-                value={form.quarter}
-                onValueChange={(value) => setForm((current) => ({ ...current, quarter: value as CoordinatorTargetQuarter }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select quarter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Q1">Q1</SelectItem>
-                  <SelectItem value="Q2">Q2</SelectItem>
-                  <SelectItem value="Q3">Q3</SelectItem>
-                  <SelectItem value="Q4">Q4</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Label>Quarterly Targets</Label>
+              {loadingQuarters ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
             </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {QUARTERS.map((quarter) => (
+                <div key={quarter} className="grid gap-1.5">
+                  <Label className="text-xs font-normal text-muted-foreground">{quarter}</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    value={form.quarterValues[quarter]}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        quarterValues: { ...current.quarterValues, [quarter]: event.target.value },
+                      }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Leave a quarter blank to leave it unchanged. Filled quarters are created or updated on save.
+            </p>
           </div>
 
           <div className="grid gap-2">
