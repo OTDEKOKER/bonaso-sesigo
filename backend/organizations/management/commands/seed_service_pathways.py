@@ -36,74 +36,51 @@ COLORS = ["#cfe8f3", "#9ecfe6", "#6cb2d6", "#3f93c4", "#1f6a8a", "#134a63"]
 # (pathway label, [(stage label, [keyword-groups]) ...], exclude)
 # Each keyword-group (all words must match) resolves to one indicator; a stage
 # may list several groups (e.g. GBV "Referred" = clinical + psychosocial + justice).
+# Cascade × service-area matrix (per the maintainer's note). Messaging is
+# EXCLUDED: no Messaging pathway and no "Messages/Reached" stage — the clinical
+# cascade (Screened -> Eligible -> Referred -> Linked to care) across each
+# service area. Distribution services (Condoms, Lubricants) use a distribution step.
 PATHWAYS: list[tuple[str, list[tuple[str, list[list[str]]]], list[str]]] = [
     ("HIV testing", [
+        ("Screened", [["people tested for hiv"]]),
+        ("Eligible", [["tested positive for hiv"]]),
         ("Referred", [["referred for hiv testing"]]),
-        ("Tested", [["people tested for hiv"]]),
-        ("Positive", [["tested positive for hiv"]]),
-        ("Initiated on ART", [["people initiated on art"]]),
         ("Linked to care", [["people linked to care"]]),
     ], []),
-    ("PrEP", [
-        ("Assessed", [["assessed for prep"]]),
-        ("Eligible", [["eligible for prep"]]),
-        ("Referred", [["referred for prep"]]),
-    ], []),
-    ("PEP", [
-        ("Assessed", [["assessed for pep"]]),
-        ("Eligible", [["eligible for pep"]]),
-        ("Referred", [["referred for pep"]]),
-    ], []),
     ("GBV", [
-        ("Reached", [["reached with gbv messages"]]),
         ("Screened", [["screened for gbv"]]),
         ("Eligible", [["individuals eligible for gbv services"]]),
         ("Referred", [["referred for clinical services for gbv"],
                        ["referred for psychosocial support on gbv"],
                        ["referred for justice services for gbv"]]),
-        ("Received PSS", [["received psychosocial support on gbv"]]),
+        ("Linked to care", [["received psychosocial support on gbv"]]),
     ], []),
     ("STI", [
         ("Screened", [["screened for syndromic stis"]]),
         ("Referred", [["screened positive for stis referred"]]),
+        ("Linked to care", [["sti cases referrals completed"]]),
     ], []),
     ("TB", [
         ("Screened", [["plhiv screened for tb"]]),
-        ("Positive & on treatment", [["tested positive for tb and are on treatm"]]),
-        ("On treatment", [["plhiv on tb treatment"]]),
-        ("Reinitiated", [["tb treatment interrupters reinitiated"]]),
+        ("Eligible", [["tested positive for tb and are on treatm"]]),
+        ("Linked to care", [["plhiv on tb treatment"]]),
+    ], []),
+    ("PSS", [
+        ("Eligible", [["eligible", "psychosocial support"]]),
+        ("Referred", [["referred for psychosocial support on gbv"]]),
+        ("Linked to care", [["received psychosocial support on gbv"]]),
+    ], []),
+    ("Justice", [
+        ("Eligible", [["eligible for legal aid"]]),
+        ("Referred", [["provided with legal aid"]]),
+        ("Linked to care", [["linked to justice"]]),
     ], []),
     ("Condoms", [
-        ("Reached", [["reached with", "condom use"]]),
         ("Distributed", [["number of condoms distributed"]]),
         ("Repeat collection", [["collecting condoms for a repea"]]),
     ], ["brailed", "non-traditional"]),
-    ("NCD", [
-        ("Reached", [["reached with ncd"]]),
-        ("Screened", [["screened for ncds risk factors"]]),
-        ("Eligible", [["eligible for tobacco cessation"], ["eligible for alcohol management"]]),
-        ("Referred", [["referred for tobacco cessation"], ["referred for alcohol management"]]),
-    ], []),
-    ("Mental health", [
-        ("Screened", [["screened for mental health"]]),
-        ("Eligible", [["eligible for counselling"]]),
-        ("Receiving counselling", [["people receiving counselling"]]),
-        ("Eligible for management", [["eligible for mental health management"]]),
-        ("Referred for management", [["referred for mental health management"]]),
-    ], []),
-    ("Breast cancer", [
-        ("Eligible", [["eligible for breast cancer screening"]]),
-        ("Screened", [["screened for breast cancer"]]),
-    ], []),
-    ("Justice / legal aid", [
-        ("Eligible", [["eligible for legal aid"]]),
-        ("Provided", [["provided with legal aid"]]),
-        ("Linked", [["linked to justice"]]),
-    ], []),
-    ("Psychosocial support (PSS)", [
-        ("Eligible", [["eligible", "psychosocial support"]]),
-        ("Referred", [["referred for psychosocial support on gbv"]]),
-        ("Received", [["received psychosocial support on gbv"]]),
+    ("Lubricants", [
+        ("Distributed", [["lubricants distributed"]]),
     ], []),
 ]
 
