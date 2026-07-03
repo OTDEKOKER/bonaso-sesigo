@@ -59,14 +59,16 @@ function StageIndicatorPicker({
               {available.map((indicator) => (
                 <CommandItem
                   key={indicator.id}
-                  value={`${indicator.code ?? ""} ${indicator.name}`}
+                  // Keep the code in the search value so search-by-code still works,
+                  // but show only the full indicator name (no code, no truncation).
+                  value={`${indicator.name} ${indicator.code ?? ""}`}
                   onSelect={() => {
                     onAdd(String(indicator.id));
                     setOpen(false);
                   }}
+                  className="items-start"
                 >
-                  <span className="truncate">
-                    {indicator.code ? `${indicator.code} — ` : ""}
+                  <span className="whitespace-normal break-words leading-snug">
                     {indicator.name}
                   </span>
                 </CommandItem>
