@@ -902,7 +902,10 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                 order.append(key)
             g = groups[key]
             perf = actuals.get(target.id, {})
-            g['target_value'] += float(target.target_value or 0)
+            # Use the EFFECTIVE target (derived/percentage resolved at runtime),
+            # not the stored configured value. None = pending source => contributes 0.
+            effective_target = perf.get('target_value')
+            g['target_value'] += float(effective_target) if effective_target is not None else 0.0
             g['actual_value'] += float(perf.get('actual_value', 0.0) or 0.0)
             g['own_actual_value'] += float(perf.get('own_actual_value', 0.0) or 0.0)
             g['contributions'].append({
