@@ -67,6 +67,20 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
     own_contribution = serializers.SerializerMethodField()
     subgrantee_contribution = serializers.SerializerMethodField()
 
+    # Dynamic (derived) target — resolved read metadata (from the rollup engine).
+    resolved_target_value = serializers.SerializerMethodField()
+    target_source = serializers.SerializerMethodField()
+    target_pending = serializers.SerializerMethodField()
+
+    # Per-coordinator override (write-through to the POT config). Not stored on the
+    # unmanaged CoordinatorTarget table — persisted onto ProjectIndicatorOrganizationTarget.
+    target_source_type = serializers.ChoiceField(
+        choices=['fixed', 'derived', 'percentage'], required=False, allow_null=True, write_only=True)
+    target_source_indicator = serializers.PrimaryKeyRelatedField(
+        queryset=Indicator.objects.all(), required=False, allow_null=True, write_only=True)
+    target_source_percentage = serializers.DecimalField(
+        max_digits=6, decimal_places=2, required=False, allow_null=True, write_only=True)
+
     class Meta:
         model = CoordinatorTarget
         fields = [
@@ -92,12 +106,77 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
             'child_contributions',
             'own_contribution',
             'subgrantee_contribution',
+            'resolved_target_value',
+            'target_source',
+            'target_pending',
+            'target_source_type',
+            'target_source_indicator',
+            'target_source_percentage',
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'project_name', 'coordinator_name', 'indicator_name',
             'own_actual_value', 'actual_value', 'achievement_percent', 'variance',
             'performance_status', 'child_contributions', 'own_contribution', 'subgrantee_contribution',
+            'resolved_target_value', 'target_source', 'target_pending',
         ]
+
+    def get_resolved_target_value(self, obj):
+        return self._actuals(obj).get('target_value')
+
+    def get_target_source(self, obj):
+        return self._actuals(obj).get('target_source')
+
+    def get_target_pending(self, obj):
+        return bool(self._actuals(obj).get('target_pending'))
+
+    _OVERRIDE_KEYS = ('target_source_type', 'target_source_indicator', 'target_source_percentage')
+
+    def _pop_override(self, validated_data):
+        return {k: validated_data.pop(k) for k in self._OVERRIDE_KEYS if k in validated_data}
+
+    def _apply_override(self, instance, override):
+        """Persist a per-coordinator target-source override onto the matching POT
+        row. Uses the target_sync guard so writing config never re-syncs (and thus
+        never overwrites) the captured quarterly target values."""
+        if not override:
+            return
+        from projects.models import ProjectIndicator, ProjectIndicatorOrganizationTarget
+        from projects import target_sync
+        from analysis.services.target_dependencies import assert_valid_target_source
+        if not instance.indicator_id:
+            return
+        canonical = instance.indicator.canonical_or_self
+        ttype = override.get('target_source_type') or None
+        source = override.get('target_source_indicator')
+        pct = override.get('target_source_percentage')
+        assert_valid_target_source(
+            instance.project_id, canonical.id, getattr(source, 'id', source), ttype)
+        pi, _ = ProjectIndicator.objects.get_or_create(
+            project_id=instance.project_id, indicator_id=canonical.id)
+        pot, _ = ProjectIndicatorOrganizationTarget.objects.get_or_create(
+            project_indicator=pi, organization_id=instance.coordinator_id)
+        pot.target_source_type = ttype
+        pot.target_source_indicator = source
+        pot.target_source_percentage = pct
+        prev = getattr(target_sync._guard, 'active', False)
+        target_sync._guard.active = True
+        try:
+            pot.save(update_fields=[
+                'target_source_type', 'target_source_indicator', 'target_source_percentage'])
+        finally:
+            target_sync._guard.active = prev
+
+    def create(self, validated_data):
+        override = self._pop_override(validated_data)
+        instance = super().create(validated_data)
+        self._apply_override(instance, override)
+        return instance
+
+    def update(self, instance, validated_data):
+        override = self._pop_override(validated_data)
+        instance = super().update(instance, validated_data)
+        self._apply_override(instance, override)
+        return instance
 
     def validate(self, attrs):
         # Never let a deprecated indicator twin capture its own coordinator target —

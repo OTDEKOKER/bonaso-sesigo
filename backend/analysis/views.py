@@ -8,7 +8,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db import models, transaction
-from django.db.models import Count, Sum, Avg, Q
+from django.db.models import Count, Sum, Avg, Q, F
 from django.core.cache import cache
 from django.utils.text import slugify
 from datetime import date
@@ -25,7 +25,10 @@ from indicators.models import Indicator
 from indicators.canonical import canonical_id_map
 from projects.models import Project
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
-from projects.assignment_rules import count_project_indicators_for_organization_scope
+from projects.assignment_rules import (
+    count_project_indicators_for_organization_scope,
+    project_indicator_ids_for_organization_scope,
+)
 from projects.scope import (
     get_default_project_id,
     get_user_project_scope,
@@ -819,6 +822,16 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             seen.add(org.id)
             coordinators.append({'id': str(org.id), 'name': org.name or f'Coordinator {org.id}'})
         return Response(coordinators)
+
+    @action(detail=False, methods=['get'], url_path='dependency-check')
+    def dependency_check(self, request):
+        """Report the derived-target dependency graph for a project and flag any
+        circular dependency so admins are warned immediately."""
+        project_id = (request.query_params.get('project_id') or '').strip()
+        if not project_id or project_id.lower() == 'all':
+            return Response({'detail': 'project_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        from analysis.services.target_dependencies import project_dependency_report
+        return Response(project_dependency_report(project_id))
 
     def _project_coordinator_ids(self, project_id):
         """The org ids that are coordinators in this project (project hierarchy
@@ -1680,16 +1693,34 @@ class DashboardView(viewsets.ViewSet):
                 else:  # live
                     respondents = respondents.exclude(id__in=training_respondent_ids)
 
+        indicators_behind = 0
         if project_id is not None:
             selected_project = projects.filter(id=project_id).first()
-            total_indicators = (
-                count_project_indicators_for_organization_scope(
+            if selected_project is not None:
+                scope_indicator_ids = project_indicator_ids_for_organization_scope(
                     project=selected_project,
                     organization_ids=effective_org_ids,
                 )
-                if selected_project is not None
-                else 0
-            )
+                total_indicators = len(scope_indicator_ids)
+                # "Behind" = an indicator in scope whose synced achievement
+                # (ProjectIndicator.current_value, kept in step with approved
+                # aggregates) has not reached its project target. Only indicators
+                # carrying a positive target are eligible — an unset target is not
+                # "behind". current_value/target_value are project-wide rollups,
+                # so this answers "of the indicators this scope reports on, how
+                # many are behind at the project level".
+                if scope_indicator_ids:
+                    from projects.models import ProjectIndicator
+                    indicators_behind = (
+                        ProjectIndicator.objects.filter(
+                            project_id=project_id,
+                            indicator_id__in=scope_indicator_ids,
+                            target_value__gt=0,
+                            current_value__lt=F('target_value'),
+                        ).count()
+                    )
+            else:
+                total_indicators = 0
         else:
             indicators = Indicator.objects.filter(is_active=True)
             if effective_org_ids is not None:
@@ -1724,7 +1755,7 @@ class DashboardView(viewsets.ViewSet):
             'total_assessments': interactions.count(),
             'active_projects': projects.filter(status='active').count(),
             'total_indicators': total_indicators,
-            'indicators_behind': 0,  # Calculate based on project targets
+            'indicators_behind': indicators_behind,
             'recent_activity': recent_activity,
             'selected_project_id': project_id,
             'default_project_id': resolved_default_project_id,

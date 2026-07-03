@@ -151,6 +151,78 @@ def compute_target_actuals(targets) -> dict[int, dict]:
                 aggregate_total(aggregate.value),
             ))
 
+    # --- Dynamic (derived) target sources — opt-in; default 'fixed' is a no-op.
+    # Config lives on ProjectIndicator (project default) with an optional
+    # per-coordinator override on ProjectIndicatorOrganizationTarget (POT). A
+    # derived target is computed from the CURRENT report's achieved value of the
+    # source indicator over the same coordinator scope/quarter; the stored target
+    # value is never read for these rows.
+    from projects.models import ProjectIndicator, ProjectIndicatorOrganizationTarget
+
+    pi_by_project_canon: dict[tuple[int, int | None], ProjectIndicator] = {}
+    pi_ids: list[int] = []
+    for pi in (
+        ProjectIndicator.objects
+        .filter(project_id__in=all_project_ids)
+        .select_related('indicator', 'target_source_indicator')
+    ):
+        canon = pi.indicator.canonical_id if pi.indicator_id else None
+        pi_by_project_canon[(pi.project_id, canon)] = pi
+        pi_ids.append(pi.id)
+
+    coordinator_ids = {int(t.coordinator_id) for t in targets}
+    pot_override: dict[tuple[int, int], ProjectIndicatorOrganizationTarget] = {}
+    if pi_ids:
+        for pot in (
+            ProjectIndicatorOrganizationTarget.objects
+            .filter(project_indicator_id__in=pi_ids, organization_id__in=coordinator_ids)
+            .exclude(target_source_type__isnull=True)
+            .select_related('target_source_indicator')
+        ):
+            pot_override[(pot.project_indicator_id, int(pot.organization_id))] = pot
+
+    def _config_from(obj):
+        src = getattr(obj, 'target_source_indicator', None)
+        return {
+            'type': obj.target_source_type,
+            'source_canon': src.canonical_id if src is not None else None,
+            'source_id': getattr(obj, 'target_source_indicator_id', None),
+            'source_name': src.name if src is not None else None,
+            'pct': float(obj.target_source_percentage) if obj.target_source_percentage is not None else None,
+        }
+
+    def resolve_target_config(project_id, coordinator_id, canonical_indicator_id):
+        """Effective config: POT override > ProjectIndicator > fixed (None)."""
+        pi = pi_by_project_canon.get((int(project_id), canonical_indicator_id))
+        if pi is None:
+            return None
+        pot = pot_override.get((pi.id, int(coordinator_id)))
+        if pot is not None and pot.target_source_type:
+            # An explicit per-coordinator 'fixed' override forces fixed.
+            return _config_from(pot) if pot.target_source_type != 'fixed' else None
+        if pi.target_source_type and pi.target_source_type != 'fixed':
+            return _config_from(pi)
+        return None
+
+    def source_actual(project_id, scope, start, end, canonical):
+        """Achieved value of the source indicator over the same scope/quarter.
+        Returns (value, has_any_reported) so a real reported 0 is distinguished
+        from 'not yet reported' (pending)."""
+        if canonical is None:
+            return 0.0, False
+        total_sum = 0.0
+        has_any = False
+        for (proj_id, org_id, agg_canonical, p_start, p_end, total) in agg_rows:
+            if proj_id != project_id or agg_canonical != canonical:
+                continue
+            if org_id not in scope:
+                continue
+            if not (p_start <= end and p_end >= start):
+                continue
+            has_any = True
+            total_sum += total
+        return total_sum, has_any
+
     results: dict[int, dict] = {}
     child_org_ids: set[int] = set()
     for (target, scope, start, end, canonical_indicator) in meta:
@@ -172,10 +244,36 @@ def compute_target_actuals(targets) -> dict[int, dict]:
             else:
                 child_by_org[org_id] = child_by_org.get(org_id, 0.0) + total
         child_org_ids |= set(child_by_org.keys())
-        target_value = float(target.target_value or 0)
-        achievement = (actual / target_value * 100) if target_value > 0 else None
+        config = resolve_target_config(target.project_id, target.coordinator_id, canonical_indicator)
+        target_source_meta = None
+        if config is None:
+            # Fixed (existing behaviour, byte-for-byte).
+            target_value = float(target.target_value or 0)
+        else:
+            src_val, src_has = source_actual(target.project_id, scope, start, end, config['source_canon'])
+            target_source_meta = {
+                'type': config['type'],
+                'source_indicator_id': config['source_id'],
+                'source_indicator_name': config['source_name'],
+                'percentage': config['pct'],
+            }
+            if config['source_canon'] is None or not src_has:
+                target_value = None  # pending — source indicator not yet reported
+            else:
+                factor = (config['pct'] / 100.0) if (config['type'] == 'percentage' and config['pct'] is not None) else 1.0
+                target_value = src_val * factor
+        if target_value is None:
+            achievement = None
+            status = 'pending'
+            variance = None
+        else:
+            achievement = (actual / target_value * 100) if target_value > 0 else None
+            status = performance_status(target_value, achievement)
+            variance = actual - target_value
         results[target.id] = {
             'target_value': target_value,
+            'target_source': target_source_meta,
+            'target_pending': target_value is None and target_source_meta is not None,
             'own_actual_value': own,
             # The coordinator's own contribution vs everything rolled up from its
             # subgrantees/children. ``own + subgrantee == actual`` by construction.
@@ -183,8 +281,8 @@ def compute_target_actuals(targets) -> dict[int, dict]:
             'subgrantee_contribution': actual - own,
             'actual_value': actual,
             'achievement_percent': achievement,
-            'variance': actual - target_value,
-            'performance_status': performance_status(target_value, achievement),
+            'variance': variance,
+            'performance_status': status,
             '_child_by_org': child_by_org,
         }
 
@@ -230,5 +328,10 @@ def get_coordinator_actuals(targets) -> dict[int, dict]:
 
 
 def get_coordinator_targets(targets) -> dict[int, dict]:
-    """``{target_id: {"target": value}}`` — configured target values only."""
-    return {target.id: {'target': float(target.target_value or 0)} for target in targets}
+    """``{target_id: {"target": value}}`` — effective (resolved) target values.
+    For derived/percentage rows this is the computed value (or None when pending);
+    for fixed rows it equals the stored target."""
+    return {
+        target_id: {'target': payload['target_value']}
+        for target_id, payload in compute_target_actuals(targets).items()
+    }

@@ -24,6 +24,9 @@ class Project(models.Model):
     indicators = models.ManyToManyField(
         'indicators.Indicator',
         through='ProjectIndicator',
+        # ProjectIndicator now has two FKs to Indicator (indicator +
+        # target_source_indicator); disambiguate the through relationship.
+        through_fields=('project', 'indicator'),
         related_name='projects'
     )
     
@@ -114,10 +117,33 @@ class ProjectIndicator(models.Model):
     target_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     current_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     baseline_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    
+
+    # Dynamic (derived) targets — additive, opt-in. Default 'fixed' keeps every
+    # existing project behaving exactly as before. When 'derived'/'percentage' the
+    # target is computed at read time from the CURRENT report's achieved value of
+    # target_source_indicator (see analysis.services.coordinator_rollups); the
+    # stored quarterly targets above are left untouched.
+    TARGET_SOURCE_TYPES = [
+        ('fixed', 'Fixed target'),
+        ('derived', 'Achieved value of another indicator'),
+        ('percentage', "Percentage of another indicator's achieved value"),
+    ]
+    target_source_type = models.CharField(
+        max_length=12, choices=TARGET_SOURCE_TYPES, default='fixed',
+    )
+    target_source_indicator = models.ForeignKey(
+        'indicators.Indicator', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+',
+        help_text='Source indicator whose achieved value drives this target.',
+    )
+    target_source_percentage = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Percentage of the source achieved value (percentage mode).',
+    )
+
     class Meta:
         unique_together = ['project', 'indicator']
-    
+
     def __str__(self):
         return f"{self.project.name} - {self.indicator.name}"
 
@@ -147,6 +173,22 @@ class ProjectIndicatorOrganizationTarget(models.Model):
     target_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     current_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     baseline_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Per-coordinator override of the project-indicator target source. NULL type =
+    # inherit the ProjectIndicator config (the common case). Set explicitly to
+    # override just this coordinator ("also fix it on the coordinator target").
+    target_source_type = models.CharField(
+        max_length=12, choices=ProjectIndicator.TARGET_SOURCE_TYPES,
+        null=True, blank=True,
+        help_text='Overrides the project-indicator target source for this coordinator; null = inherit.',
+    )
+    target_source_indicator = models.ForeignKey(
+        'indicators.Indicator', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+',
+    )
+    target_source_percentage = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+    )
 
     class Meta:
         unique_together = ['project_indicator', 'organization']

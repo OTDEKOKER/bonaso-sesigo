@@ -24,19 +24,39 @@ class ProjectIndicatorSerializer(serializers.ModelSerializer):
     
     indicator_name = serializers.CharField(source='indicator.name', read_only=True)
     indicator_code = serializers.CharField(source='indicator.code', read_only=True)
+    target_source_indicator_name = serializers.CharField(
+        source='target_source_indicator.name', read_only=True, default=None)
     progress = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = ProjectIndicator
         fields = [
             'id', 'project', 'indicator', 'indicator_name', 'indicator_code',
-            'target_value', 'current_value', 'baseline_value', 'progress'
+            'target_value', 'current_value', 'baseline_value', 'progress',
+            'target_source_type', 'target_source_indicator',
+            'target_source_indicator_name', 'target_source_percentage',
         ]
-    
+
     def get_progress(self, obj):
         if obj.target_value == 0:
             return 0
         return min(int((obj.current_value / obj.target_value) * 100), 100)
+
+    def validate(self, attrs):
+        from analysis.services.target_dependencies import assert_valid_target_source
+        instance = self.instance
+        project = attrs.get('project') or getattr(instance, 'project', None)
+        indicator = attrs.get('indicator') or getattr(instance, 'indicator', None)
+        ttype = attrs.get('target_source_type',
+                          getattr(instance, 'target_source_type', 'fixed'))
+        source = attrs.get('target_source_indicator',
+                           getattr(instance, 'target_source_indicator', None))
+        assert_valid_target_source(
+            getattr(project, 'id', project), getattr(indicator, 'id', indicator),
+            getattr(source, 'id', source), ttype,
+            exclude_pi_id=getattr(instance, 'id', None),
+        )
+        return attrs
 
 
 class ProjectSerializer(serializers.ModelSerializer):
