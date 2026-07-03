@@ -147,11 +147,13 @@ def is_indicator_assigned_to_organization(
     return indicator_id in assigned_indicator_ids
 
 
-def count_project_indicators_for_organization_scope(
+def project_indicator_ids_for_organization_scope(
     *,
     project: Project,
     organization_ids: set[int] | None,
-) -> int:
+) -> set[int]:
+    """Return the distinct indicator ids a project reports on, narrowed to the
+    given organization scope (``None`` means the whole project)."""
     project_id = int(project.id)
 
     if _has_project_indicator_assignments(project_id):
@@ -168,11 +170,11 @@ def count_project_indicators_for_organization_scope(
             )
             if organization_ids is not None:
                 if len(organization_ids) == 0:
-                    return 0
+                    return set()
                 queryset = queryset.filter(organization_id__in=organization_ids)
-            return queryset.values('project_indicator__indicator_id').distinct().count()
+            return set(queryset.values_list('project_indicator__indicator_id', flat=True).distinct())
         except DatabaseError:
-            return 0
+            return set()
 
     if _has_project_indicator_targets(project_id):
         try:
@@ -181,17 +183,29 @@ def count_project_indicators_for_organization_scope(
             )
             if organization_ids is not None:
                 if len(organization_ids) == 0:
-                    return 0
+                    return set()
                 queryset = queryset.filter(organization_id__in=organization_ids)
-            return queryset.values('project_indicator__indicator_id').distinct().count()
+            return set(queryset.values_list('project_indicator__indicator_id', flat=True).distinct())
         except DatabaseError:
-            return 0
+            return set()
 
     project_scope_org_ids = get_project_organization_scope_ids(project)
     if organization_ids is not None and project_scope_org_ids:
         if len(project_scope_org_ids.intersection(organization_ids)) == 0:
-            return 0
-    return len(_project_indicator_ids(project_id))
+            return set()
+    return _project_indicator_ids(project_id)
+
+
+def count_project_indicators_for_organization_scope(
+    *,
+    project: Project,
+    organization_ids: set[int] | None,
+) -> int:
+    return len(
+        project_indicator_ids_for_organization_scope(
+            project=project, organization_ids=organization_ids
+        )
+    )
 
 
 def disaggregation_fields_by_indicator(
