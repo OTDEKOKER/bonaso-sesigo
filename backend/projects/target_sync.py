@@ -46,13 +46,27 @@ def sync_pot_to_coordinator_targets(pot, *, active=True):
     pi = pot.project_indicator
     project = pi.project
     year = target_year_for_project(project)
+    # Deduplicate deprecated indicator twins: coordinator targets are keyed on the
+    # CANONICAL indicator, so a deprecated variant can never spawn a parallel set
+    # of quarter rows (the "doubled-up targets" bug). For a canonical indicator we
+    # keep the normal upsert (editing a target updates it). For a DEPRECATED source
+    # we only backfill a MISSING canonical row via get_or_create — we never
+    # overwrite an already-captured canonical target value.
+    indicator = getattr(pi, 'indicator', None)
+    indicator_id = indicator.canonical_id if indicator is not None else pi.indicator_id
+    source_is_deprecated = bool(indicator is not None and indicator.canonical_indicator_id)
     vals = {'Q1': pot.q1_target, 'Q2': pot.q2_target, 'Q3': pot.q3_target, 'Q4': pot.q4_target}
     for quarter in QUARTERS:
-        CoordinatorTarget.objects.update_or_create(
-            project_id=project.id, coordinator_id=pot.organization_id, indicator_id=pi.indicator_id,
-            year=year, quarter=quarter,
-            defaults={'target_value': vals[quarter] or 0, 'is_active': active},
+        key = dict(
+            project_id=project.id, coordinator_id=pot.organization_id,
+            indicator_id=indicator_id, year=year, quarter=quarter,
         )
+        defaults = {'target_value': vals[quarter] or 0, 'is_active': active}
+        if source_is_deprecated:
+            # Fill only when missing; leave any captured canonical value untouched.
+            CoordinatorTarget.objects.get_or_create(defaults=defaults, **key)
+        else:
+            CoordinatorTarget.objects.update_or_create(defaults=defaults, **key)
 
 
 # --- CT -> POT ------------------------------------------------------------
