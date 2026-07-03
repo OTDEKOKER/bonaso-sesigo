@@ -859,10 +859,38 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         context['target_actuals'] = getattr(self, '_target_actuals', {})
         return context
 
+    @staticmethod
+    def _collapse_deprecated_twins(queryset):
+        """Display-only de-duplication: collapse a deprecated indicator twin and its
+        canonical into ONE row per (coordinator, project, canonical indicator, year,
+        quarter), preferring the canonical (non-deprecated) row. Rows that exist only
+        on a deprecated indicator (orphans) are kept and shown under their canonical.
+        Removes NO data — purely a listing concern (targets stay in the DB, editable).
+        Preserves the queryset ordering.
+        """
+        rows = list(queryset.select_related('indicator'))
+        best = {}
+        for r in rows:
+            canon = r.indicator.canonical_id if r.indicator_id else r.indicator_id
+            key = (r.coordinator_id, r.project_id, canon, r.year, r.quarter)
+            current = best.get(key)
+            if current is None:
+                best[key] = r
+                continue
+            cur_dep = bool(current.indicator and current.indicator.is_deprecated)
+            new_dep = bool(r.indicator and r.indicator.is_deprecated)
+            if cur_dep and not new_dep:
+                best[key] = r            # prefer the canonical (non-deprecated) row
+            elif cur_dep == new_dep and r.id < current.id:
+                best[key] = r            # deterministic tiebreak
+        chosen_ids = {r.id for r in best.values()}
+        return [r for r in rows if r.id in chosen_ids]
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        targets = page if page is not None else list(queryset)
+        collapsed = self._collapse_deprecated_twins(queryset)
+        page = self.paginate_queryset(collapsed)
+        targets = page if page is not None else collapsed
         # Single certified server-side rollup (analysis.services.coordinator_rollups)
         # — the same engine that backs retrieve(), export(), and any future API.
         self._target_actuals = get_coordinator_performance(targets)
@@ -1005,17 +1033,26 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         qs = self.filter_queryset(self.get_queryset()).filter(coordinator_id__in=coordinator_ids)
         qs = qs.select_related('project', 'coordinator', 'indicator')
 
-        targets = list(qs)
+        # Collapse deprecated twins per (coordinator, canonical indicator, year,
+        # quarter) so a coordinator's target isn't summed twice into the canonical
+        # rollup row. Display de-duplication only — no data changed.
+        targets = self._collapse_deprecated_twins(qs)
         actuals = get_coordinator_performance(targets)
 
         groups = {}
         order = []
         for target in targets:
-            key = (target.indicator_id, target.year, target.quarter)
+            # Group on the CANONICAL indicator so a deprecated twin doesn't produce
+            # a second rollup row (display de-duplication; no data changed).
+            canonical_id = target.indicator.canonical_id if target.indicator_id else target.indicator_id
+            canonical_meta = target.indicator.canonical_or_self if target.indicator_id else None
+            key = (canonical_id, target.year, target.quarter)
             if key not in groups:
                 groups[key] = {
-                    'indicator_id': target.indicator_id,
-                    'indicator_name': getattr(target.indicator, 'name', None) or f'Indicator {target.indicator_id}',
+                    'indicator_id': canonical_id,
+                    'indicator_name': (getattr(canonical_meta, 'name', None)
+                                       or getattr(target.indicator, 'name', None)
+                                       or f'Indicator {canonical_id}'),
                     'project_id': target.project_id,
                     'project_name': getattr(target.project, 'name', None) or f'Project {target.project_id}',
                     'year': target.year,
@@ -1330,7 +1367,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             return response
 
         queryset = self.filter_queryset(self.get_queryset())
-        targets = list(queryset)
+        targets = self._collapse_deprecated_twins(queryset)
         actuals = get_coordinator_performance(targets)
         for target in targets:
             payload = actuals.get(target.id, {})

@@ -142,6 +142,30 @@ class DerivedTargetTests(TestCase):
     def test_valid_source_accepted(self):
         assert_valid_target_source(self.project.id, self.referred.id, self.eligible.id, 'derived')
 
+    # --- deprecated-twin display collapse (no data removed) ----------------
+    def test_collapse_deprecated_twins(self):
+        import types
+        from analysis.views import CoordinatorTargetViewSet
+
+        def st(row_id, indicator_id, canonical, deprecated, coord=1, project=2, quarter='Q1'):
+            return types.SimpleNamespace(
+                id=row_id, coordinator_id=coord, project_id=project,
+                indicator_id=indicator_id, year=2025, quarter=quarter,
+                indicator=types.SimpleNamespace(canonical_id=canonical, is_deprecated=deprecated),
+            )
+
+        class FakeQS(list):
+            def select_related(self, *args):
+                return self
+
+        rows = FakeQS([
+            st(1, 472, 472, False),   # canonical
+            st(2, 357, 472, True),    # deprecated twin -> collapses into the canonical
+            st(3, 999, 999, True),    # orphan (only on a deprecated indicator) -> kept
+        ])
+        out = CoordinatorTargetViewSet._collapse_deprecated_twins(rows)
+        self.assertEqual(sorted(t.id for t in out), [1, 3])  # twin dropped; canonical + orphan kept
+
     # --- dashboard trend endpoint uses the Effective Target -----------------
     def test_bulk_trend_uses_effective_target(self):
         from rest_framework.test import APIClient
