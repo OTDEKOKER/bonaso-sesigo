@@ -69,7 +69,7 @@ export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {
             <TableHead className="text-right">Achievement</TableHead>
             <TableHead className="text-right">Variance</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="min-w-[14rem]">Child Contribution</TableHead>
+            <TableHead className="min-w-[14rem]">Sub Contribution</TableHead>
             {canEdit ? <TableHead className="w-[7rem] text-right">Actions</TableHead> : null}
           </TableRow>
         </TableHeader>
@@ -121,7 +121,7 @@ export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {
                 </TableCell>
                 <TableCell className="max-w-[20rem] whitespace-normal text-sm">
                   {topContributions.length === 0 ? (
-                    <span className="text-muted-foreground">No child-reported values</span>
+                    <span className="text-muted-foreground">No sub-reported values</span>
                   ) : (
                     topContributions.map((entry, index) => (
                       <div key={`${row.target.id}-${entry.organization_id}`}>
