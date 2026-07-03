@@ -40,6 +40,10 @@ export type CoordinatorTargetFormValue = {
   target_value: number;
   notes?: string;
   is_active: boolean;
+  // Per-coordinator target-source override (write-through to POT). null type = inherit.
+  target_source_type?: "fixed" | "derived" | "percentage" | null;
+  target_source_indicator?: number | null;
+  target_source_percentage?: number | null;
 };
 
 // One upsert per quarter. `id` present => update that existing target, else
@@ -66,6 +70,9 @@ type CoordinatorTargetFormDialogProps = {
   onSubmit: (items: CoordinatorTargetSaveItem[]) => Promise<void> | void;
 };
 
+// UI-level target source. "inherit" clears the per-coordinator override.
+type TargetSourceMode = "inherit" | "fixed" | "derived" | "percentage";
+
 type FormState = {
   projectId: string;
   coordinatorId: string;
@@ -74,6 +81,9 @@ type FormState = {
   quarterValues: Record<CoordinatorTargetQuarter, string>;
   notes: string;
   isActive: boolean;
+  targetSourceMode: TargetSourceMode;
+  targetSourceIndicatorId: string;
+  targetSourcePercentage: string;
 };
 
 const DEFAULT_FORM: FormState = {
@@ -84,7 +94,16 @@ const DEFAULT_FORM: FormState = {
   quarterValues: emptyQuarterValues(),
   notes: "",
   isActive: true,
+  targetSourceMode: "inherit",
+  targetSourceIndicatorId: "",
+  targetSourcePercentage: "",
 };
+
+function sourceModeFromExisting(existing?: CoordinatorTarget | null): TargetSourceMode {
+  const src = existing?.target_source;
+  if (!src || !src.type) return "inherit";
+  return src.type;
+}
 
 function toFormState(existing?: CoordinatorTarget | null, defaultProjectId?: string): FormState {
   if (!existing) {
@@ -100,6 +119,12 @@ function toFormState(existing?: CoordinatorTarget | null, defaultProjectId?: str
     quarterValues,
     notes: existing.notes || "",
     isActive: existing.is_active !== false,
+    targetSourceMode: sourceModeFromExisting(existing),
+    targetSourceIndicatorId: existing.target_source?.source_indicator_id
+      ? String(existing.target_source.source_indicator_id)
+      : "",
+    targetSourcePercentage:
+      existing.target_source?.percentage != null ? String(existing.target_source.percentage) : "",
   };
 }
 
@@ -163,12 +188,15 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
     [form.indicatorId, indicators],
   );
 
+  const derivedMode = form.targetSourceMode === "derived" || form.targetSourceMode === "percentage";
+
   const canSubmit = Boolean(
     form.projectId &&
       form.coordinatorId &&
       form.indicatorId &&
       form.year &&
-      QUARTERS.some((quarter) => form.quarterValues[quarter].trim() !== ""),
+      (QUARTERS.some((quarter) => form.quarterValues[quarter].trim() !== "") ||
+        form.targetSourceMode !== "inherit"),
   );
 
   const submit = async () => {
@@ -180,11 +208,35 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
       return;
     }
 
+    if (derivedMode && !form.targetSourceIndicatorId) {
+      setErrorMessage("Choose a source indicator for the derived target.");
+      return;
+    }
+    if (form.targetSourceMode === "percentage" && !form.targetSourcePercentage.trim()) {
+      setErrorMessage("Enter a percentage for the derived target.");
+      return;
+    }
+
+    // Per-coordinator override written through to the POT config on save.
+    const override =
+      form.targetSourceMode === "inherit"
+        ? { target_source_type: null, target_source_indicator: null, target_source_percentage: null }
+        : form.targetSourceMode === "fixed"
+          ? { target_source_type: "fixed" as const, target_source_indicator: null, target_source_percentage: null }
+          : {
+              target_source_type: form.targetSourceMode,
+              target_source_indicator: Number(form.targetSourceIndicatorId),
+              target_source_percentage:
+                form.targetSourceMode === "percentage" ? Number(form.targetSourcePercentage) : null,
+            };
+
     const items: CoordinatorTargetSaveItem[] = [];
     for (const quarter of QUARTERS) {
       const raw = form.quarterValues[quarter].trim();
-      if (raw === "") continue; // Blank quarter => leave unchanged.
-      const value = Number(raw);
+      // Derived targets ignore the stored value but still need quarter rows to
+      // exist; create all four (0 when blank). Fixed leaves blank quarters alone.
+      if (raw === "" && !derivedMode) continue;
+      const value = raw === "" ? 0 : Number(raw);
       if (!Number.isFinite(value)) {
         setErrorMessage(`Target for ${quarter} must be a valid number.`);
         return;
@@ -199,6 +251,7 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
         target_value: value,
         notes: form.notes.trim() || undefined,
         is_active: form.isActive,
+        ...override,
       });
     }
 
@@ -342,6 +395,75 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
               value={form.year}
               onChange={(event) => setForm((current) => ({ ...current, year: event.target.value }))}
             />
+          </div>
+
+          {/* Dynamic (derived) target source — optional per-coordinator override. */}
+          <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+            <div className="grid gap-2 sm:max-w-sm">
+              <Label>Target type</Label>
+              <Select
+                value={form.targetSourceMode}
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, targetSourceMode: value as TargetSourceMode }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inherit">Inherit project default</SelectItem>
+                  <SelectItem value="fixed">Fixed target</SelectItem>
+                  <SelectItem value="derived">Achieved value of another indicator</SelectItem>
+                  <SelectItem value="percentage">Percentage of another indicator&apos;s achieved value</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {derivedMode ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2 min-w-0">
+                  <Label>Source indicator</Label>
+                  <Select
+                    value={form.targetSourceIndicatorId}
+                    onValueChange={(value) =>
+                      setForm((current) => ({ ...current, targetSourceIndicatorId: value }))
+                    }
+                  >
+                    <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
+                      <SelectValue placeholder="Select source indicator" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {indicators
+                        .filter((indicator) => indicator.value !== form.indicatorId)
+                        .map((indicator) => (
+                          <SelectItem key={indicator.value} value={indicator.value}>
+                            {indicator.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {form.targetSourceMode === "percentage" ? (
+                  <div className="grid gap-2 sm:max-w-[160px]">
+                    <Label>Target %</Label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="e.g. 95"
+                      value={form.targetSourcePercentage}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, targetSourcePercentage: event.target.value }))
+                      }
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {derivedMode ? (
+              <p className="text-xs text-muted-foreground">
+                The target is computed from the current report&apos;s achieved value of the source
+                indicator. Quarterly values below are ignored for derived targets.
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-2">

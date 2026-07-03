@@ -31,6 +31,7 @@ function formatPercent(value: number | null): string {
 function getStatusLabel(status: CoordinatorPerformanceStatus): string {
   if (status === "on_track") return "On Track";
   if (status === "no_target") return "No Target";
+  if (status === "pending") return "Pending";
   return status === "met" ? "Met" : "Behind";
 }
 
@@ -38,6 +39,7 @@ function getStatusClassName(status: CoordinatorPerformanceStatus): string {
   if (status === "met") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
   if (status === "on_track") return "border-amber-500/30 bg-amber-500/10 text-amber-700";
   if (status === "behind") return "border-rose-500/30 bg-rose-500/10 text-rose-700";
+  if (status === "pending") return "border-sky-500/30 bg-sky-500/10 text-sky-700";
   return "border-border bg-muted/30 text-muted-foreground";
 }
 
@@ -78,7 +80,27 @@ export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {
             return (
               <TableRow key={row.target.id}>
                 <TableCell className="max-w-[24rem] whitespace-normal break-words align-top">{row.indicatorName}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatNumber(Number(row.target.target_value || 0))}</TableCell>
+                <TableCell className="text-right tabular-nums align-top">
+                  {row.target.target_pending ? (
+                    <span className="text-sky-700">Pending</span>
+                  ) : (
+                    formatNumber(Number(row.target.resolved_target_value ?? row.target.target_value ?? 0))
+                  )}
+                  {row.target.target_source ? (
+                    <div
+                      className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                      title={
+                        row.target.target_source.source_indicator_name
+                          ? `Derived from: ${row.target.target_source.source_indicator_name}`
+                          : undefined
+                      }
+                    >
+                      {row.target.target_source.type === "percentage"
+                        ? `${row.target.target_source.percentage ?? ""}% of source`
+                        : "derived"}
+                    </div>
+                  ) : null}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">
                   <div>{formatNumber(row.actualValue)}</div>
                   <div className="text-xs text-muted-foreground">own {formatNumber(row.ownActualValue)}</div>
@@ -87,11 +109,10 @@ export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {
                 <TableCell
                   className={cn(
                     "text-right tabular-nums",
-                    row.variance < 0 ? "text-destructive" : row.variance > 0 ? "text-emerald-700" : "",
+                    (row.variance ?? 0) < 0 ? "text-destructive" : (row.variance ?? 0) > 0 ? "text-emerald-700" : "",
                   )}
                 >
-                  {row.variance > 0 ? "+" : ""}
-                  {formatNumber(row.variance)}
+                  {row.variance == null ? "—" : `${row.variance > 0 ? "+" : ""}${formatNumber(row.variance)}`}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={cn("font-normal", getStatusClassName(row.status))}>

@@ -4,7 +4,7 @@ import type {
   CoordinatorTargetQuarter,
 } from "@/lib/api";
 
-export type CoordinatorPerformanceStatus = "met" | "on_track" | "behind" | "no_target";
+export type CoordinatorPerformanceStatus = "met" | "on_track" | "behind" | "no_target" | "pending";
 
 export type CoordinatorPerformanceRow = {
   target: CoordinatorTarget;
@@ -14,7 +14,7 @@ export type CoordinatorPerformanceRow = {
   ownActualValue: number;
   actualValue: number;
   achievementPercent: number | null;
-  variance: number;
+  variance: number | null;
   status: CoordinatorPerformanceStatus;
   childContributions: CoordinatorTargetChildContribution[];
 };

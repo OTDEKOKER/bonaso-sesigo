@@ -22,9 +22,25 @@ export interface CoordinatorTarget {
   own_actual_value?: number;
   actual_value?: number;
   achievement_percent?: number | null;
-  variance?: number;
-  performance_status?: "no_target" | "met" | "on_track" | "behind";
+  variance?: number | null;
+  performance_status?: "no_target" | "met" | "on_track" | "behind" | "pending";
   child_contributions?: CoordinatorTargetChildContribution[];
+  // Dynamic (derived) targets — resolved read metadata from the rollup engine.
+  // resolved_target_value is the effective target (null when pending). target_source
+  // describes how it was derived; target_pending is true when the source indicator
+  // has not been reported yet.
+  resolved_target_value?: number | null;
+  target_source?: CoordinatorTargetSource | null;
+  target_pending?: boolean;
+}
+
+export type TargetSourceType = "fixed" | "derived" | "percentage";
+
+export interface CoordinatorTargetSource {
+  type: TargetSourceType;
+  source_indicator_id: number | null;
+  source_indicator_name?: string | null;
+  percentage?: number | null;
 }
 
 export interface CoordinatorTargetFilters {
@@ -48,6 +64,11 @@ export interface CreateCoordinatorTargetRequest {
   target_value: number;
   notes?: string;
   is_active?: boolean;
+  // Per-coordinator target-source override (write-through to the POT config).
+  // null type clears the override (inherit the project-indicator default).
+  target_source_type?: TargetSourceType | null;
+  target_source_indicator?: number | null;
+  target_source_percentage?: number | null;
 }
 
 export type UpdateCoordinatorTargetRequest = Partial<CreateCoordinatorTargetRequest>;
