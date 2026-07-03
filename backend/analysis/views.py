@@ -499,6 +499,119 @@ def chart_export_excel(request):
     return response
 
 
+def _fiscal_year_quarter_for_month(month_start):
+    """(fiscal_year, 'Q1'..'Q4') for a month. Botswana FY: Apr-Mar; Jan-Mar
+    belongs to the PREVIOUS fiscal year's Q4."""
+    m, y = month_start.month, month_start.year
+    if 4 <= m <= 6:
+        return (y, 'Q1')
+    if 7 <= m <= 9:
+        return (y, 'Q2')
+    if 10 <= m <= 12:
+        return (y, 'Q3')
+    return (y - 1, 'Q4')
+
+
+def compute_trend_targets(indicator_ids, month_starts, *, project_id, org_scope, request):
+    """Effective (or configured) target per (indicator_id, month_start) for the
+    dashboard trend charts, quarter-aligned.
+
+    Targets are quarterly; the trend axis is monthly, and the frontend SUMS the
+    per-month ``target`` within each quarter — so we place a quarter's whole
+    target on the FIRST in-range month of that quarter and leave the other months
+    at 0 (no triple-counting). Fixed indicators use the summed POT quarterly
+    targets over the requested org scope; derived/percentage indicators use the
+    source indicator's ACHIEVED value over the same scope/quarter (× percent) —
+    the Effective Target — computed at read time. Stored targets are never
+    modified. Missing source => 0 (no target line; pending is surfaced on the
+    Coordinator Targets page).
+    """
+    from projects.models import ProjectIndicator, ProjectIndicatorOrganizationTarget
+    from analysis.services.coordinator_rollups import fiscal_quarter_range
+
+    result = {iid: {ms: 0.0 for ms in month_starts} for iid in indicator_ids}
+    if project_id is None or not month_starts:
+        return result
+
+    q_field = {'Q1': 'q1_target', 'Q2': 'q2_target', 'Q3': 'q3_target', 'Q4': 'q4_target'}
+
+    # Earliest in-range month per (fiscal_year, quarter) carries that quarter's target.
+    anchor = {}
+    for ms in month_starts:
+        key = _fiscal_year_quarter_for_month(ms)
+        if key not in anchor or ms < anchor[key]:
+            anchor[key] = ms
+
+    inds = {i.id: i for i in Indicator.objects.filter(id__in=indicator_ids).select_related('canonical_indicator')}
+    canon_of = {iid: (inds[iid].canonical_id if iid in inds else iid) for iid in indicator_ids}
+
+    pi_by_canon = {}
+    for pi in (
+        ProjectIndicator.objects.filter(project_id=project_id)
+        .select_related('indicator', 'target_source_indicator')
+    ):
+        c = pi.indicator.canonical_id if pi.indicator_id else pi.indicator_id
+        pi_by_canon[c] = pi
+
+    # Precompute source achieved per (source_canonical, fiscal_year, quarter).
+    source_canons = set()
+    for iid in indicator_ids:
+        pi = pi_by_canon.get(canon_of[iid])
+        if pi and pi.target_source_type in ('derived', 'percentage') and pi.target_source_indicator_id:
+            source_canons.add(pi.target_source_indicator.canonical_id)
+
+    source_achieved = {}
+    if source_canons:
+        src_ids = list(
+            Indicator.objects.filter(
+                models.Q(id__in=source_canons) | models.Q(canonical_indicator_id__in=source_canons)
+            ).values_list('id', flat=True)
+        )
+        src_canon_of = dict(Indicator.objects.filter(id__in=src_ids).values_list('id', 'canonical_indicator_id'))
+        aq = Aggregate.objects.filter(indicator_id__in=src_ids, status='approved', project_id=project_id)
+        aq = apply_training_filter(aq, request, project_lookup='project')
+        aq = _restrict_aggregates_to_user_scope(aq, request.user)
+        if org_scope is not None:
+            aq = aq.filter(organization_id__in=org_scope)
+        q_ranges = {q: fiscal_quarter_range(q[0], q[1]) for q in anchor}
+        for agg in aq:
+            c = src_canon_of.get(agg.indicator_id) or agg.indicator_id
+            for q, (start, end) in q_ranges.items():
+                if agg.period_start <= end and agg.period_end >= start:
+                    k = (c, q[0], q[1])
+                    source_achieved[k] = source_achieved.get(k, 0.0) + _extract_total(agg.value)
+
+    # Configured (fixed) targets: summed POT quarterly targets over the scope.
+    pot_qs = ProjectIndicatorOrganizationTarget.objects.filter(project_indicator__project_id=project_id)
+    if org_scope is not None:
+        pot_qs = pot_qs.filter(organization_id__in=org_scope)
+    pot_sum = {}
+    for pot in pot_qs.select_related('project_indicator__indicator'):
+        pi = pot.project_indicator
+        c = pi.indicator.canonical_id if pi.indicator_id else pi.indicator_id
+        for q in ('Q1', 'Q2', 'Q3', 'Q4'):
+            pot_sum[(c, q)] = pot_sum.get((c, q), 0.0) + float(getattr(pot, q_field[q]) or 0)
+
+    for iid in indicator_ids:
+        c = canon_of[iid]
+        pi = pi_by_canon.get(c)
+        derived = bool(pi and pi.target_source_type in ('derived', 'percentage') and pi.target_source_indicator_id)
+        for (fy, q), anchor_month in anchor.items():
+            if derived:
+                src_c = pi.target_source_indicator.canonical_id
+                achieved = source_achieved.get((src_c, fy, q))
+                if achieved is None:
+                    target_value = 0.0  # pending source — no target line here
+                elif pi.target_source_type == 'percentage' and pi.target_source_percentage is not None:
+                    target_value = achieved * float(pi.target_source_percentage) / 100.0
+                else:
+                    target_value = achieved
+            else:
+                target_value = pot_sum.get((c, q), 0.0)
+            result[iid][anchor_month] = target_value
+    return result
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def indicator_trends(request, indicator_id: int):
@@ -570,11 +683,16 @@ def indicator_trends(request, indicator_id: int):
         if month_start in totals:
             totals[month_start] += _extract_total(agg.value)
 
+    trend_targets = compute_trend_targets(
+        [indicator_id], month_starts,
+        project_id=parsed_project_id, org_scope=requested_org_scope, request=request,
+    ).get(indicator_id, {})
+
     data = [
         {
             'month': month_start.strftime('%b %Y'),
             'value': totals[month_start],
-            'target': 0,
+            'target': trend_targets.get(month_start, 0.0),
         }
         for month_start in month_starts
     ]
@@ -683,14 +801,22 @@ def indicator_trends_bulk(request):
         for indicator in Indicator.objects.filter(id__in=indicator_ids)
     }
 
+    # Effective Target per (indicator, month), quarter-aligned. Fixed => configured
+    # POT targets; derived/percentage => source achieved (× percent) at read time.
+    trend_targets = compute_trend_targets(
+        indicator_ids, month_starts,
+        project_id=parsed_project_id, org_scope=requested_org_scope, request=request,
+    )
+
     series = []
     for indicator_id in indicator_ids:
         totals = totals_by_indicator.get(indicator_id, {})
+        targets = trend_targets.get(indicator_id, {})
         data = [
             {
                 'month': month_start.strftime('%b %Y'),
                 'value': totals.get(month_start, 0.0),
-                'target': 0,
+                'target': targets.get(month_start, 0.0),
             }
             for month_start in month_starts
         ]

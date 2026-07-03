@@ -141,3 +141,24 @@ class DerivedTargetTests(TestCase):
 
     def test_valid_source_accepted(self):
         assert_valid_target_source(self.project.id, self.referred.id, self.eligible.id, 'derived')
+
+    # --- dashboard trend endpoint uses the Effective Target -----------------
+    def test_bulk_trend_uses_effective_target(self):
+        from rest_framework.test import APIClient
+        self._agg(self.eligible, self.coord, 100)   # source achieved (Q1 2026) = 100
+        self._agg(self.referred, self.coord, 60)     # this indicator achieved = 60
+        self._pi(target_source_type='percentage', target_source_indicator=self.eligible,
+                 target_source_percentage=95)
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        resp = client.get('/api/analysis/trends/', {
+            'indicator_ids': str(self.referred.id),
+            'project': str(self.project.id),
+            'coordinator': str(self.coord.id),
+            'date_from': '2026-04-01', 'date_to': '2026-06-30',
+        })
+        self.assertEqual(resp.status_code, 200)
+        series = resp.json()['series'][0]
+        # Effective target = 100 * 95% = 95, anchored on the quarter's first month.
+        self.assertEqual(sum(d['target'] for d in series['data']), 95.0)
+        self.assertEqual(sum(d['value'] for d in series['data']), 60.0)
