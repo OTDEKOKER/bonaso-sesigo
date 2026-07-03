@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Loader2, Search } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Search } from "lucide-react";
 
 import { coordinatorTargetsService, type CoordinatorTarget, type CoordinatorTargetQuarter } from "@/lib/api";
 import { getCurrentFiscalYear } from "@/components/targets/coordinator-targets-utils";
@@ -134,6 +134,8 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
   const [errorMessage, setErrorMessage] = useState("");
   const [indicatorSearchOpen, setIndicatorSearchOpen] = useState(false);
   const [indicatorSearch, setIndicatorSearch] = useState("");
+  const [sourceSearchOpen, setSourceSearchOpen] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState("");
   // Existing target row per quarter (id => update, absent => create) for the
   // currently-selected project + coordinator + indicator + year.
   const [quarterMeta, setQuarterMeta] = useState<Partial<Record<CoordinatorTargetQuarter, { id: number }>>>({});
@@ -182,6 +184,23 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
       `${indicator.label} ${indicator.hint || ""} ${indicator.searchText || ""}`.toLowerCase().includes(query),
     );
   }, [indicatorSearch, indicators]);
+
+  // Source-indicator options (searchable) — exclude the indicator being configured.
+  const sourceIndicators = useMemo(
+    () => indicators.filter((indicator) => indicator.value !== form.indicatorId),
+    [indicators, form.indicatorId],
+  );
+  const filteredSourceIndicators = useMemo(() => {
+    const query = sourceSearch.trim().toLowerCase();
+    if (!query) return sourceIndicators;
+    return sourceIndicators.filter((indicator) =>
+      `${indicator.label} ${indicator.hint || ""} ${indicator.searchText || ""}`.toLowerCase().includes(query),
+    );
+  }, [sourceSearch, sourceIndicators]);
+  const selectedSourceLabel = useMemo(
+    () => sourceIndicators.find((indicator) => indicator.value === form.targetSourceIndicatorId)?.label ?? "",
+    [sourceIndicators, form.targetSourceIndicatorId],
+  );
 
   const selectedIndicator = useMemo(
     () => indicators.find((indicator) => indicator.value === form.indicatorId) || null,
@@ -422,25 +441,47 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-2 min-w-0">
                   <Label>Source indicator</Label>
-                  <Select
-                    value={form.targetSourceIndicatorId}
-                    onValueChange={(value) =>
-                      setForm((current) => ({ ...current, targetSourceIndicatorId: value }))
-                    }
-                  >
-                    <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
-                      <SelectValue placeholder="Select source indicator" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {indicators
-                        .filter((indicator) => indicator.value !== form.indicatorId)
-                        .map((indicator) => (
-                          <SelectItem key={indicator.value} value={indicator.value}>
-                            {indicator.label}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={sourceSearchOpen} onOpenChange={setSourceSearchOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm hover:bg-muted/30"
+                      >
+                        <span className={`min-w-0 truncate ${selectedSourceLabel ? "" : "text-muted-foreground"}`}>
+                          {selectedSourceLabel || "Select source indicator"}
+                        </span>
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="z-[60] w-[calc(100vw-3rem)] p-0 sm:w-[540px]">
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Search source indicators…"
+                          value={sourceSearch}
+                          onValueChange={setSourceSearch}
+                        />
+                        <CommandList className="max-h-[320px]">
+                          <CommandEmpty>No indicators found.</CommandEmpty>
+                          <CommandGroup heading="Indicators">
+                            {filteredSourceIndicators.map((indicator) => (
+                              <CommandItem
+                                key={indicator.value}
+                                value={indicator.value}
+                                onSelect={() => {
+                                  setForm((current) => ({ ...current, targetSourceIndicatorId: indicator.value }));
+                                  setSourceSearch("");
+                                  setSourceSearchOpen(false);
+                                }}
+                                className="items-start"
+                              >
+                                <span className="whitespace-normal break-words leading-snug">{indicator.label}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 {form.targetSourceMode === "percentage" ? (
                   <div className="grid gap-2 sm:max-w-[160px]">
