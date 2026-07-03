@@ -179,20 +179,11 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
         return instance
 
     def validate(self, attrs):
-        # Never let a deprecated indicator twin capture its own coordinator target —
-        # that produces the "doubled-up targets" the coordinators page showed. The
-        # canonical indicator is the single place targets live.
-        indicator = attrs.get('indicator')
-        if indicator is None and self.instance is not None:
-            indicator = self.instance.indicator
-        if indicator is not None and getattr(indicator, 'canonical_indicator_id', None):
-            canonical = indicator.canonical_or_self
-            raise serializers.ValidationError({
-                'indicator_id': (
-                    f'“{indicator.name}” is a deprecated indicator. Capture this target on its '
-                    f'canonical version (“{canonical.name}”, id {canonical.id}) instead.'
-                )
-            })
+        # NOTE: deprecated indicators may be assigned to workbooks and already hold
+        # captured coordinator targets, so we never block or remove them here — such
+        # targets stay fully editable. Deduplication of deprecated twins is handled
+        # display-side (view collapse) and by keying new POT->CT syncs onto the
+        # canonical indicator; nothing is rejected on write.
         return attrs
 
     def _actuals(self, obj):
