@@ -1395,6 +1395,55 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         )
         return response
 
+    @action(detail=False, methods=['get'], url_path='export-targets')
+    def export_targets(self, request):
+        """Pivoted CSV of assigned indicators with their quarterly targets:
+        one row per indicator, columns Q1..Q4. Respects the current filters
+        (project, coordinator, indicator, year). A Coordinator/Year column is
+        added only when that filter isn't pinned, so the file stays unambiguous.
+        Deprecated indicator twins are collapsed onto their canonical.
+        """
+        params = request.query_params
+        single_coord = bool((params.get('coordinator_id') or '').strip() and params.get('coordinator_id') != 'all')
+        single_year = bool((params.get('year') or '').strip() and params.get('year') != 'all')
+
+        targets = self._collapse_deprecated_twins(self.filter_queryset(self.get_queryset()))
+        pivot: dict = {}
+        for t in targets:
+            canonical = t.indicator.canonical_or_self if t.indicator_id else None
+            canon_id = canonical.id if canonical else t.indicator_id
+            key = (t.coordinator_id, canon_id, t.year)
+            row = pivot.setdefault(key, {
+                'coordinator': t.coordinator.name if t.coordinator_id else '',
+                'indicator': (canonical.name if canonical else '') or f'Indicator {canon_id}',
+                'year': t.year,
+                'Q1': '', 'Q2': '', 'Q3': '', 'Q4': '',
+            })
+            if t.quarter in ('Q1', 'Q2', 'Q3', 'Q4'):
+                row[t.quarter] = t.target_value
+
+        header = []
+        if not single_coord:
+            header.append('coordinator')
+        header.append('indicator')
+        if not single_year:
+            header.append('year')
+        header += ['Q1', 'Q2', 'Q3', 'Q4']
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="assigned-indicator-targets.csv"'
+        writer = csv.writer(response)
+        writer.writerow(header)
+        for _key, row in sorted(pivot.items(), key=lambda kv: (kv[1]['coordinator'], kv[1]['indicator'], kv[1]['year'])):
+            writer.writerow([row[col] for col in header])
+
+        record_audit_event(
+            action='export', request=request, object_type='coordinator_target',
+            description=f'Exported {len(pivot)} assigned-indicator target row(s) (pivoted Q1-Q4).',
+            metadata={'count': len(pivot), 'mode': 'indicator_quarters'},
+        )
+        return response
+
 
 class ReportViewSet(viewsets.ModelViewSet):
     """ViewSet for managing reports."""

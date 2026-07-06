@@ -438,6 +438,29 @@ export function CoordinatorTargetsPage() {
     }
   };
 
+  const handleExportAssigned = async () => {
+    setExporting(true);
+    try {
+      const blob = await coordinatorTargetsService.exportAssignedTargetsCsv(targetFilters);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "assigned-indicator-targets.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unable to export assigned indicator targets.",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -463,6 +486,21 @@ export function CoordinatorTargetsPage() {
                   <Download className="mr-2 h-4 w-4" />
                 )}
                 Export CSV
+              </Button>
+            ) : null}
+            {!coordinatorTargetsUnavailable ? (
+              <Button
+                variant="outline"
+                onClick={() => void handleExportAssigned()}
+                disabled={exporting || totalCount === 0}
+                title={totalCount === 0 ? "No targets to export" : "Indicator with Q1–Q4 targets"}
+              >
+                {exporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Download targets (Q1–Q4)
               </Button>
             ) : null}
             {canEditTargets ? (

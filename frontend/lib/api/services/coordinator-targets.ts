@@ -230,4 +230,30 @@ export const coordinatorTargetsService = {
     }
     return response.blob();
   },
+
+  // Pivoted CSV: one row per assigned indicator, columns Q1..Q4 (plus a
+  // coordinator/year column when that filter isn't pinned). Respects the same filters.
+  async exportAssignedTargetsCsv(filters?: CoordinatorTargetFilters): Promise<Blob> {
+    const params = filters as Record<string, string> | undefined;
+    const qs = params
+      ? `?${new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+          ) as Record<string, string>,
+        ).toString()}`
+      : "";
+    const response = await fetchWithAuth(`/analysis/coordinator-targets/export-targets/${qs}`);
+    if (!response.ok) {
+      const contentType = response.headers.get("content-type");
+      const payload = contentType?.includes("application/json")
+        ? await response.json()
+        : await response.text();
+      throw normalizeApiError({
+        status: response.status,
+        payload,
+        fallbackMessage: "Failed to export assigned indicator targets",
+      });
+    }
+    return response.blob();
+  },
 };
