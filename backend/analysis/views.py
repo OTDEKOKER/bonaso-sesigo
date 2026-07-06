@@ -1470,12 +1470,40 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             )
 
         rows = sorted((e for e in pivot.items() if _included(e)), key=_sort_key)
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="assigned-indicator-targets.csv"'
-        writer = csv.writer(response)
-        writer.writerow(header)
+
+        from io import BytesIO
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Targets'
+        ws.append([col.upper() if col in ('Q1', 'Q2', 'Q3', 'Q4') else col.title() for col in header])
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+
+        def _xl(col, value):
+            if col in ('Q1', 'Q2', 'Q3', 'Q4'):
+                return float(value) if value not in ('', None) else None
+            return value
+
         for _key, row in rows:
-            writer.writerow([row[col] for col in header])
+            ws.append([_xl(col, row[col]) for col in header])
+
+        # Sensible column widths.
+        widths = {'coordinator': 28, 'indicator': 60, 'year': 8, 'Q1': 12, 'Q2': 12, 'Q3': 12, 'Q4': 12}
+        for idx, col in enumerate(header, start=1):
+            ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = widths.get(col, 14)
+        ws.freeze_panes = 'A2'
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = 'attachment; filename="assigned-indicator-targets.xlsx"'
 
         record_audit_event(
             action='export', request=request, object_type='coordinator_target',

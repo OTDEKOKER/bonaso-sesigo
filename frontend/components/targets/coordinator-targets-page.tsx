@@ -445,7 +445,7 @@ export function CoordinatorTargetsPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "assigned-indicator-targets.csv";
+      link.download = "assigned-indicator-targets.xlsx";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -493,14 +493,14 @@ export function CoordinatorTargetsPage() {
                 variant="outline"
                 onClick={() => void handleExportAssigned()}
                 disabled={exporting || totalCount === 0}
-                title={totalCount === 0 ? "No targets to export" : "Indicator with Q1–Q4 targets"}
+                title={totalCount === 0 ? "No targets to export" : "Excel: indicator with Q1–Q4 targets, workbook order"}
               >
                 {exporting ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Download className="mr-2 h-4 w-4" />
                 )}
-                Download targets (Q1–Q4)
+                Download targets (Excel)
               </Button>
             ) : null}
             {canEditTargets ? (
