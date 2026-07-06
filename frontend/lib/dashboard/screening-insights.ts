@@ -780,18 +780,9 @@ function buildEmptyScreeningInsights(isLoading: boolean, hasError: boolean): Scr
       label: stage.label,
       value: 0,
     })),
-    servicePathways: pathwayCardDefinitions.map((card) => ({
-      id: card.id,
-      title: card.label,
-      stages: card.stages.map((stage) => ({
-        id: stage.id,
-        color: stage.color,
-        label: stage.label,
-        value: 0,
-      })),
-      total: 0,
-      indicatorDetails: [],
-    })),
+    // Loading/empty state: no hardcoded default pathway cards. The panel is
+    // populated only from the org's saved service-pathway configuration.
+    servicePathways: [],
     hivTestingComparison: hivTestingComparisonDefinitions.map((definition) => ({
       actual: 0,
       label: definition.label,
@@ -1625,39 +1616,27 @@ export function buildHomeDashboardScreeningInsights({
       label: stage.label,
       value: stageTotals.get(stage.id) || 0,
     })),
-    servicePathways: hasConfiguredPathways
-      ? configuredPathways.map((pathway, pathwayIndex) => {
-          const stageValues = configPathwayTotals.get(pathway.id);
-          const stages = pathway.stages.map((stage, stageIndex) => ({
-            id: stage.id,
-            color: stage.color || PATHWAY_STAGE_FALLBACK_COLORS[stageIndex % PATHWAY_STAGE_FALLBACK_COLORS.length],
-            label: stage.label,
-            value: stageValues?.get(stage.id) || 0,
-          }));
-          return {
-            id: pathway.id || `pathway-${pathwayIndex}`,
-            title: pathway.label,
-            stages,
-            total: stages.reduce((sum, stage) => sum + stage.value, 0),
-            indicatorDetails: Array.from(configPathwayDetails.get(pathway.id)?.values() || []),
-          };
-        })
-      : pathwayCardDefinitions.map((card) => {
-          const stageValues = servicePathwayTotals.get(card.id);
-          const stages = card.stages.map((stage) => ({
-            id: stage.id,
-            color: stage.color,
-            label: stage.label,
-            value: stageValues?.get(stage.id) || 0,
-          }));
-          return {
-            id: card.id,
-            title: card.label,
-            stages,
-            total: stages.reduce((sum, stage) => sum + stage.value, 0),
-            indicatorDetails: Array.from(servicePathwayDetails.get(card.id)?.values() || []),
-          };
-        }),
+    // Service pathway cards are ALWAYS driven by the org's saved configuration
+    // (Organization.dashboard_config.servicePathways) — never by hardcoded default
+    // cards. When nothing is configured this is an empty list and the panel shows
+    // its empty state. The dashboard filters drive each card's DATA (scoped orgs /
+    // period), not which cards appear.
+    servicePathways: configuredPathways.map((pathway, pathwayIndex) => {
+      const stageValues = configPathwayTotals.get(pathway.id);
+      const stages = pathway.stages.map((stage, stageIndex) => ({
+        id: stage.id,
+        color: stage.color || PATHWAY_STAGE_FALLBACK_COLORS[stageIndex % PATHWAY_STAGE_FALLBACK_COLORS.length],
+        label: stage.label,
+        value: stageValues?.get(stage.id) || 0,
+      }));
+      return {
+        id: pathway.id || `pathway-${pathwayIndex}`,
+        title: pathway.label,
+        stages,
+        total: stages.reduce((sum, stage) => sum + stage.value, 0),
+        indicatorDetails: Array.from(configPathwayDetails.get(pathway.id)?.values() || []),
+      };
+    }),
     hivTestingComparison: hivTestingComparisonDefinitions.map((definition) => {
       const entry = hivTestingTotals.get(definition.id);
       return {
