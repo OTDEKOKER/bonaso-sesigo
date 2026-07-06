@@ -1428,7 +1428,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         header.append('indicator')
         if not single_year:
             header.append('year')
-        header += ['Q1', 'Q2', 'Q3', 'Q4']
+        header += ['Q1', 'Q2', 'Q3', 'Q4', 'Total']
 
         # The workbook layout is the source of truth: emit EVERY indicator on the
         # coordinator's active workbook (in workbook order), filling Q1..Q4 where a
@@ -1499,16 +1499,20 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         for cell in ws[1]:
             cell.font = Font(bold=True)
 
-        def _xl(col, value):
+        def _cell(col, row):
+            if col == 'Total':
+                nums = [float(row[q]) for q in ('Q1', 'Q2', 'Q3', 'Q4') if row.get(q) not in ('', None)]
+                return sum(nums) if nums else None
+            value = row.get(col, '')
             if col in ('Q1', 'Q2', 'Q3', 'Q4'):
                 return float(value) if value not in ('', None) else None
             return value
 
         for row in rows:
-            ws.append([_xl(col, row.get(col, '')) for col in header])
+            ws.append([_cell(col, row) for col in header])
 
         # Sensible column widths.
-        widths = {'coordinator': 28, 'indicator': 60, 'year': 8, 'Q1': 12, 'Q2': 12, 'Q3': 12, 'Q4': 12}
+        widths = {'coordinator': 28, 'indicator': 60, 'year': 8, 'Q1': 12, 'Q2': 12, 'Q3': 12, 'Q4': 12, 'Total': 12}
         for idx, col in enumerate(header, start=1):
             ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = widths.get(col, 14)
         ws.freeze_panes = 'A2'
