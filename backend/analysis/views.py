@@ -1438,14 +1438,25 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         mode = request_mode_value(request)
         coord_ids = {coord_id for (coord_id, _canon, _year) in pivot}
         layout_order: dict = {}
+        coords_with_layout: set = set()
         for coord_id in coord_ids:
             layout = WorkbookLayout.objects.filter(
                 coordinator_organization_id=coord_id, mode=mode, is_active=True,
             ).first()
             if layout is None:
                 continue
+            coords_with_layout.add(coord_id)
             for item in layout.items.filter(indicator__isnull=False).select_related('indicator'):
                 layout_order[(coord_id, item.indicator.canonical_id)] = item.order_index
+
+        # The workbook is the single source of truth for what gets reported: an
+        # indicator NOT on the coordinator's workbook layout falls off the export.
+        # (Coordinators with no layout at all keep every assigned target.)
+        def _included(entry):
+            (coord_id, canon_id, _year), _row = entry
+            if coord_id in coords_with_layout:
+                return (coord_id, canon_id) in layout_order
+            return True
 
         def _sort_key(entry):
             (coord_id, canon_id, year), row = entry
@@ -1454,21 +1465,22 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                 row['coordinator'],
                 0 if order is not None else 1,     # placed indicators first
                 order if order is not None else 0,  # then by workbook position
-                row['indicator'],                    # unplaced: alphabetical
+                row['indicator'],                    # (only relevant for no-layout coordinators)
                 year,
             )
 
+        rows = sorted((e for e in pivot.items() if _included(e)), key=_sort_key)
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="assigned-indicator-targets.csv"'
         writer = csv.writer(response)
         writer.writerow(header)
-        for _key, row in sorted(pivot.items(), key=_sort_key):
+        for _key, row in rows:
             writer.writerow([row[col] for col in header])
 
         record_audit_event(
             action='export', request=request, object_type='coordinator_target',
-            description=f'Exported {len(pivot)} assigned-indicator target row(s) (pivoted Q1-Q4).',
-            metadata={'count': len(pivot), 'mode': 'indicator_quarters'},
+            description=f'Exported {len(rows)} assigned-indicator target row(s) (pivoted Q1-Q4, workbook order).',
+            metadata={'count': len(rows), 'mode': 'indicator_quarters'},
         )
         return response
 
