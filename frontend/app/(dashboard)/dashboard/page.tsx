@@ -969,12 +969,24 @@ function DashboardPageContent({
   }, []);
 
   const organizations = useMemo(() => organizationsData?.results || [], [organizationsData]);
-  // Per-org configured service pathways (Organization.dashboard_config.servicePathways).
+  // Configured service pathways (Organization.dashboard_config.servicePathways).
+  // The SET of pathway cards is stable — it must NOT disappear (fall back to the
+  // built-in defaults) just because you filter to a coordinator/org that has no
+  // config of its own. The dashboard filters drive the card DATA (scope/period),
+  // not which cards appear. Resolve from the viewer's own org, then the selected
+  // home org, then any org that has a config.
   const servicePathwayConfig = useMemo<ConfiguredPathway[] | null>(() => {
-    const org = organizations.find((item) => String(item.id) === String(homeDashboardOrgId));
-    const cfg = (org?.dashboard_config as { servicePathways?: unknown } | undefined)?.servicePathways;
-    return Array.isArray(cfg) ? (cfg as ConfiguredPathway[]) : null;
-  }, [organizations, homeDashboardOrgId]);
+    const readCfg = (orgId: number | string | undefined | null): ConfiguredPathway[] | null => {
+      if (orgId === undefined || orgId === null) return null;
+      const org = organizations.find((item) => String(item.id) === String(orgId));
+      const cfg = (org?.dashboard_config as { servicePathways?: unknown } | undefined)?.servicePathways;
+      return Array.isArray(cfg) && cfg.length > 0 ? (cfg as ConfiguredPathway[]) : null;
+    };
+    const anyConfigured = organizations
+      .map((item) => (item?.dashboard_config as { servicePathways?: unknown } | undefined)?.servicePathways)
+      .find((cfg) => Array.isArray(cfg) && cfg.length > 0) as ConfiguredPathway[] | undefined;
+    return readCfg(user?.organizationId) ?? readCfg(homeDashboardOrgId) ?? (anyConfigured ?? null);
+  }, [organizations, homeDashboardOrgId, user?.organizationId]);
   const [pathwayConfigOpen, setPathwayConfigOpen] = useState(false);
   const [savingPathways, setSavingPathways] = useState(false);
   const pathwayIndicatorOptions = useMemo(
