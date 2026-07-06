@@ -42,6 +42,8 @@ import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { PageHeader } from "@/components/shared/page-header"
 import { OrganizationSelect } from "@/components/shared/organization-select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { UserActivityPanel } from "@/components/users/user-activity-panel"
 import {
   Table,
   TableBody,
@@ -162,6 +164,9 @@ export default function UsersPage() {
   const { toast } = useToast()
   const { user: currentUser } = useAuth()
   const canAdministerUsers = canManageUsers(currentUser)
+  // The activity/audit endpoints are admin-only (backend enforced); only show
+  // the Activity tab to admins so managers don't hit a 403.
+  const canViewActivity = currentUser?.role === "admin"
 
   const { data: usersData, isLoading, error, mutate } = useUsers({ page_size: "500" })
   const { data: orgsData } = useAllOrganizations()
@@ -709,6 +714,15 @@ export default function UsersPage() {
         }
       />
 
+      <Tabs defaultValue="directory" className="space-y-6">
+        {canViewActivity ? (
+          <TabsList>
+            <TabsTrigger value="directory">Directory</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+          </TabsList>
+        ) : null}
+        <TabsContent value="directory" className="mt-0 space-y-6 focus-visible:outline-none">
+
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-border bg-card px-4 py-2.5 text-sm">
         {summaryItems.map((item, index) => (
           <div key={item.label} className="flex items-center gap-5">
@@ -1041,6 +1055,13 @@ export default function UsersPage() {
           </div>
         </div>
       </section>
+        </TabsContent>
+        {canViewActivity ? (
+          <TabsContent value="activity" className="mt-0 focus-visible:outline-none">
+            <UserActivityPanel />
+          </TabsContent>
+        ) : null}
+      </Tabs>
 
       <Dialog open={isCreateOpen} onOpenChange={(open) => {
         if (!open) {
