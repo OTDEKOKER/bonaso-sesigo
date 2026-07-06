@@ -1430,11 +1430,39 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             header.append('year')
         header += ['Q1', 'Q2', 'Q3', 'Q4']
 
+        # Indicator order follows the coordinator's ACTIVE workbook layout so the
+        # download mirrors how the reporting workbook is arranged (canonical-matched).
+        # Indicators not placed in the layout fall to the end, alphabetically.
+        from projects.models import WorkbookLayout
+        from organizations.access import request_mode_value
+        mode = request_mode_value(request)
+        coord_ids = {coord_id for (coord_id, _canon, _year) in pivot}
+        layout_order: dict = {}
+        for coord_id in coord_ids:
+            layout = WorkbookLayout.objects.filter(
+                coordinator_organization_id=coord_id, mode=mode, is_active=True,
+            ).first()
+            if layout is None:
+                continue
+            for item in layout.items.filter(indicator__isnull=False).select_related('indicator'):
+                layout_order[(coord_id, item.indicator.canonical_id)] = item.order_index
+
+        def _sort_key(entry):
+            (coord_id, canon_id, year), row = entry
+            order = layout_order.get((coord_id, canon_id))
+            return (
+                row['coordinator'],
+                0 if order is not None else 1,     # placed indicators first
+                order if order is not None else 0,  # then by workbook position
+                row['indicator'],                    # unplaced: alphabetical
+                year,
+            )
+
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="assigned-indicator-targets.csv"'
         writer = csv.writer(response)
         writer.writerow(header)
-        for _key, row in sorted(pivot.items(), key=lambda kv: (kv[1]['coordinator'], kv[1]['indicator'], kv[1]['year'])):
+        for _key, row in sorted(pivot.items(), key=_sort_key):
             writer.writerow([row[col] for col in header])
 
         record_audit_event(
