@@ -565,13 +565,22 @@ function AggregatesPageContent() {
       })),
     [visibleOrganizations],
   );
+  // Coordinator dropdown must follow the selected project: when a project with
+  // active hierarchy links is chosen, effectiveCoordinatorOrganizations is scoped
+  // to that project's parent (coordinator) orgs. Falls back to the full visible
+  // coordinator set only when no project scope applies (e.g. "All Projects").
   const availableCoordinatorOptions = useMemo(
     () =>
-      availableCoordinatorOrganizations.map((organization) => ({
-        id: organization.id,
-        name: String(organization.name || `Organization ${organization.id}`),
-      })),
-    [availableCoordinatorOrganizations],
+      effectiveCoordinatorOrganizations
+        .slice()
+        .sort((left, right) =>
+          String(left.name || "").localeCompare(String(right.name || "")),
+        )
+        .map((organization) => ({
+          id: organization.id,
+          name: String(organization.name || `Organization ${organization.id}`),
+        })),
+    [effectiveCoordinatorOrganizations],
   );
 
   const availableIndicatorIds = useMemo(() => {
