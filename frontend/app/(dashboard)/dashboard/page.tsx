@@ -1107,10 +1107,21 @@ function DashboardPageContent({
       widgetProjectOrganizationIds,
     ],
   );
-  const coordinatorOptions = useMemo(
-    () => availableCoordinatorOrganizations,
-    [availableCoordinatorOrganizations],
-  );
+  // Coordinator filter follows the selected project: when a project is chosen,
+  // restrict to the coordinators that belong to that project (its assigned orgs).
+  // The umbrella/root org (BONASO) is already excluded from
+  // availableCoordinatorOrganizations, so it never appears here. Falls back to the
+  // full visible coordinator set for "All Projects" or a project with no org set.
+  const coordinatorOptions = useMemo(() => {
+    if (!selectedProjectId || selectedProjectOrganizationIds.length === 0) {
+      return availableCoordinatorOrganizations;
+    }
+    const projectOrgIds = new Set(selectedProjectOrganizationIds);
+    const scoped = availableCoordinatorOrganizations.filter((organization) =>
+      projectOrgIds.has(String(organization.id)),
+    );
+    return scoped.length > 0 ? scoped : availableCoordinatorOrganizations;
+  }, [availableCoordinatorOrganizations, selectedProjectId, selectedProjectOrganizationIds]);
   const coordinatorScopedOrganizationIds = useMemo(() => {
     if (!selectedCoordinatorId) return null;
     return new Set([
