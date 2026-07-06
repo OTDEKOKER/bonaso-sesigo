@@ -324,7 +324,20 @@ function AggregatesPageContent() {
 
   const effectiveCoordinatorOrganizationIds = useMemo(() => {
     if (effectiveProjectHierarchyLinks.length === 0) return null;
-    return new Set(effectiveProjectHierarchyLinks.map((link) => String(link.parent_organization)));
+    const parentIds = new Set(
+      effectiveProjectHierarchyLinks.map((link) => String(link.parent_organization)),
+    );
+    const childIds = new Set(
+      effectiveProjectHierarchyLinks.map((link) => String(link.child_organization)),
+    );
+    // The project's umbrella/root org (a parent that is not itself a child of any
+    // link — e.g. BONASO) holds the rolled-up "all coordinators" data and is already
+    // represented by the "All Coordinators" option, so it is not a selectable
+    // coordinator. Keep only parent orgs that sit under another org in the project
+    // hierarchy (the real coordinators). Fall back to all parents for a flat
+    // hierarchy where no parent is also a child.
+    const coordinatorIds = new Set([...parentIds].filter((id) => childIds.has(id)));
+    return coordinatorIds.size > 0 ? coordinatorIds : parentIds;
   }, [effectiveProjectHierarchyLinks]);
 
   const effectiveCoordinatorOrganizations = useMemo(
