@@ -2002,6 +2002,18 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         summary['unchanged'] = counts[self.OUTCOME_UNCHANGED]
         summary['reset_from_review'] = counts[self.OUTCOME_RESET_FROM_REVIEW]
         summary['reset_from_review_indicators'] = reset_indicators
+        # Durable "report uploaded" receipt to the submitter (in-app notification),
+        # in addition to the per-submission reviewer alerts fired above. Only when
+        # something was actually received.
+        if counts[self.OUTCOME_CREATED] or summary['updated']:
+            from messaging.notifications import notify_report_uploaded
+            notify_report_uploaded(
+                user=request.user,
+                organization_name=organization.name,
+                period_label=str(metadata.get('quarter_label') or metadata.get('quarter') or ''),
+                created=summary['created'],
+                updated=summary['updated'],
+            )
         return Response({'dry_run': False, 'summary': summary, 'errors': errors},
                         status=status.HTTP_201_CREATED)
 

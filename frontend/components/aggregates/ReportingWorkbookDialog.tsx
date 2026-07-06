@@ -12,6 +12,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -274,6 +283,11 @@ export function ReportingWorkbookDialog({
   const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "upload" | "confirm">(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ReportingWorkbookImportResult | null>(null);
+  // Success acknowledgement: after a real import, show a confirmation the user
+  // must click "OK" on (rather than a transient toast) before we navigate on.
+  const [uploadSuccess, setUploadSuccess] = useState<
+    { created: number; updated: number; organization: string; quarter: string; navTo: string } | null
+  >(null);
 
   const fyLabel = (startYear: number | string) => {
     const y = Number(startYear);
@@ -418,18 +432,9 @@ export function ReportingWorkbookDialog({
     try {
       const result = await aggregatesService.importReportingWorkbook(pendingFile);
       const s = result.summary;
-      toast({
-        title: "Workbook successfully loaded",
-        description: `${s?.created ?? 0} created, ${s?.updated ?? 0} updated for ${s?.organization ?? ""} (${s?.quarter ?? ""}). Opening the entries to review and edit…`,
-      });
-      setPendingFile(null);
-      setPreview(null);
-      setOpen(false);
-      onImported?.();
 
-      // Take the officer to the review/edit ("send") state for exactly the data
-      // they just uploaded: the aggregates list scoped to this project, org and
-      // period, where each entry can be viewed, edited and submitted.
+      // Build the destination the user goes to after acknowledging: the aggregates
+      // list scoped to exactly the data they just uploaded.
       const base = (pathname || "").startsWith("/training") ? "/training/aggregates" : "/aggregates";
       const params = new URLSearchParams();
       if (s?.project_id) params.set("project", String(s.project_id));
@@ -437,7 +442,19 @@ export function ReportingWorkbookDialog({
       if (s?.period_start) params.set("date_from", s.period_start);
       if (s?.period_end) params.set("date_to", s.period_end);
       const query = params.toString();
-      router.push(query ? `${base}?${query}` : base);
+
+      setPendingFile(null);
+      setPreview(null);
+      setOpen(false);
+      onImported?.();
+      // Show an explicit success confirmation the user must acknowledge with "OK".
+      setUploadSuccess({
+        created: s?.created ?? 0,
+        updated: s?.updated ?? 0,
+        organization: String(s?.organization ?? ""),
+        quarter: String(s?.quarter ?? ""),
+        navTo: query ? `${base}?${query}` : base,
+      });
     } catch (err) {
       triggerFriendlyError(err, "Workbook import failed");
     } finally {
@@ -445,9 +462,16 @@ export function ReportingWorkbookDialog({
     }
   };
 
+  const acknowledgeUploadSuccess = () => {
+    const navTo = uploadSuccess?.navTo;
+    setUploadSuccess(null);
+    if (navTo) router.push(navTo);
+  };
+
   const summary = preview?.summary;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(next) => {
       setOpen(next);
       if (!next) { setPendingFile(null); setPreview(null); }
@@ -665,6 +689,29 @@ export function ReportingWorkbookDialog({
         )}
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={!!uploadSuccess} onOpenChange={(next) => { if (!next) acknowledgeUploadSuccess(); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" /> Report uploaded successfully
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {uploadSuccess ? (
+              <>
+                Your report for <strong>{uploadSuccess.organization}</strong>
+                {uploadSuccess.quarter ? <> ({uploadSuccess.quarter})</> : null} was received and
+                queued for review — {uploadSuccess.created} created, {uploadSuccess.updated} updated.
+              </>
+            ) : null}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction onClick={acknowledgeUploadSuccess}>OK</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 

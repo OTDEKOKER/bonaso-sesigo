@@ -128,6 +128,38 @@ def notify_aggregate_submitted_for_review(
     )
 
 
+def notify_report_uploaded(
+    *,
+    user: User | None,
+    organization_name: str,
+    period_label: str,
+    created: int,
+    updated: int,
+) -> None:
+    """Durable in-app confirmation to the submitter that their reporting workbook
+    upload succeeded (the report was received and queued for review).
+
+    One notification per upload (not per indicator) so it reads as a receipt.
+    Best-effort: never raises into the import path.
+    """
+    if not user or not getattr(user, "is_active", False):
+        return
+    total = int(created or 0) + int(updated or 0)
+    content = (
+        f"Your report for {organization_name} ({period_label}) was uploaded "
+        f"successfully — {total} indicator(s) received and queued for review."
+    )
+    try:
+        Notification.objects.create(
+            user=user,
+            title="Report uploaded",
+            content=content,
+            link="/aggregates",
+        )
+    except Exception:  # pragma: no cover - notification must never break an import
+        pass
+
+
 def notify_aggregate_status_to_submitter(
     *,
     context: AggregateNotificationContext,
