@@ -258,6 +258,22 @@ class WorkbookImportValidationTests(_BaseSetup):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["error"], "Workbook Validation Failed")
 
+    def test_newer_major_version_rejected(self):
+        # A workbook stamped with a higher major (a future breaking format) is
+        # rejected rather than silently mis-parsed (audit L13). Current v1 files
+        # continue to import unchanged.
+        buf = self._download_blank().content
+        wb = load_workbook(BytesIO(buf))
+        for row in wb[rw.SHEET_META].iter_rows(min_row=2, max_col=2):
+            if row[0].value == "workbook_version":
+                row[1].value = "sesigo-reporting-workbook/2"
+        out = BytesIO()
+        wb.save(out)
+        response = self._post(out.getvalue())
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        joined = " ".join(response.data.get("messages", []))
+        self.assertIn("newer format", joined)
+
 
 class WorkbookPermissionTests(_BaseSetup):
     def test_requires_writable_organization(self):
