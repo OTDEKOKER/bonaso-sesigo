@@ -148,6 +148,63 @@ class IndicatorViewSet(viewsets.ModelViewSet):
             metadata={'indicator_code': indicator.code, 'old': old_config, 'new': new_config},
         )
 
+    def destroy(self, request, *args, **kwargs):
+        """Refuse to hard-delete an indicator that carries reporting history (C1/H4).
+
+        Deleting an indicator cascades through the Aggregate table (and workbook
+        layout items), destroying submitted reporting data. When history exists we
+        return 409 and steer the admin to retire (deactivate) the indicator, which
+        hides it from new workbooks while preserving history.
+        """
+        from core.lifecycle import indicator_delete_block_reason
+        instance = self.get_object()
+        reason = indicator_delete_block_reason(instance)
+        if reason:
+            return Response(
+                {'detail': reason, 'code': 'reporting_history_exists'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    def retire(self, request, pk=None):
+        """Retire an indicator (safe alternative to deletion).
+
+        Sets ``is_active=False`` so the indicator is excluded from new reporting
+        workbooks (``_build_indicator_plans`` filters ``is_active=True``) while all
+        historical aggregates and canonical rollups continue to work unchanged.
+        """
+        from audit.recording import record_audit_event
+        indicator = self.get_object()
+        if not indicator.is_active:
+            return Response(IndicatorSerializer(indicator).data)
+        indicator.is_active = False
+        indicator.save(update_fields=['is_active', 'updated_at'])
+        record_audit_event(
+            action='update', actor=request.user, request=request,
+            object_type='indicator', object_id=indicator.id,
+            description=f"Indicator {indicator.code} retired (deactivated).",
+            metadata={'operation': 'retire', 'indicator_code': indicator.code},
+        )
+        return Response(IndicatorSerializer(indicator).data)
+
+    @action(detail=True, methods=['post'])
+    def reactivate(self, request, pk=None):
+        """Reactivate a retired indicator so it can appear on new workbooks again."""
+        from audit.recording import record_audit_event
+        indicator = self.get_object()
+        if indicator.is_active:
+            return Response(IndicatorSerializer(indicator).data)
+        indicator.is_active = True
+        indicator.save(update_fields=['is_active', 'updated_at'])
+        record_audit_event(
+            action='update', actor=request.user, request=request,
+            object_type='indicator', object_id=indicator.id,
+            description=f"Indicator {indicator.code} reactivated.",
+            metadata={'operation': 'reactivate', 'indicator_code': indicator.code},
+        )
+        return Response(IndicatorSerializer(indicator).data)
+
     @action(detail=False, methods=['get'])
     def simple(self, request):
         """Get simple list for dropdowns."""

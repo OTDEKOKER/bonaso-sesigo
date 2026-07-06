@@ -358,8 +358,13 @@ export default function IndicatorsPage() {
       await indicatorsService.delete(Number(deleteTarget.id))
       toast({ title: "Indicator deleted" })
       mutate()
-    } catch {
-      toast({ title: "Error", description: "Failed to delete indicator", variant: "destructive" })
+    } catch (err) {
+      // Surface the server's reason (e.g. reporting-history protection) so the
+      // user understands why deletion was blocked and what to do instead (retire).
+      const description = err instanceof Error && err.message
+        ? err.message
+        : "Failed to delete indicator"
+      toast({ title: "Cannot delete indicator", description, variant: "destructive" })
     } finally {
       setDeleteTarget(null)
     }

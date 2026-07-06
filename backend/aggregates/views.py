@@ -2,7 +2,7 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 import django_filters
 from rest_framework.filters import OrderingFilter
@@ -284,6 +284,15 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             raise PermissionDenied('Your role does not permit submitting aggregate data.')
         # Enforce the Sesigo Training/Live boundary before any other scope check.
         assert_project_write_allowed(self.request, project)
+        # Reporting eligibility by project status (M6): a project that has been
+        # archived or completed no longer accepts new submissions. Draft/active
+        # projects remain writable (draft is the normal setup state).
+        project_status = getattr(project, 'status', None)
+        if project_status in {'archived', 'completed'}:
+            raise PermissionDenied(
+                f"Project '{project.name}' is {project_status} and no longer "
+                "accepts new data submissions."
+            )
         allowed_org_ids = self._allowed_org_ids_for_user()
         if allowed_org_ids is not None:
             if not organization or organization.id not in allowed_org_ids:
@@ -305,6 +314,52 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             ):
                 raise PermissionDenied('Selected indicator is not assigned to this organization for the project.')
     
+    @staticmethod
+    def _period_overlap_conflict(*, indicator, project, organization,
+                                 period_start, period_end, exclude_pk=None):
+        """Return an existing Aggregate whose period OVERLAPS but is not identical
+        to ``[period_start, period_end]`` for the same indicator/project/org.
+
+        Certification audit C2: coordinator rollups and dashboards sum aggregates
+        by period *overlap*, so reporting the same indicator at more than one
+        frequency (e.g. a monthly AND a quarterly, or a yearly that spans four
+        quarters) double-counts results. Two aggregates for the same natural key
+        may only coexist when their periods do not overlap (adjacent months are
+        fine); an identical period is the legitimate upsert case and is excluded.
+        """
+        overlapping = (
+            Aggregate.objects.filter(
+                indicator=indicator,
+                project=project,
+                organization=organization,
+                period_start__lte=period_end,
+                period_end__gte=period_start,
+            )
+            .exclude(period_start=period_start, period_end=period_end)
+        )
+        if exclude_pk is not None:
+            overlapping = overlapping.exclude(pk=exclude_pk)
+        return overlapping.order_by('period_start').first()
+
+    def _assert_no_period_overlap(self, *, indicator, project, organization,
+                                  period_start, period_end, exclude_pk=None):
+        """Raise ``ValidationError`` when an overlapping (different-cadence) report
+        already exists for this indicator/org (C2). Safe on historical data: only
+        NEW/edited writes are checked; existing rows are never mutated."""
+        conflict = self._period_overlap_conflict(
+            indicator=indicator, project=project, organization=organization,
+            period_start=period_start, period_end=period_end, exclude_pk=exclude_pk,
+        )
+        if conflict is not None:
+            label = getattr(indicator, 'code', None) or getattr(indicator, 'name', None) or f'Indicator {indicator.id}'
+            raise ValidationError(
+                f"'{label}' already has a report covering an overlapping period "
+                f"({conflict.period_start} to {conflict.period_end}). Reporting the "
+                "same indicator at more than one frequency (e.g. monthly and "
+                "quarterly) would double-count results. Correct or remove the "
+                "existing report before submitting this period."
+            )
+
     @staticmethod
     def _values_equal(a, b) -> bool:
         """Order-insensitive equality for aggregate JSON ``value`` payloads.
@@ -347,6 +402,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         notes,
         source='api',
         skip_unchanged=True,
+        enforce_period_exclusivity=True,
     ):
         """Idempotent upsert of one pending aggregate on its natural key.
 
@@ -377,6 +433,15 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             and (notes or "") == (existing.notes or "")
         ):
             return existing, self.OUTCOME_UNCHANGED
+
+        # C2: never let a second reporting cadence overlap an existing report for
+        # the same indicator/org (would double-count in rollups). The identical
+        # period is the upsert target and is excluded by the conflict query.
+        if enforce_period_exclusivity:
+            self._assert_no_period_overlap(
+                indicator=indicator, project=project, organization=organization,
+                period_start=period_start, period_end=period_end,
+            )
 
         previous_status = existing.status if existing else None
         old_value = existing.value if existing else None
@@ -445,6 +510,14 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             project=next_project,
             organization=next_organization,
             indicator=next_indicator,
+        )
+        # C2: editing an aggregate's key must not create an overlapping-cadence
+        # duplicate for its indicator/org (exclude this row itself).
+        self._assert_no_period_overlap(
+            indicator=next_indicator, project=next_project, organization=next_organization,
+            period_start=validated.get('period_start', instance.period_start),
+            period_end=validated.get('period_end', instance.period_end),
+            exclude_pk=instance.pk,
         )
         previous_status = instance.status
         old_value = instance.value
@@ -1641,6 +1714,19 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         from organizations.access import request_mode_value
         from projects.workbook_layout import resolve_layout_for_org, order_plans_by_layout
         layout = resolve_layout_for_org(project, organization, mode=request_mode_value(request))
+        # H3: when WORKBOOK_REQUIRE_LAYOUT is enabled, refuse to silently emit the
+        # full assigned set (which contradicts "the workbook is the reporting
+        # contract"). Default off preserves the existing behaviour for backward
+        # compatibility; ops enable it once coordinators have built their layouts.
+        if layout is None and getattr(settings, 'WORKBOOK_REQUIRE_LAYOUT', False):
+            return Response(
+                {'detail': 'No reporting workbook layout is configured for this '
+                           "organisation's coordinator. An administrator must build "
+                           'and activate a Workbook Layout before reports can be '
+                           'downloaded for this project.',
+                 'code': 'workbook_layout_missing'},
+                status=status.HTTP_409_CONFLICT,
+            )
         plans = order_plans_by_layout(plans, layout)
 
         buf = rw.generate_workbook(
@@ -1709,6 +1795,17 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         from organizations.access import request_mode_value
         from projects.workbook_layout import get_active_layout, order_plans_by_layout
         layout = get_active_layout(coordinator.id, mode=request_mode_value(request))
+        # H3: fail safely rather than emit an inconsistent full-set workbook when
+        # no layout exists (opt-in; default off for backward compatibility).
+        if layout is None and getattr(settings, 'WORKBOOK_REQUIRE_LAYOUT', False):
+            return Response(
+                {'detail': 'No reporting workbook layout is configured for this '
+                           'coordinator. An administrator must build and activate a '
+                           'Workbook Layout before coordinator workbooks can be '
+                           'downloaded.',
+                 'code': 'workbook_layout_missing'},
+                status=status.HTTP_409_CONFLICT,
+            )
         if layout is not None:
             sub_specs = [(org, order_plans_by_layout(plans, layout)) for org, plans in sub_specs]
             coordinator_plans = order_plans_by_layout(coordinator_plans, layout)
@@ -1788,6 +1885,18 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             if not serializer.is_valid():
                 errors.append({'indicator': indicator.code or indicator.name,
                                'error': '; '.join(f'{k}: {v}' for k, v in serializer.errors.items())})
+                continue
+            # C2: reject a row whose period overlaps an existing different-cadence
+            # report for this indicator/org (per-row error, other rows still import).
+            try:
+                self._assert_no_period_overlap(
+                    indicator=indicator, project=project, organization=organization,
+                    period_start=period_start, period_end=period_end,
+                )
+            except ValidationError as exc:
+                detail = exc.detail
+                errors.append({'indicator': indicator.code or indicator.name,
+                               'error': detail[0] if isinstance(detail, list) else str(detail)})
                 continue
             to_write.append(serializer.validated_data)
 

@@ -172,6 +172,13 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Reporting workbook: when True, a reporting/coordinator workbook download is
+# refused (409) unless an active WorkbookLayout resolves for the organisation,
+# instead of silently emitting the full assigned-indicator set (audit H3).
+# Default False preserves the existing behaviour; enable once every coordinator
+# that will report has built and activated a layout.
+WORKBOOK_REQUIRE_LAYOUT = os.getenv('WORKBOOK_REQUIRE_LAYOUT', 'False').lower() == 'true'
+
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() == 'true'
 CORS_ALLOWED_ORIGINS = os.getenv(

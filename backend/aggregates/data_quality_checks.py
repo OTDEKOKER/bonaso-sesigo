@@ -191,6 +191,63 @@ def run_duplicate_checks(*, mode="live", run_label="", actor=None) -> int:
     return raised
 
 
+# ── Overlapping reporting periods (double-count risk, audit C2) ───────────────
+def run_overlap_checks(*, mode="live", run_label="", actor=None) -> int:
+    """Flag EXISTING pairs of aggregates for the same (canonical indicator, org,
+    project) whose reporting periods OVERLAP but are not identical.
+
+    Rollups sum by period overlap, so a monthly + quarterly (or a year spanning
+    four quarters) for the same indicator double-counts. New writes are blocked by
+    the aggregate write gate; this observes historical data already in the table so
+    it can be reviewed and corrected. Read-only: never mutates or deletes anything.
+    """
+    id_map = canonical_id_map()
+    # (canonical_id, org_id, project_id) -> [(period_start, period_end, agg)]
+    series = defaultdict(list)
+    for agg in _base_aggregates(mode).iterator():
+        canon = id_map.get(agg.indicator_id, agg.indicator_id)
+        series[(canon, agg.organization_id, agg.project_id)].append(
+            (agg.period_start, agg.period_end, agg)
+        )
+    raised = 0
+    for points in series.values():
+        if len(points) < 2:
+            continue
+        points.sort(key=lambda t: (t[0], t[1]))
+        for i in range(len(points)):
+            s_i, e_i, agg_i = points[i]
+            overlaps = []
+            for j in range(len(points)):
+                if i == j:
+                    continue
+                s_j, e_j, agg_j = points[j]
+                if (s_i, e_i) == (s_j, e_j):
+                    continue  # identical period is one logical record, not an overlap
+                if s_i <= e_j and e_i >= s_j:  # overlap
+                    overlaps.append(agg_j)
+            if not overlaps:
+                continue
+            upsert_dq_flag(
+                category=dq.CATEGORY_OVERLAP, aggregate=agg_i, severity=dq.SEVERITY_HIGH,
+                title=f"Overlapping periods: {agg_i.indicator.code or agg_i.indicator.name}",
+                description=(
+                    f"This report ({agg_i.period_start}–{agg_i.period_end}) overlaps "
+                    f"{len(overlaps)} other report(s) for the same indicator/organisation. "
+                    "Reporting the same indicator at more than one frequency double-counts "
+                    "in rollups; keep a single reporting cadence per indicator."
+                ),
+                details={
+                    "period_start": str(agg_i.period_start),
+                    "period_end": str(agg_i.period_end),
+                    "overlapping_aggregate_ids": [a.id for a in overlaps],
+                    "overlapping_periods": [f"{a.period_start}..{a.period_end}" for a in overlaps],
+                },
+                run_label=run_label, actor=actor,
+            )
+            raised += 1
+    return raised
+
+
 # ── Phase 2: scoring ──────────────────────────────────────────────────────────
 def _open_flag_counts(mode):
     """{organization_id: {category: count}} of OPEN data-quality flags."""
@@ -349,6 +406,7 @@ def run_all(*, mode="live", frequency="daily", actor=None, include_duplicate=Fal
         "consistency": run_coherence_checks(mode=mode, run_label=run_label, actor=actor),
         "anomaly": run_anomaly_checks(mode=mode, run_label=run_label, actor=actor),
         "fact_integrity": run_fact_integrity_checks(mode=mode, run_label=run_label, actor=actor),
+        "overlap": run_overlap_checks(mode=mode, run_label=run_label, actor=actor),
     }
     # Portfolio-wide duplicate-signature detection is noisy at scale (identical
     # small breakdowns recur legitimately across orgs); the per-submission

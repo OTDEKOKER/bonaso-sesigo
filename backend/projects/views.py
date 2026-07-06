@@ -144,6 +144,64 @@ class ProjectViewSet(viewsets.ModelViewSet):
         else:
             serializer.save(created_by=self.request.user)
 
+    def destroy(self, request, *args, **kwargs):
+        """Refuse to hard-delete a project that carries reporting history (C1).
+
+        Deleting a project cascades through the Aggregate table and destroys
+        submitted reporting data. When history exists we return 409 and steer the
+        admin to archive instead; genuinely empty projects can still be removed.
+        """
+        from core.lifecycle import project_delete_block_reason
+        instance = self.get_object()
+        reason = project_delete_block_reason(instance)
+        if reason:
+            return Response(
+                {'detail': reason, 'code': 'reporting_history_exists'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        """Archive a project (safe alternative to deletion).
+
+        Archiving preserves all reporting history and blocks new submissions
+        (see aggregates write gate) without destroying anything.
+        """
+        from audit.recording import record_audit_event
+        project = self.get_object()
+        assert_project_write_allowed(request, project)
+        previous_status = project.status
+        if project.status == 'archived':
+            return Response(ProjectSerializer(project).data)
+        project.status = 'archived'
+        project.save(update_fields=['status', 'updated_at'])
+        record_audit_event(
+            action='update', request=request, object_type='project',
+            object_id=project.id, project=project,
+            description=f"Project {project.id} archived (was {previous_status}).",
+            metadata={'operation': 'archive', 'previous_status': previous_status},
+        )
+        return Response(ProjectSerializer(project).data)
+
+    @action(detail=True, methods=['post'])
+    def unarchive(self, request, pk=None):
+        """Restore an archived project to active status."""
+        from audit.recording import record_audit_event
+        project = self.get_object()
+        assert_project_write_allowed(request, project)
+        if project.status != 'archived':
+            return Response(ProjectSerializer(project).data)
+        project.status = 'active'
+        project.save(update_fields=['status', 'updated_at'])
+        record_audit_event(
+            action='update', request=request, object_type='project',
+            object_id=project.id, project=project,
+            description=f"Project {project.id} unarchived (restored to active).",
+            metadata={'operation': 'unarchive'},
+        )
+        return Response(ProjectSerializer(project).data)
+
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):
         """Get project statistics."""

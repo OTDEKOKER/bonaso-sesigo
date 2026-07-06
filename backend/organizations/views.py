@@ -48,7 +48,24 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         serializer.save()
-    
+
+    def destroy(self, request, *args, **kwargs):
+        """Refuse to hard-delete an organisation that carries reporting history (C1).
+
+        Deleting an organisation cascades through the Aggregate table, destroying
+        its submitted reporting data. When history exists we return 409 and steer
+        the admin to deactivate (``is_active=False``) instead.
+        """
+        from core.lifecycle import organization_delete_block_reason
+        instance = self.get_object()
+        reason = organization_delete_block_reason(instance)
+        if reason:
+            return Response(
+                {'detail': reason, 'code': 'reporting_history_exists'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'])
     def tree(self, request):
         """Get organization hierarchy tree."""

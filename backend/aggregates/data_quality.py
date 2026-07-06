@@ -33,6 +33,7 @@ CATEGORY_MISSING = "missing"             # completeness: present in workbook, no
 CATEGORY_TRACEABILITY = "traceability"   # present in DB, not in workbook
 CATEGORY_VALIDATION = "validation"
 CATEGORY_FACT_INTEGRITY = "fact_integrity"
+CATEGORY_OVERLAP = "overlap"             # same indicator/org reported at overlapping periods (double-count risk)
 
 # Tunable thresholds (conservative; documented for calibration).
 COHERENCE_TOLERANCE = Decimal("0.0001")   # exact-match tolerance for rounding
