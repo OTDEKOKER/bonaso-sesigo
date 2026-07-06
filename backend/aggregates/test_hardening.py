@@ -132,6 +132,47 @@ class ProjectStatusWriteGateTests(HardeningTestBase):
         self.assertEqual(self.project.status, "archived")
 
 
+class CoordinatorSubOrgScopeTests(HardeningTestBase):
+    """M7: the coordinator workbook's sub-org set must come from THIS project's
+    hierarchy, never the global org tree (which could pull in an org that sits
+    under the coordinator globally but belongs to a different project)."""
+
+    def test_project_child_included_cross_project_child_excluded(self):
+        from aggregates.views import AggregateViewSet
+        from projects.models import ProjectOrganizationHierarchy
+
+        coord = Organization.objects.create(name="Coord", code="M7_COORD", type="district")
+        # Both are GLOBAL descendants of the coordinator (parent FK)...
+        in_proj = Organization.objects.create(name="In Project", code="M7_IN", type="cso", parent=coord)
+        other = Organization.objects.create(name="Other Project Only", code="M7_OUT", type="cso", parent=coord)
+
+        # ...but only `in_proj` is under the coordinator in THIS project's hierarchy.
+        self.project.organizations.add(coord, in_proj)
+        ProjectOrganizationHierarchy.objects.create(
+            project=self.project, parent_organization=coord, child_organization=in_proj,
+        )
+
+        result_ids = {o.id for o in AggregateViewSet._coordinator_sub_orgs(self.project, coord)}
+        self.assertIn(coord.id, result_ids)
+        self.assertIn(in_proj.id, result_ids)
+        self.assertNotIn(other.id, result_ids)  # global-tree child from another project excluded
+
+    def test_flat_project_falls_back_to_members_only(self):
+        from aggregates.views import AggregateViewSet
+
+        coord = Organization.objects.create(name="Coord2", code="M7_COORD2", type="district")
+        member = Organization.objects.create(name="Member", code="M7_MEM", type="cso", parent=coord)
+        nonmember = Organization.objects.create(name="Nonmember", code="M7_NON", type="cso", parent=coord)
+        # No ProjectOrganizationHierarchy edges → fallback path. Only project members
+        # (via global descendants ∩ membership) may appear; nonmember must not.
+        self.project.organizations.add(coord, member)  # nonmember NOT added
+
+        result_ids = {o.id for o in AggregateViewSet._coordinator_sub_orgs(self.project, coord)}
+        self.assertIn(coord.id, result_ids)
+        self.assertIn(member.id, result_ids)
+        self.assertNotIn(nonmember.id, result_ids)
+
+
 class PeriodOverlapGuardTests(HardeningTestBase):
     def _submit(self, period_start, period_end, value=9):
         return self.client.post("/api/aggregates/", {

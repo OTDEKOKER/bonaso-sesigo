@@ -1747,6 +1747,34 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         response['Cache-Control'] = 'no-store'
         return response
 
+    @staticmethod
+    def _coordinator_sub_orgs(project, coordinator):
+        """The coordinator + its sub-organisations FOR THIS PROJECT (audit M7).
+
+        Uses the project's own hierarchy (``ProjectOrganizationHierarchy``) — the
+        same "under this coordinator" notion the coordinator rollups and layout
+        inheritance use — so the coordinator workbook never gets a sheet for an org
+        that sits under the coordinator in the *global* org tree but belongs to a
+        different project. Fallback (only when the project defined no hierarchy
+        edges): the coordinator's global descendants restricted to members of this
+        project, so an out-of-project org can never leak in either way.
+        """
+        from projects.models import ProjectOrganization, ProjectOrganizationHierarchy
+        from projects.scope import get_project_subtree_org_ids
+        if ProjectOrganizationHierarchy.objects.filter(project=project, is_active=True).exists():
+            subtree_ids = get_project_subtree_org_ids(project, coordinator.id)
+            return [coordinator] + list(
+                Organization.objects.filter(id__in=subtree_ids)
+                .exclude(id=coordinator.id).order_by('name')
+            )
+        member_ids = set(
+            ProjectOrganization.objects.filter(project=project, is_active=True)
+            .values_list('organization_id', flat=True)
+        ) or set(project.organizations.values_list('id', flat=True))
+        return [coordinator] + [
+            o for o in coordinator.get_descendants() if o.id in member_ids
+        ]
+
     @action(detail=False, methods=['get'], url_path='coordinator-workbook')
     def coordinator_workbook(self, request):
         """Download one workbook for a coordinator: a reporting-form sheet per
@@ -1773,9 +1801,17 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         # Data sheets: the coordinator's own (if it reports) plus every sub that
         # has assignments. The TOTAL sheet sums them all (matches partner template).
+        #
+        # M7: enumerate the sub-organisations from THIS PROJECT's hierarchy — the
+        # same notion of "under this coordinator" that the coordinator rollups and
+        # layout inheritance use — never the global org tree. Using the global tree
+        # could add a sheet for an org that sits under the coordinator globally but
+        # belongs to a different project. Fallback (only when the project defined no
+        # hierarchy edges at all): the coordinator's global descendants restricted
+        # to members of this project, so an out-of-project org can never leak in.
         sub_specs = []
         seen = {}
-        for org in [coordinator] + list(coordinator.get_descendants()):
+        for org in self._coordinator_sub_orgs(project, coordinator):
             plans = self._build_indicator_plans(project=project, organization=org, quarter=quarter, period_type=period_type)
             if plans:
                 sub_specs.append((org, plans))

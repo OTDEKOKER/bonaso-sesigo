@@ -343,11 +343,23 @@ function AggregatesPageContent() {
   const effectiveCoordinatorOrganizations = useMemo(
     () =>
       effectiveCoordinatorOrganizationIds
-        ? organizations.filter((org) =>
-            effectiveCoordinatorOrganizationIds.has(String(org.id)),
+        ? organizations.filter(
+            (org) =>
+              effectiveCoordinatorOrganizationIds.has(String(org.id)) &&
+              // Scope the project's coordinators to what THIS user may act on:
+              // a coordinator M&E officer assigned to Mopipi must see only Mopipi,
+              // not every coordinator in the project hierarchy. Admins (and anyone
+              // who can report across organizations) have every org in
+              // visibleOrganizationIds, so this is a no-op for them.
+              visibleOrganizationIds.has(String(org.id)),
           )
         : availableCoordinatorOrganizations,
-    [availableCoordinatorOrganizations, effectiveCoordinatorOrganizationIds, organizations],
+    [
+      availableCoordinatorOrganizations,
+      effectiveCoordinatorOrganizationIds,
+      organizations,
+      visibleOrganizationIds,
+    ],
   );
 
   // Map each coordinator → the organizations that report under it (self + descendants),

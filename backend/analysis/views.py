@@ -961,10 +961,18 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         )
 
         # Same project-assignment gate as the target list: non-admins only see
-        # coordinators for projects they are assigned to.
+        # coordinators for projects they are assigned to. Additionally scope the
+        # dropdown to the coordinators the user actually belongs to (own org +
+        # descendants) so a coordinator M&E officer sees only their own coordinator,
+        # not every coordinator in the project. Admins are unaffected (bypass).
         user = request.user
         if not (user.is_superuser or user.is_staff or getattr(user, 'role', None) == 'admin'):
             rows = filter_queryset_by_assigned_projects(rows, user, 'project_id')
+            allowed_org_ids = set(get_user_organization_ids(user) or [])
+            if allowed_org_ids:
+                rows = rows.filter(organization_id__in=allowed_org_ids)
+            else:
+                rows = rows.none()
 
         rows = rows.select_related('organization').order_by('organization__name')
         seen = set()
