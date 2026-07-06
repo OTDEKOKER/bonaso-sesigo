@@ -1430,46 +1430,63 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             header.append('year')
         header += ['Q1', 'Q2', 'Q3', 'Q4']
 
-        # Indicator order follows the coordinator's ACTIVE workbook layout so the
-        # download mirrors how the reporting workbook is arranged (canonical-matched).
-        # Indicators not placed in the layout fall to the end, alphabetically.
+        # The workbook layout is the source of truth: emit EVERY indicator on the
+        # coordinator's active workbook (in workbook order), filling Q1..Q4 where a
+        # target exists and leaving them BLANK where not yet targeted. Read-only —
+        # never modifies the workbook. `pivot` above is reused as the target lookup.
         from projects.models import WorkbookLayout
         from organizations.access import request_mode_value
+        from organizations.models import Organization
         mode = request_mode_value(request)
-        coord_ids = {coord_id for (coord_id, _canon, _year) in pivot}
-        layout_order: dict = {}
-        coords_with_layout: set = set()
-        for coord_id in coord_ids:
+
+        coordinator_param = (params.get('coordinator_id') or '').strip()
+        year_param = (params.get('year') or '').strip()
+        coord_name = {c: r['coordinator'] for (c, _cid, _y), r in pivot.items()}
+        years_by_coord: dict = {}
+        for (c, _cid, y) in pivot:
+            years_by_coord.setdefault(c, set()).add(y)
+        scope_coords = {int(coordinator_param)} if single_coord else set(coord_name.keys())
+        for cid in scope_coords:
+            if cid not in coord_name:
+                org = Organization.objects.filter(id=cid).first()
+                coord_name[cid] = org.name if org else f'Coordinator {cid}'
+
+        rows = []  # ordered list of row dicts
+        for coord_id in sorted(scope_coords, key=lambda c: coord_name.get(c, '')):
+            years_list = [int(year_param)] if single_year else sorted(years_by_coord.get(coord_id, set()))
+            if not years_list:
+                years_list = [None]
             layout = WorkbookLayout.objects.filter(
                 coordinator_organization_id=coord_id, mode=mode, is_active=True,
             ).first()
-            if layout is None:
-                continue
-            coords_with_layout.add(coord_id)
-            for item in layout.items.filter(indicator__isnull=False).select_related('indicator'):
-                layout_order[(coord_id, item.indicator.canonical_id)] = item.order_index
-
-        # The workbook is the single source of truth for what gets reported: an
-        # indicator NOT on the coordinator's workbook layout falls off the export.
-        # (Coordinators with no layout at all keep every assigned target.)
-        def _included(entry):
-            (coord_id, canon_id, _year), _row = entry
-            if coord_id in coords_with_layout:
-                return (coord_id, canon_id) in layout_order
-            return True
-
-        def _sort_key(entry):
-            (coord_id, canon_id, year), row = entry
-            order = layout_order.get((coord_id, canon_id))
-            return (
-                row['coordinator'],
-                0 if order is not None else 1,     # placed indicators first
-                order if order is not None else 0,  # then by workbook position
-                row['indicator'],                    # (only relevant for no-layout coordinators)
-                year,
-            )
-
-        rows = sorted((e for e in pivot.items() if _included(e)), key=_sort_key)
+            if layout is not None:
+                seen = set()
+                for item in (
+                    layout.items.filter(indicator__isnull=False)
+                    .select_related('indicator__canonical_indicator')
+                    .order_by('order_index', 'id')
+                ):
+                    canonical = item.indicator.canonical_or_self
+                    canon_id = canonical.id
+                    if canon_id in seen:
+                        continue
+                    seen.add(canon_id)
+                    for year in years_list:
+                        tv = pivot.get((coord_id, canon_id, year)) if year is not None else None
+                        rows.append({
+                            'coordinator': coord_name.get(coord_id, ''),
+                            'indicator': canonical.name or f'Indicator {canon_id}',
+                            'year': year if year is not None else '',
+                            'Q1': tv['Q1'] if tv else '',
+                            'Q2': tv['Q2'] if tv else '',
+                            'Q3': tv['Q3'] if tv else '',
+                            'Q4': tv['Q4'] if tv else '',
+                        })
+            else:
+                # No workbook layout — fall back to whatever targets exist.
+                for (c, _cid, _y), r in pivot.items():
+                    if c == coord_id:
+                        rows.append(r)
 
         from io import BytesIO
         from openpyxl import Workbook
@@ -1487,8 +1504,8 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                 return float(value) if value not in ('', None) else None
             return value
 
-        for _key, row in rows:
-            ws.append([_xl(col, row[col]) for col in header])
+        for row in rows:
+            ws.append([_xl(col, row.get(col, '')) for col in header])
 
         # Sensible column widths.
         widths = {'coordinator': 28, 'indicator': 60, 'year': 8, 'Q1': 12, 'Q2': 12, 'Q3': 12, 'Q4': 12}
@@ -1507,8 +1524,8 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
 
         record_audit_event(
             action='export', request=request, object_type='coordinator_target',
-            description=f'Exported {len(rows)} assigned-indicator target row(s) (pivoted Q1-Q4, workbook order).',
-            metadata={'count': len(rows), 'mode': 'indicator_quarters'},
+            description=f'Exported {len(rows)} workbook-indicator target row(s) (xlsx, workbook order).',
+            metadata={'count': len(rows), 'mode': 'workbook_indicator_quarters'},
         )
         return response
 
