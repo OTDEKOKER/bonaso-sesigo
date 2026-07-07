@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from users.permissions import HasModulePermission
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Count
@@ -22,6 +22,22 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     required_module = 'organizations'
     permission_classes = [IsAuthenticated, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+
+    def get_permissions(self):
+        """Reads of the organization tree are a foundational, org-scoped reference
+        load that many pages depend on — most importantly the aggregates review
+        queue, which derives a coordinator's descendant scope from the org list.
+        A user may legitimately have NO ``organizations`` *management* access
+        (e.g. an M&E Officer, whose sidebar must not show Organizations) yet still
+        need to read their own org subtree. ``get_queryset`` already scopes every
+        read to the user's own organizations (+ ancestors), so there is no
+        cross-org leak. Only writes remain gated by the ``organizations`` module
+        grant. This restores the behaviour the permission layer documents as
+        intended: "shared cross-module reference loads … keep working".
+        """
+        if self.request.method in SAFE_METHODS:
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), HasModulePermission()]
     filterset_fields = ['type', 'parent', 'is_active']
     search_fields = ['name', 'code', 'description']
     ordering_fields = ['name', 'created_at', 'type']
