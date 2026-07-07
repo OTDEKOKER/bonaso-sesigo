@@ -60,6 +60,7 @@ import { AggregateChartDialog } from "@/components/aggregates/AggregateChartDial
 import { AggregateMatrixTable } from "@/components/aggregates/AggregateMatrixTable";
 import { AggregateReviewQueue } from "@/components/aggregates/AggregateReviewQueue";
 import type { AggregateIndicatorGroup } from "@/lib/aggregates/aggregate-helpers";
+import { isBonasoOrganizationName } from "@/lib/organization-hierarchy";
 import { isPlatformAdmin } from "@/lib/permissions";
 import type { Indicator, Project } from "@/lib/types";
 import {
@@ -596,6 +597,44 @@ function AggregatesPageContent() {
       })),
     [visibleOrganizations],
   );
+
+  // Coordinator grouping for the review queue: map every organization that has a
+  // queued row to the coordinator it reports under (its parent org, unless that
+  // parent is the BONASO umbrella — then the org itself sits at the coordinator
+  // tier). A coordinator M&E Officer only ever has one coordinator here, so the
+  // queue auto-selects it and hides the rest; a BONASO reviewer gets every
+  // coordinator that has queued work.
+  const reviewQueueCoordinatorContext = useMemo(() => {
+    const orgById = new Map(organizations.map((org) => [String(org.id), org]));
+    const coordinatorIdByOrganizationId: Record<string, string> = {};
+    const coordinatorNameById = new Map<string, string>();
+
+    const resolveCoordinator = (organizationId: string) => {
+      const org = orgById.get(organizationId);
+      if (!org) return null;
+      const parentId = resolveParentOrganizationId(org);
+      const parent = parentId ? orgById.get(parentId) : undefined;
+      if (!parent || isBonasoOrganizationName(String(parent.name || ""))) {
+        return { id: String(org.id), name: String(org.name || `Organization ${org.id}`) };
+      }
+      return { id: String(parent.id), name: String(parent.name || `Organization ${parent.id}`) };
+    };
+
+    for (const item of reviewQueueAggregates) {
+      const organizationId = String(item.organization);
+      if (coordinatorIdByOrganizationId[organizationId]) continue;
+      const coordinator = resolveCoordinator(organizationId);
+      if (!coordinator) continue;
+      coordinatorIdByOrganizationId[organizationId] = coordinator.id;
+      coordinatorNameById.set(coordinator.id, coordinator.name);
+    }
+
+    const options = Array.from(coordinatorNameById.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    return { options, coordinatorIdByOrganizationId };
+  }, [organizations, reviewQueueAggregates]);
   // Coordinator dropdown must follow the selected project: when a project with
   // active hierarchy links is chosen, effectiveCoordinatorOrganizations is scoped
   // to that project's parent (coordinator) orgs. Falls back to the full visible
@@ -1491,6 +1530,8 @@ function AggregatesPageContent() {
                 projectNameById={projectNameById}
                 projects={projects}
                 organizations={visibleOrganizationOptions}
+                coordinators={reviewQueueCoordinatorContext.options}
+                coordinatorIdByOrganizationId={reviewQueueCoordinatorContext.coordinatorIdByOrganizationId}
                 indicators={indicatorOptions}
                 onReview={handleReviewAggregate}
                 onApprove={handleApproveAggregate}

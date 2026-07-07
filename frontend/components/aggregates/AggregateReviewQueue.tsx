@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarRange, Check, Clock3, Eye, Flag, FolderKanban } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,12 @@ type AggregateReviewQueueProps = {
   projectNameById: Map<string, string>;
   projects: Array<{ id: string | number; name: string }>;
   organizations: Array<{ id: string | number; name: string }>;
+  /** Coordinators that have queued rows. When exactly one is supplied the queue
+   *  auto-selects it and hides the picker (the reviewer is scoped to a single
+   *  coordinator); more than one renders an "All coordinators" filter. */
+  coordinators?: Array<{ id: string | number; name: string }>;
+  /** organization id → the coordinator id it reports under, for coordinator filtering. */
+  coordinatorIdByOrganizationId?: Record<string, string>;
   indicators: Array<{ id: string | number; name: string; code?: string }>;
   onReview: (aggregateId: string, notes: string) => Promise<void>;
   onApprove: (aggregateId: string) => Promise<void>;
@@ -209,6 +215,8 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     projectNameById,
     projects,
     organizations,
+    coordinators = [],
+    coordinatorIdByOrganizationId = {},
     indicators,
     onReview,
     onApprove,
@@ -237,6 +245,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [projectFilter, setProjectFilter] = useState("all");
   const [organizationFilter, setOrganizationFilter] = useState("all");
+  const [coordinatorFilter, setCoordinatorFilter] = useState("all");
   const [reviewingAggregate, setReviewingAggregate] = useState<Aggregate | null>(initialReviewAggregate);
   const [isManualEditMode, setIsManualEditMode] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -269,14 +278,44 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     [items, projectNameById],
   );
 
+  // A reviewer scoped to a single coordinator (an M&E Officer) gets it locked in;
+  // a BONASO reviewer with several coordinators gets a real "All coordinators" filter.
+  const isCoordinatorLocked = coordinators.length === 1;
+  const coordinatorForOrganization = (organizationId: string) =>
+    coordinatorIdByOrganizationId[organizationId] ?? "";
+
+  useEffect(() => {
+    if (coordinators.length === 1) {
+      setCoordinatorFilter(String(coordinators[0].id));
+    }
+  }, [coordinators]);
+
+  // Reset a chosen coordinator if it drops out of the available set (e.g. the last
+  // queued row under it was cleared).
+  useEffect(() => {
+    if (
+      coordinatorFilter !== "all" &&
+      !coordinators.some((coordinator) => String(coordinator.id) === coordinatorFilter)
+    ) {
+      setCoordinatorFilter(coordinators.length === 1 ? String(coordinators[0].id) : "all");
+    }
+  }, [coordinatorFilter, coordinators]);
+
   const organizationOptions = useMemo(
     () =>
       Array.from(
         new Map(
-          items.map((item) => [String(item.organization), item.organization_name || "Organization"]),
+          items
+            .filter(
+              (item) =>
+                coordinatorFilter === "all" ||
+                coordinatorForOrganization(String(item.organization)) === coordinatorFilter,
+            )
+            .map((item) => [String(item.organization), item.organization_name || "Organization"]),
         ).entries(),
       ).sort((left, right) => left[1].localeCompare(right[1])),
-    [items],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, coordinatorFilter, coordinatorIdByOrganizationId],
   );
 
   const filteredItems = useMemo(() => {
@@ -284,6 +323,12 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
 
     return items.filter((item) => {
       if (projectFilter !== "all" && String(item.project) !== projectFilter) return false;
+      if (
+        coordinatorFilter !== "all" &&
+        coordinatorForOrganization(String(item.organization)) !== coordinatorFilter
+      ) {
+        return false;
+      }
       if (organizationFilter !== "all" && String(item.organization) !== organizationFilter) {
         return false;
       }
@@ -304,7 +349,10 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
         value.toLowerCase().includes(query),
       );
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    coordinatorFilter,
+    coordinatorIdByOrganizationId,
     indicatorNameById,
     items,
     organizationFilter,
@@ -313,8 +361,13 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     searchQuery,
   ]);
 
+  // A locked single-coordinator selection is the reviewer's fixed scope, not a
+  // user-applied filter, so it doesn't count toward "Clear filters".
   const hasActiveFilters =
-    searchQuery.trim().length > 0 || projectFilter !== "all" || organizationFilter !== "all";
+    searchQuery.trim().length > 0 ||
+    projectFilter !== "all" ||
+    organizationFilter !== "all" ||
+    (!isCoordinatorLocked && coordinatorFilter !== "all");
   const bulkApproveableItems = filteredItems.filter(
     (item) => item.status === "pending" || item.status === "reviewed",
   );
@@ -826,6 +879,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                       setSearchQuery("");
                       setProjectFilter("all");
                       setOrganizationFilter("all");
+                      if (!isCoordinatorLocked) setCoordinatorFilter("all");
                     }}
                   >
                     Clear filters
@@ -834,7 +888,11 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div
+              className={`grid gap-3 md:grid-cols-2 ${
+                coordinators.length > 0 ? "xl:grid-cols-4" : "xl:grid-cols-3"
+              }`}
+            >
               <div className="min-w-0 space-y-1.5 md:col-span-2 xl:col-span-1">
                 <p className="text-sm font-medium">Search</p>
                 <Input
@@ -861,6 +919,39 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                   </SelectContent>
                 </Select>
               </div>
+
+              {coordinators.length > 0 ? (
+                <div className="min-w-0 space-y-1.5">
+                  <p className="text-sm font-medium">Coordinator</p>
+                  {isCoordinatorLocked ? (
+                    <div className="flex h-9 w-full min-w-0 items-center rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground">
+                      <span className="truncate">{coordinators[0].name}</span>
+                    </div>
+                  ) : (
+                    <Select
+                      value={coordinatorFilter}
+                      onValueChange={(value) => {
+                        setCoordinatorFilter(value);
+                        // Organization options are scoped to the coordinator, so a
+                        // now-out-of-scope organization selection is cleared.
+                        setOrganizationFilter("all");
+                      }}
+                    >
+                      <SelectTrigger className="h-9 w-full min-w-0 bg-background">
+                        <SelectValue placeholder="All coordinators" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All coordinators</SelectItem>
+                        {coordinators.map((coordinator) => (
+                          <SelectItem key={coordinator.id} value={String(coordinator.id)}>
+                            {coordinator.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              ) : null}
 
               <div className="min-w-0 space-y-1.5">
                 <p className="text-sm font-medium">Organization</p>
