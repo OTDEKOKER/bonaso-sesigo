@@ -175,3 +175,47 @@ class AggregateScopingTests(APITestCase):
         ids = {row["id"] for row in response.json()["results"]}
         self.assertIn(own.id, ids)
         self.assertNotIn(sibling.id, ids)
+
+    # --- coordinator / descendant filtering (cross-system filter paths) -----
+
+    def test_coordinator_filter_returns_self_and_descendants(self):
+        coord_row = self._agg(self.coord_org, self.q1)
+        sub1_row = self._agg(self.sub1, self.q1)
+        sub2_row = self._agg(self.sub2, self.q1)
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(f"/api/aggregates/?coordinator={self.coord_org.id}")
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertEqual(ids, {coord_row.id, sub1_row.id, sub2_row.id})
+
+    def test_org_filter_with_include_descendants(self):
+        coord_row = self._agg(self.coord_org, self.q1)
+        sub1_row = self._agg(self.sub1, self.q1)
+        self.client.force_authenticate(self.admin)
+        # Without descendants: only the coordinator's own row.
+        exact = self.client.get(f"/api/aggregates/?organization={self.coord_org.id}").json()["results"]
+        self.assertEqual({r["id"] for r in exact}, {coord_row.id})
+        # With descendants: coordinator + children.
+        expanded = self.client.get(
+            f"/api/aggregates/?organization={self.coord_org.id}&include_org_descendants=true"
+        ).json()["results"]
+        self.assertEqual({r["id"] for r in expanded}, {coord_row.id, sub1_row.id})
+
+    def test_explicit_org_filter_cannot_escape_user_scope(self):
+        # A sub1 officer explicitly asking for sub2 (sibling) must get nothing:
+        # the org filter is intersected with the user's permitted scope, never
+        # widening it.
+        self._agg(self.sub2, self.q1)
+        self.client.force_authenticate(self.sub1_officer)
+        response = self.client.get(f"/api/aggregates/?organization={self.sub2.id}")
+        self.assertEqual(response.json()["results"], [])
+
+    def test_status_multi_filter_powers_review_queue(self):
+        pending = self._agg(self.sub1, self.q1, status_value="pending")
+        reviewed = self._agg(self.sub1, self.q2, status_value="reviewed")
+        approved = self._agg(self.sub2, self.q1, status_value="approved")
+        self.client.force_authenticate(self.admin)
+        response = self.client.get("/api/aggregates/?status=pending,reviewed,flagged")
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertIn(pending.id, ids)
+        self.assertIn(reviewed.id, ids)
+        self.assertNotIn(approved.id, ids)
