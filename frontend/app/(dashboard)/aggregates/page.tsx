@@ -598,43 +598,6 @@ function AggregatesPageContent() {
     [visibleOrganizations],
   );
 
-  // Coordinator grouping for the review queue: map every organization that has a
-  // queued row to the coordinator it reports under (its parent org, unless that
-  // parent is the BONASO umbrella — then the org itself sits at the coordinator
-  // tier). A coordinator M&E Officer only ever has one coordinator here, so the
-  // queue auto-selects it and hides the rest; a BONASO reviewer gets every
-  // coordinator that has queued work.
-  const reviewQueueCoordinatorContext = useMemo(() => {
-    const orgById = new Map(organizations.map((org) => [String(org.id), org]));
-    const coordinatorIdByOrganizationId: Record<string, string> = {};
-    const coordinatorNameById = new Map<string, string>();
-
-    const resolveCoordinator = (organizationId: string) => {
-      const org = orgById.get(organizationId);
-      if (!org) return null;
-      const parentId = resolveParentOrganizationId(org);
-      const parent = parentId ? orgById.get(parentId) : undefined;
-      if (!parent || isBonasoOrganizationName(String(parent.name || ""))) {
-        return { id: String(org.id), name: String(org.name || `Organization ${org.id}`) };
-      }
-      return { id: String(parent.id), name: String(parent.name || `Organization ${parent.id}`) };
-    };
-
-    for (const item of reviewQueueAggregates) {
-      const organizationId = String(item.organization);
-      if (coordinatorIdByOrganizationId[organizationId]) continue;
-      const coordinator = resolveCoordinator(organizationId);
-      if (!coordinator) continue;
-      coordinatorIdByOrganizationId[organizationId] = coordinator.id;
-      coordinatorNameById.set(coordinator.id, coordinator.name);
-    }
-
-    const options = Array.from(coordinatorNameById.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((left, right) => left.name.localeCompare(right.name));
-
-    return { options, coordinatorIdByOrganizationId };
-  }, [organizations, reviewQueueAggregates]);
   // Coordinator dropdown must follow the selected project: when a project with
   // active hierarchy links is chosen, effectiveCoordinatorOrganizations is scoped
   // to that project's parent (coordinator) orgs. Falls back to the full visible
@@ -923,6 +886,45 @@ function AggregatesPageContent() {
         .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at))),
     [aggregates, visibleOrganizationIds],
   );
+
+  // Coordinator grouping for the review queue: map every organization that has a
+  // queued row to the coordinator it reports under (its parent org, unless that
+  // parent is the BONASO umbrella — then the org itself sits at the coordinator
+  // tier). A coordinator M&E Officer only ever has one coordinator here, so the
+  // queue auto-selects it and hides the rest; a BONASO reviewer gets every
+  // coordinator that has queued work. Declared AFTER reviewQueueAggregates: it
+  // reads it in its dependency array, so it must not be hoisted above it (TDZ).
+  const reviewQueueCoordinatorContext = useMemo(() => {
+    const orgById = new Map(organizations.map((org) => [String(org.id), org]));
+    const coordinatorIdByOrganizationId: Record<string, string> = {};
+    const coordinatorNameById = new Map<string, string>();
+
+    const resolveCoordinator = (organizationId: string) => {
+      const org = orgById.get(organizationId);
+      if (!org) return null;
+      const parentId = resolveParentOrganizationId(org);
+      const parent = parentId ? orgById.get(parentId) : undefined;
+      if (!parent || isBonasoOrganizationName(String(parent.name || ""))) {
+        return { id: String(org.id), name: String(org.name || `Organization ${org.id}`) };
+      }
+      return { id: String(parent.id), name: String(parent.name || `Organization ${parent.id}`) };
+    };
+
+    for (const item of reviewQueueAggregates) {
+      const organizationId = String(item.organization);
+      if (coordinatorIdByOrganizationId[organizationId]) continue;
+      const coordinator = resolveCoordinator(organizationId);
+      if (!coordinator) continue;
+      coordinatorIdByOrganizationId[organizationId] = coordinator.id;
+      coordinatorNameById.set(coordinator.id, coordinator.name);
+    }
+
+    const options = Array.from(coordinatorNameById.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    return { options, coordinatorIdByOrganizationId };
+  }, [organizations, reviewQueueAggregates]);
 
   const correctionQueueAggregates = useMemo(
     () =>
