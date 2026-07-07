@@ -373,7 +373,7 @@ function AggregatesPageContent() {
         childrenByParent.set(parentId, [...(childrenByParent.get(parentId) || []), childId]);
       });
     } else {
-      writableOrganizations.forEach((organization) => {
+      visibleOrganizations.forEach((organization) => {
         const parentId = resolveParentOrganizationId(organization);
         if (!parentId) return;
         childrenByParent.set(parentId, [
@@ -397,16 +397,22 @@ function AggregatesPageContent() {
       return visited;
     };
 
-    const result: Record<string, typeof writableOrganizations> = {};
+    // Build each coordinator's picker from the orgs the user can SEE in the
+    // hierarchy (own + descendants), not just the org they may directly submit
+    // for. A coordinator M&E Officer manages every sub-grantee beneath them, and
+    // the backend authorises them to download/report for any descendant, so the
+    // workbook picker must surface those subs. Keying on writableOrganizations
+    // (own org only) collapsed every coordinator to a single row and hid the subs.
+    const result: Record<string, typeof visibleOrganizations> = {};
     effectiveCoordinatorOrganizations.forEach((coordinator) => {
       const ids = collectSubtree(String(coordinator.id));
-      result[String(coordinator.id)] = writableOrganizations
+      result[String(coordinator.id)] = visibleOrganizations
         .filter((organization) => ids.has(String(organization.id)))
         .slice()
         .sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")));
     });
     return result;
-  }, [effectiveCoordinatorOrganizations, effectiveProjectHierarchyLinks, writableOrganizations]);
+  }, [effectiveCoordinatorOrganizations, effectiveProjectHierarchyLinks, visibleOrganizations]);
 
   const {
     parentOrgFilter,
@@ -1374,7 +1380,7 @@ function AggregatesPageContent() {
             {can("aggregates", "create") ? (
               <ReportingWorkbookDialog
                 projects={projects}
-                organizations={writableOrganizations}
+                organizations={visibleOrganizations}
                 coordinators={effectiveCoordinatorOrganizations}
                 organizationsByCoordinator={organizationsByCoordinator}
                 defaultProject={projectFilter}
