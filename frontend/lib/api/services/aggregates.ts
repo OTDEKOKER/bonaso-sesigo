@@ -14,6 +14,11 @@ import {
   resolveIndicatorIdString,
 } from '@/lib/indicators/id-aliases';
 
+// Reporting-workbook import is a synchronous, full-workbook parse + per-row
+// validation, so it needs far more than the default 15s API timeout. Matches the
+// backend gunicorn --timeout (120s) so a large valid upload isn't aborted client-side.
+const WORKBOOK_IMPORT_TIMEOUT_MS = 120_000;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -620,6 +625,12 @@ export const aggregatesService = {
     const response = await fetchWithAuth(withTrainingQuery(`/aggregates/import-reporting-workbook/`), {
       method: 'POST',
       body: form,
+      // The import parses the whole workbook and validates every indicator row
+      // (incl. the per-row period-overlap check) synchronously, which can take
+      // well over the default 15s API timeout for a full workbook. Match the
+      // backend gunicorn --timeout (120s) so a large-but-valid upload completes
+      // instead of the client aborting and surfacing a false "timeout".
+      timeoutMs: WORKBOOK_IMPORT_TIMEOUT_MS,
     });
     const payload = (await response.json().catch(() => ({}))) as ReportingWorkbookImportResult;
     if (!response.ok) {
