@@ -46,12 +46,17 @@ def _resolve_reviewer_users(organization_id: int, exclude_user_ids: Iterable[int
             continue
         recipients_by_id[user.id] = user
 
-    manager_users = (
-        User.objects.filter(is_active=True, role="manager")
+    # M&E Managers (final approval tier) AND M&E Officers (first review tier, who
+    # mark their own organization's submitted data reviewed/flagged/rejected — see
+    # organizations.access.can_review_aggregates) are the org-scoped reviewers.
+    # Both must be notified when data lands in their organization's review queue;
+    # each is limited to their own organization and its descendants.
+    org_reviewer_users = (
+        User.objects.filter(is_active=True, role__in=["manager", "officer"])
         .exclude(organization_id__isnull=True)
         .select_related("organization")
     )
-    for user in manager_users:
+    for user in org_reviewer_users:
         if user.id in excluded:
             continue
         try:
