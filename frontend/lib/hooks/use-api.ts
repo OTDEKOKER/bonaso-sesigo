@@ -561,6 +561,23 @@ export function useAggregateTemplates(
   );
 }
 
+export function useAggregatePeriods(
+  filters?: {
+    project?: string;
+    organization?: string;
+    coordinator?: string;
+    include_org_descendants?: string;
+    include_training?: string;
+  } | null,
+  config?: SWRConfiguration
+) {
+  return useSWR(
+    filters === null ? null : ['aggregate-periods', filters],
+    () => aggregatesService.getPeriods(filters || undefined),
+    { ...defaultConfig, ...config }
+  );
+}
+
 // ============================================================================
 // Reports Hooks
 // ============================================================================

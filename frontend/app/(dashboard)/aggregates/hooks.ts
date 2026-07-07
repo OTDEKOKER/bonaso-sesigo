@@ -23,7 +23,7 @@ import {
   isSeedCoordinatorOrganizationName,
 } from "@/lib/organization-hierarchy";
 import { isPlatformAdmin } from "@/lib/permissions";
-import type { Aggregate, User } from "@/lib/types";
+import type { User } from "@/lib/types";
 import { getUserOrganizationId } from "@/lib/utils/organization";
 
 type UserLike = User | null | undefined;
@@ -298,7 +298,13 @@ type ProjectHierarchyLinkLike = {
 };
 
 type AggregateFiltersArgs = {
-  aggregates: Aggregate[];
+  /**
+   * Available reporting periods, sourced from the lightweight
+   * ``/aggregates/periods/`` endpoint rather than derived from a full download
+   * of every aggregate row. Keeping the quarter list decoupled from the browse
+   * data is what lets the browse fetch itself be scoped by the chosen period.
+   */
+  periodOptions: PeriodFilterOption[];
   availableCoordinatorOrganizations: OrganizationWithParent[];
   /** Controlled: caller owns this state and passes the setter separately. */
   projectFilter: string;
@@ -309,7 +315,7 @@ type AggregateFiltersArgs = {
 
 export function useAggregateFilters(args: AggregateFiltersArgs) {
   const {
-    aggregates,
+    periodOptions,
     availableCoordinatorOrganizations,
     projectFilter,
     projectHierarchyLinks,
@@ -387,30 +393,6 @@ export function useAggregateFilters(args: AggregateFiltersArgs) {
       normalizedSelectedOrganizationIdsList.filter((organizationId) => scopedOrganizationIds.has(organizationId)),
     );
   }, [normalizedSelectedOrganizationIdsList, scopedOrganizationIds]);
-
-  const periodOptions = useMemo<PeriodFilterOption[]>(() => {
-    const periodMap = new Map<string, PeriodFilterOption>();
-    aggregates.forEach((aggregate) => {
-      if (aggregate.status !== "approved") return;
-      const organizationId = String(aggregate.organization);
-      if (!selectedOrganizationIds.has(organizationId)) return;
-      if (projectFilter !== "all" && String(aggregate.project) !== projectFilter) return;
-      const periodStart = aggregate.period_start || "";
-      const periodEnd = aggregate.period_end || "";
-      if (!periodStart || !periodEnd) return;
-      const optionId = `${periodStart}|${periodEnd}`;
-      if (periodMap.has(optionId)) return;
-      periodMap.set(optionId, {
-        id: optionId,
-        label: getPeriodLabel(aggregate),
-        periodEnd,
-        periodStart,
-      });
-    });
-    return Array.from(periodMap.values()).sort((left, right) =>
-      String(right.periodEnd).localeCompare(String(left.periodEnd)),
-    );
-  }, [aggregates, projectFilter, selectedOrganizationIds]);
 
   const effectivePeriodFilter = useMemo(
     () => (periodFilter === "all" || periodOptions.some((option) => option.id === periodFilter) ? periodFilter : "all"),

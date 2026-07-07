@@ -981,6 +981,34 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         return Response(payload)
 
     @action(detail=False, methods=['get'])
+    def periods(self, request):
+        """Distinct reporting periods for the scoped (approved) aggregates.
+
+        Powers the Aggregates page quarter dropdown WITHOUT pulling every
+        aggregate row. Previously the frontend derived the list of available
+        quarters from the full downloaded dataset, which forced it to fetch all
+        rows up front; this endpoint lets the browse fetch instead be scoped by
+        the chosen period. It honours exactly the same org/project/coordinator
+        scoping and status default (approved) as ``_reporting_queryset`` — so a
+        user only ever sees periods for data they are already permitted to read.
+        """
+        queryset = self._reporting_queryset()
+        pairs = (
+            queryset.values('period_start', 'period_end')
+            .distinct()
+            .order_by('-period_end', '-period_start')
+        )
+        results = [
+            {
+                'period_start': row['period_start'].isoformat() if row['period_start'] else None,
+                'period_end': row['period_end'].isoformat() if row['period_end'] else None,
+            }
+            for row in pairs
+            if row['period_start'] and row['period_end']
+        ]
+        return Response({'count': len(results), 'results': results})
+
+    @action(detail=False, methods=['get'])
     def summary(self, request):
         """Get aggregate summary by indicator."""
         queryset = self._reporting_queryset()

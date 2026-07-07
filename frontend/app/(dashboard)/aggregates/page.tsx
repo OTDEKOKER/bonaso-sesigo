@@ -1,12 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar, Clock3, Download, Filter, Loader2, RefreshCcw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import { aggregatesService, uploadsService } from "@/lib/api";
 import {
   useAllAggregates,
+  useAggregatePeriods,
   useAggregateTemplates,
   useAllOrganizations,
   useAllIndicators,
@@ -47,6 +49,7 @@ import {
   dedupeRollupAggregates,
   getAggregateTotal,
   getAggregateEntryMatrixConfig,
+  getPeriodLabel,
   groupAggregatesByIndicator,
   isValidDateRange,
   parseNumberInput,
@@ -65,6 +68,7 @@ import { isPlatformAdmin } from "@/lib/permissions";
 import type { Indicator, Project } from "@/lib/types";
 import {
   type AggregateEntryDraft,
+  type PeriodFilterOption,
   useAggregateChartState,
   useAggregateEntryForm,
   useAggregateFilters,
@@ -172,16 +176,29 @@ function AggregatesPageContent() {
   const [autoSaveAggregate, setAutoSaveAggregate] = useState(true);
   const [autoComputed, setAutoComputed] = useState<number | null>(null);
 
-  const aggregateApiFilters = isTrainingMode ? { include_training: 'true' } : undefined;
-  const { data: aggregatesData, isLoading, error, mutate } = useAllAggregates(aggregateApiFilters, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    revalidateIfStale: false,
-    shouldRetryOnError: true,
-    errorRetryCount: 2,
-    errorRetryInterval: 1500,
-    dedupingInterval: 60_000,
-  });
+  // Training opt-in flag shared by the browse fetch, the review-queue fetch and
+  // the periods lookup. Memoised so it is a stable SWR key fragment.
+  const aggregateApiFilters = useMemo(
+    () => (isTrainingMode ? { include_training: 'true' } : undefined),
+    [isTrainingMode],
+  );
+  // Perf: the aggregate browse data is now fetched *scoped* (by project +
+  // organization + selected period) further down, once the filter scope is
+  // known — the old unconditional "download every approved row and filter in
+  // the browser" pull (≈15k rows / 20 MB) is gone. Shared SWR revalidation
+  // config for both aggregate fetches.
+  const aggregateSwrConfig = useMemo(
+    () => ({
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      shouldRetryOnError: true,
+      errorRetryCount: 2,
+      errorRetryInterval: 1500,
+      dedupingInterval: 60_000,
+    }),
+    [],
+  );
   const { data: projectsData } = useAllProjects();
   const { data: indicatorsData } = useAllIndicators();
   const { data: organizationsData } = useAllOrganizations();
@@ -207,16 +224,6 @@ function AggregatesPageContent() {
     organization: undefined,
   });
 
-  const aggregates = useMemo(() => aggregatesData || [], [aggregatesData]);
-  const aggregateLoadErrorMessage = useMemo(() => {
-    if (!error) return "";
-    const message = typeof error === "object" && error && "message" in error ? String(error.message || "") : "";
-    return message.trim() || "Failed to load aggregate data.";
-  }, [error]);
-  const aggregateLoadErrorStatus = useMemo(() => {
-    if (!error || typeof error !== "object") return null;
-    return "status" in error ? Number(error.status) || null : null;
-  }, [error]);
   const projects = useMemo(
     () =>
       [...(projectsData?.results || [])].sort((left, right) =>
@@ -415,10 +422,43 @@ function AggregatesPageContent() {
     return result;
   }, [effectiveCoordinatorOrganizations, effectiveProjectHierarchyLinks, visibleOrganizations]);
 
+  // Available reporting periods for the quarter dropdown, fetched from the
+  // lightweight periods endpoint (a DISTINCT query) scoped to the browse
+  // project. Decoupling the dropdown from the browse data is what lets the
+  // browse fetch below be scoped by the chosen period instead of downloading
+  // every approved row just to derive the list of quarters.
+  const periodFetchFilters = useMemo(() => {
+    const filters: Record<string, string> = { ...(aggregateApiFilters || {}) };
+    if (projectFilter !== "all") filters.project = projectFilter;
+    return filters;
+  }, [aggregateApiFilters, projectFilter]);
+  const { data: periodsData, mutate: mutatePeriods } = useAggregatePeriods(
+    periodFetchFilters,
+    aggregateSwrConfig,
+  );
+  const periodOptions = useMemo<PeriodFilterOption[]>(() => {
+    const seen = new Map<string, PeriodFilterOption>();
+    (periodsData || []).forEach((row) => {
+      const periodStart = String(row.period_start || "");
+      const periodEnd = String(row.period_end || "");
+      if (!periodStart || !periodEnd) return;
+      const id = `${periodStart}|${periodEnd}`;
+      if (seen.has(id)) return;
+      seen.set(id, {
+        id,
+        label: getPeriodLabel({ period_start: periodStart, period_end: periodEnd }),
+        periodStart,
+        periodEnd,
+      });
+    });
+    return Array.from(seen.values()).sort((left, right) =>
+      String(right.periodEnd).localeCompare(String(left.periodEnd)),
+    );
+  }, [periodsData]);
+
   const {
     parentOrgFilter,
     periodFilter,
-    periodOptions,
     scopedOrganizations,
     searchQuery,
     selectedOrganizationIds,
@@ -429,12 +469,76 @@ function AggregatesPageContent() {
     setSearchQuery,
     setSelectedOrganizationIdsList,
   } = useAggregateFilters({
-    aggregates,
+    periodOptions,
     availableCoordinatorOrganizations: effectiveCoordinatorOrganizations,
     projectFilter,
     projectHierarchyLinks: effectiveProjectHierarchyLinks,
     visibleOrganizations,
   });
+
+  // Scoped browse fetch (perf core): only the approved rows for the selected
+  // project + organization scope + period are pulled, via the lightweight
+  // projection. This replaces the previous "download all ~15k approved rows and
+  // filter client-side" behaviour. Non-admins are already org-scoped by the
+  // backend; admins/large coordinators narrow the payload as soon as they pick
+  // an organization or period. The period is filtered as a date range on the
+  // server; the exact-period equality still runs client-side (a superset is
+  // harmless).
+  const browseOrganizationParam = useMemo(
+    () => Array.from(selectedOrganizationIds).map(String).sort().join(","),
+    [selectedOrganizationIds],
+  );
+  const browseFetchFilters = useMemo(() => {
+    const filters: Record<string, string> = {
+      ...(aggregateApiFilters || {}),
+      status: "approved",
+      light: "1",
+    };
+    if (projectFilter !== "all") filters.project = projectFilter;
+    if (browseOrganizationParam) filters.organization = browseOrganizationParam;
+    if (selectedPeriodOption) {
+      filters.date_from = selectedPeriodOption.periodStart;
+      filters.date_to = selectedPeriodOption.periodEnd;
+    }
+    return filters;
+  }, [aggregateApiFilters, projectFilter, browseOrganizationParam, selectedPeriodOption]);
+  const {
+    data: aggregatesData,
+    isLoading,
+    error,
+    mutate,
+  } = useAllAggregates(browseFetchFilters, aggregateSwrConfig);
+  const aggregates = useMemo(() => aggregatesData || [], [aggregatesData]);
+  const aggregateLoadErrorMessage = useMemo(() => {
+    if (!error) return "";
+    const message = typeof error === "object" && error && "message" in error ? String(error.message || "") : "";
+    return message.trim() || "Failed to load aggregate data.";
+  }, [error]);
+  const aggregateLoadErrorStatus = useMemo(() => {
+    if (!error || typeof error !== "object") return null;
+    return "status" in error ? Number(error.status) || null : null;
+  }, [error]);
+
+  // Review/correction queue rows (pending / reviewed / flagged) are a small set
+  // (a few hundred rows at most) and need the full projection (notes, reviewer,
+  // timestamps), so they are fetched separately from the approved browse data
+  // rather than forcing the bulk fetch to carry every status and every field.
+  const queueFetchFilters = useMemo(
+    () => ({ ...(aggregateApiFilters || {}), status: "pending,reviewed,flagged" }),
+    [aggregateApiFilters],
+  );
+  const { data: queueAggregatesData, mutate: mutateQueue } = useAllAggregates(
+    queueFetchFilters,
+    aggregateSwrConfig,
+  );
+  const queueAggregates = useMemo(() => queueAggregatesData || [], [queueAggregatesData]);
+
+  // Single refresh used by every write path (create, bulk, review actions,
+  // workbook import, auto-calc): revalidate the browse data, the review queue
+  // and the periods list together so all three stay consistent after a change.
+  const refreshAggregates = useCallback(async () => {
+    await Promise.all([mutate(), mutateQueue(), mutatePeriods()]);
+  }, [mutate, mutateQueue, mutatePeriods]);
 
   useEffect(() => {
     if (appliedUrlBaseFiltersRef.current) return;
@@ -875,7 +979,7 @@ function AggregatesPageContent() {
 
   const reviewQueueAggregates = useMemo(
     () =>
-      aggregates
+      queueAggregates
         .filter(
           (aggregate) =>
             visibleOrganizationIds.has(String(aggregate.organization)) &&
@@ -884,7 +988,7 @@ function AggregatesPageContent() {
               aggregate.status === "flagged"),
         )
         .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at))),
-    [aggregates, visibleOrganizationIds],
+    [queueAggregates, visibleOrganizationIds],
   );
 
   // Coordinator grouping for the review queue: map every organization that has a
@@ -928,7 +1032,7 @@ function AggregatesPageContent() {
 
   const correctionQueueAggregates = useMemo(
     () =>
-      aggregates
+      queueAggregates
         .filter(
           (aggregate) =>
             visibleOrganizationIds.has(String(aggregate.organization)) &&
@@ -937,7 +1041,7 @@ function AggregatesPageContent() {
               writableOrganizationIds.has(String(aggregate.organization))),
         )
         .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at))),
-    [aggregates, canReportAcrossOrganizations, visibleOrganizationIds, writableOrganizationIds],
+    [queueAggregates, canReportAcrossOrganizations, visibleOrganizationIds, writableOrganizationIds],
   );
 
   useEffect(() => {
@@ -960,9 +1064,7 @@ function AggregatesPageContent() {
     handleReviewAggregate,
     handleUpdateAggregate,
   } = useAggregateReviewActions({
-    mutate: async () => {
-      await mutate();
-    },
+    mutate: refreshAggregates,
     toast,
   });
 
@@ -1281,7 +1383,7 @@ function AggregatesPageContent() {
         description: `${payload.length} indicator entr${payload.length === 1 ? "y" : "ies"} submitted for coordinator review.`,
       });
 
-      await mutate();
+      await refreshAggregates();
       setIsDialogOpen(false);
       resetForm();
     } catch (err) {
@@ -1354,7 +1456,7 @@ function AggregatesPageContent() {
 
       setAutoComputed(result.computed);
       if (autoSaveAggregate) {
-        await mutate();
+        await refreshAggregates();
       }
 
       toast({
@@ -1374,9 +1476,32 @@ function AggregatesPageContent() {
   };
 
   if (isLoading) {
+    // Progressive skeleton: render the page chrome + filter/table placeholders
+    // immediately so the page feels instant while the scoped browse data loads,
+    // instead of a blank full-screen spinner.
     return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-col gap-6" aria-busy="true">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-4 w-96 max-w-full" />
+        </div>
+        <Card className="border-border/70 shadow-sm">
+          <CardHeader className="gap-4 pb-4">
+            <Skeleton className="h-6 w-56" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="h-9 w-full" />
+              ))}
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -1426,7 +1551,7 @@ function AggregatesPageContent() {
                 organizationsByCoordinator={organizationsByCoordinator}
                 defaultProject={projectFilter}
                 defaultCoordinator={parentOrgFilter}
-                onImported={() => { void mutate(); }}
+                onImported={() => { void refreshAggregates(); }}
               />
             ) : null}
             {can("aggregates", "export") ? (

@@ -471,6 +471,26 @@ export const aggregatesService = {
   },
 
   /**
+   * List the distinct reporting periods available for the scoped (approved)
+   * aggregates, so the browse fetch can be scoped by the chosen period instead
+   * of downloading every row up front to derive the quarter dropdown.
+   * Django endpoint: GET /api/aggregates/periods/
+   */
+  async getPeriods(filters?: {
+    project?: string;
+    organization?: string;
+    coordinator?: string;
+    include_org_descendants?: string;
+    include_training?: string;
+  }): Promise<Array<{ period_start: string; period_end: string }>> {
+    const params = cleanParams(filters as Record<string, string | undefined>);
+    const { data } = await api.get<{
+      results: Array<{ period_start: string; period_end: string }>;
+    }>('/aggregates/periods/', params);
+    return Array.isArray(data?.results) ? data.results : [];
+  },
+
+  /**
    * Get aggregate summary by indicator
    * Django endpoint: GET /api/aggregates/summary/
    */

@@ -65,6 +65,18 @@ class Aggregate(models.Model):
         unique_together = ['indicator', 'project', 'organization', 'period_start', 'period_end']
         indexes = [
             models.Index(fields=['-period_start'], name='agg_period_start_idx'),
+            # The Aggregates page and coordinator rollups scope almost every read
+            # by organization + status ("approved rows for this org") and often by
+            # project too. The bare FK indexes force a status filter + sort on top
+            # of a wide org scan; these composites let the common browse/rollup
+            # queries be served straight from an index.
+            models.Index(fields=['organization', 'status'], name='agg_org_status_idx'),
+            models.Index(
+                fields=['project', 'organization', 'status'],
+                name='agg_proj_org_status_idx',
+            ),
+            models.Index(fields=['status'], name='agg_status_idx'),
+            models.Index(fields=['created_at'], name='agg_created_at_idx'),
         ]
     
     def __str__(self):

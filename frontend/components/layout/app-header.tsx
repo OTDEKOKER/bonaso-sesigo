@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Bell, Search, Menu, Settings2, MessageSquare, Megaphone, AlertTriangle } from "lucide-react"
+import { useSWRConfig } from "swr"
+import { Bell, Search, Menu, Settings2, MessageSquare, Megaphone, AlertTriangle, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -89,9 +90,29 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const initials = `${(firstName[0] || String(currentUser?.email || "U")[0] || "U").toUpperCase()}${(lastName[0] || "").toUpperCase()}`
   const searchQuery = pathname === "/search" ? (searchParams.get("q") ?? "") : ""
 
+  const { mutate: globalMutate } = useSWRConfig()
+  const [isClearingCache, setIsClearingCache] = useState(false)
+
   const navigate = (href: string) => {
     if (typeof window === "undefined") return
     window.location.assign(href)
+  }
+
+  // Drop every cached SWR response (aggregates, org tree, permissions, …) and
+  // hard-reload so the next fetch comes fresh from the server. A normal hard
+  // refresh already clears the in-memory cache; this gives users an explicit
+  // control when they suspect they are looking at stale data.
+  const handleClearCache = async () => {
+    if (isClearingCache) return
+    setIsClearingCache(true)
+    try {
+      await globalMutate(() => true, undefined, { revalidate: false })
+    } catch {
+      // Even if invalidation throws we still reload below.
+    }
+    if (typeof window !== "undefined") {
+      window.location.reload()
+    }
   }
 
   const handleLogout = async () => {
@@ -331,6 +352,17 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
               disabled={!currentUser}
             >
               Activity Log
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={(event) => {
+                event.preventDefault()
+                void handleClearCache()
+              }}
+              disabled={isClearingCache}
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              {isClearingCache ? "Clearing cache…" : "Clear cached data"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive" onClick={handleLogout}>
