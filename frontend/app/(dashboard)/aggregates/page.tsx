@@ -533,12 +533,35 @@ function AggregatesPageContent() {
   );
   const queueAggregates = useMemo(() => queueAggregatesData || [], [queueAggregatesData]);
 
-  // Single refresh used by every write path (create, bulk, review actions,
-  // workbook import, auto-calc): revalidate the browse data, the review queue
-  // and the periods list together so all three stay consistent after a change.
+  // Single refresh used by the one-shot write paths (create, auto-calc, workbook
+  // import): revalidate the browse data, the review queue and the periods list
+  // together so all three stay consistent after a change.
   const refreshAggregates = useCallback(async () => {
     await Promise.all([mutate(), mutateQueue(), mutatePeriods()]);
   }, [mutate, mutateQueue, mutatePeriods]);
+
+  // Reviewers act on many rows in quick succession. Re-pulling the (potentially
+  // large) approved browse table after EVERY single review/flag/approve was the
+  // dominant "reviewing is slow" cost — and for review/flag the approved table
+  // does not even change. So queue actions await only the small queue refetch
+  // (immediate row update, ~hundreds of rows) and schedule the heavier browse +
+  // periods refresh in the background, coalesced, so a burst of actions triggers
+  // at most one heavy refetch after the reviewer pauses.
+  const browseRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleBrowseRefresh = useCallback(() => {
+    if (browseRefreshTimerRef.current) clearTimeout(browseRefreshTimerRef.current);
+    browseRefreshTimerRef.current = setTimeout(() => {
+      browseRefreshTimerRef.current = null;
+      void mutate();
+      void mutatePeriods();
+    }, 1200);
+  }, [mutate, mutatePeriods]);
+  useEffect(
+    () => () => {
+      if (browseRefreshTimerRef.current) clearTimeout(browseRefreshTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (appliedUrlBaseFiltersRef.current) return;
@@ -1064,7 +1087,13 @@ function AggregatesPageContent() {
     handleReviewAggregate,
     handleUpdateAggregate,
   } = useAggregateReviewActions({
-    mutate: refreshAggregates,
+    // Awaited per action: the small review-queue refetch so the acted-on row
+    // updates immediately in the Queued Review dialog (no blocking on the big
+    // approved browse table).
+    mutate: mutateQueue,
+    // Background + debounced: the heavier approved browse table + periods refresh
+    // runs after the reviewer pauses, so it never slows down rapid review/flag.
+    mutateQueue: scheduleBrowseRefresh,
     toast,
   });
 

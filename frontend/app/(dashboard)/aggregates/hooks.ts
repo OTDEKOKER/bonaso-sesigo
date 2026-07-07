@@ -539,8 +539,12 @@ export function useAggregateEntryForm() {
 }
 
 type AggregateReviewActionsArgs = {
+  /** Awaited after each action — keep this the SMALL/fast refresh (the review
+   *  queue) so the acted-on row updates immediately without blocking. */
   mutate: () => Promise<unknown>;
-  mutateQueue?: () => Promise<unknown>;
+  /** Fire-and-forget secondary refresh (e.g. the heavier approved browse table),
+   *  run without awaiting so it never blocks the reviewer between actions. */
+  mutateQueue?: () => void | Promise<unknown>;
   toast: ToastFn;
 };
 
