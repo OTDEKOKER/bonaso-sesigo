@@ -927,9 +927,15 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
     has_sex = sec_vals != [ALL_PRIMARY]
     is_sex = has_sex and all(v in MATRIX_SEXES for v in sec_vals)
 
+    # Primary-only count indicator (a disaggregate list but no sex and no age):
+    # collapse the single value into the sex slot (col C) so we don't emit a
+    # redundant "Count" in BOTH the sex column and the value column. The importer
+    # is cellmap-driven, so moving the input cell here keeps the round-trip intact.
+    single_count = not has_sex and not has_age
+
     n_bands = len(bands)
-    first_band = COL_BAND_START
-    last_band = COL_BAND_START + n_bands - 1
+    first_band = COL_SEX if single_count else COL_BAND_START
+    last_band = first_band + n_bands - 1
     if aligned:
         # Sub-total/TOTAL/AYP sit in shared fixed columns so all TOTALs align.
         col_sub = fixed_sub_col if has_age else None
@@ -959,8 +965,11 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         secondary_header = cfg.band_label or "Age Range"
     else:
         secondary_header = "Count"
-    _style(ws.cell(row=hr, column=COL_SEX, value=secondary_header),
-           fill=_HEADCELL_FILL, font=_BOLD)
+    # For a primary-only count indicator col C IS the value column (labelled
+    # "Count" by the band loop below), so skip the separate secondary header here.
+    if not single_count:
+        _style(ws.cell(row=hr, column=COL_SEX, value=secondary_header),
+               fill=_HEADCELL_FILL, font=_BOLD)
     band_cols: dict[str, int] = {}
     for i, band in enumerate(bands):
         c = first_band + i
@@ -983,7 +992,7 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         for secondary in sec_vals:
             if has_sex:
                 _style(ws.cell(row=row, column=COL_SEX, value=secondary), fill=_LABEL_FILL, font=_BOLD)
-            else:
+            elif not single_count:
                 _style(ws.cell(row=row, column=COL_SEX, value="Count"), fill=_LABEL_FILL, font=_BOLD)
             for band in bands:
                 cell = _value_cell(ws, row, band_cols[band], dv, formula_provider=formula_provider,
@@ -1029,7 +1038,10 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
     _merge(ws, data_start, COL_NAME, data_end, COL_NAME, name, fill=_HEADCELL_FILL, font=_BOLD, align=_LEFT)
 
     # ── Sub-total row (column sums) ──
-    _merge(ws, row, COL_NAME, row, COL_SEX, "Sub - total", fill=_SUBTOTAL_FILL, font=_BOLD)
+    # Primary-only count blocks keep col C for the value sum, so the "Sub - total"
+    # label merges A:B; everything else merges A:C as before.
+    _sub_label_end = COL_KP if single_count else COL_SEX
+    _merge(ws, row, COL_NAME, row, _sub_label_end, "Sub - total", fill=_SUBTOTAL_FILL, font=_BOLD)
     for band in bands:
         c = band_cols[band]
         _style(ws.cell(row=row, column=c,
