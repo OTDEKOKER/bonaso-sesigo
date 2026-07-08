@@ -49,7 +49,8 @@ from .project_indicator_scope_sync import ensure_project_indicator_assignments
 from .project_scope_sync import sync_project_scope_tables
 from indicators.models import Indicator
 from .serializers import (
-    ProjectSerializer, ProjectDetailSerializer, ProjectIndicatorSerializer,
+    ProjectSerializer, ProjectDetailSerializer, ProjectLightDetailSerializer,
+    ProjectIndicatorSerializer,
     TaskSerializer, DeadlineSerializer, ProjectActivitySerializer,
 )
 
@@ -82,6 +83,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if self.action == 'retrieve':
+            # ?light=1 opts into a projection that omits the per-organization
+            # indicator-assignment matrix, disaggregation rules and project-org
+            # role rows — the fields that dominate the response time on large
+            # projects and that read-only pickers (aggregates browse, dashboard
+            # scoping) never read. Full detail is the default (Project Setup /
+            # Targets pages depend on those fields).
+            raw = str(self.request.query_params.get('light') or '').strip().lower()
+            if raw in ('1', 'true', 'yes', 'on'):
+                return ProjectLightDetailSerializer
             return ProjectDetailSerializer
         return ProjectSerializer
     

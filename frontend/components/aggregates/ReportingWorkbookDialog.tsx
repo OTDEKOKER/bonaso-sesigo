@@ -190,9 +190,12 @@ export function ReportingWorkbookDialog({
     });
   }, [projects, periodType, quarter, month, fiscalYear]);
 
-  // (2) Fetch the selected project's detail for its hierarchy links.
+  // (2) Fetch the selected project's detail for its hierarchy links. Only reads
+  // id + project_hierarchy_links, so use the light projection (skips the heavy
+  // per-org assignment matrix — ≈10x faster on large projects).
   const { data: projectDetail } = useProject(project ? Number(project) : null, {
     keepPreviousData: false,
+    light: true,
   });
   const activeLinks = useMemo(() => {
     if (!project || String(projectDetail?.id) !== project) return [];

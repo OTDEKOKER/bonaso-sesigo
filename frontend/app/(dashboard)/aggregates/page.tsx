@@ -203,8 +203,12 @@ function AggregatesPageContent() {
   const { data: indicatorsData } = useAllIndicators();
   const { data: organizationsData } = useAllOrganizations();
   const selectedProjectId = formProject ? Number(formProject) : null;
+  // Aggregates only reads organizations / organization_targets / project_indicators
+  // / project_hierarchy_links off the project detail — never the heavy per-org
+  // assignment matrix — so use the light projection (≈10x faster server-side).
   const { data: selectedProjectData } = useProject(selectedProjectId, {
     keepPreviousData: false,
+    light: true,
   });
   const selectedProjectDetail =
     selectedProjectData && String(selectedProjectData.id) === formProject
@@ -214,6 +218,7 @@ function AggregatesPageContent() {
   const filterProjectNumericId = projectFilter !== "all" ? Number(projectFilter) : null;
   const { data: filterProjectData } = useProject(filterProjectNumericId, {
     keepPreviousData: false,
+    light: true,
   });
   const filterProjectDetail =
     filterProjectData && String(filterProjectData.id) === projectFilter

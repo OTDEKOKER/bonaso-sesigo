@@ -856,3 +856,59 @@ class ProjectSetupAndReportingEnforcementTests(APITestCase):
         )
         self.project.refresh_from_db()
         self.assertEqual(self.project.hierarchy_overrides, {})
+
+
+class ProjectLightDetailProjectionTests(APITestCase):
+    """?light=1 must drop the heavy per-org fields the browse pickers never read,
+    while the default (full) detail keeps them for Project Setup / Targets."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username='light_admin', email='light_admin@example.com',
+            password='TestPass123!', role='admin',
+        )
+        self.client.force_authenticate(self.admin)
+        self.coord = Organization.objects.create(name='Light Coord', code='LIGHT_COORD', type='district')
+        self.sub = Organization.objects.create(name='Light Sub', code='LIGHT_SUB', type='cso', parent=self.coord)
+        self.project = Project.objects.create(
+            name='Light Project', code='LIGHT-1',
+            start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
+            created_by=self.admin,
+        )
+        self.project.organizations.add(self.coord, self.sub)
+        self.indicator = Indicator.objects.create(
+            name='Light Indicator', code='LIGHT_IND', type='number',
+            category='hiv_prevention', created_by=self.admin,
+        )
+        self.pi = ProjectIndicator.objects.create(project=self.project, indicator=self.indicator)
+        # One assignment + hierarchy link so the heavy/kept fields are non-empty.
+        ProjectIndicatorAssignment.objects.create(
+            project_indicator=self.pi, organization=self.sub, is_active=True,
+        )
+        ProjectOrganizationHierarchy.objects.create(
+            project=self.project, parent_organization=self.coord,
+            child_organization=self.sub, is_active=True,
+        )
+
+    HEAVY = ('project_indicator_assignments', 'project_disaggregation_rules', 'project_organizations')
+    KEPT = ('project_indicators', 'organization_targets', 'project_hierarchy_links', 'organizations')
+
+    def test_full_detail_includes_heavy_fields(self):
+        response = self.client.get(f'/api/manage/projects/{self.project.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        for field in self.HEAVY + self.KEPT:
+            self.assertIn(field, body)
+        self.assertEqual(len(body['project_indicator_assignments']), 1)
+
+    def test_light_detail_omits_heavy_but_keeps_needed(self):
+        response = self.client.get(f'/api/manage/projects/{self.project.id}/?light=1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        for field in self.HEAVY:
+            self.assertNotIn(field, body)
+        for field in self.KEPT:
+            self.assertIn(field, body)
+        # The kept fields still carry their data (hierarchy link + indicator).
+        self.assertEqual(len(body['project_hierarchy_links']), 1)
+        self.assertEqual(len(body['project_indicators']), 1)

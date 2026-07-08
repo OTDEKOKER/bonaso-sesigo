@@ -195,8 +195,12 @@ export const projectsService = {
    * Get a single project by ID
    * Django endpoint: GET /api/manage/projects/:id/
    */
-  async get(id: number): Promise<Project> {
-    const { data } = await api.get<Project>(`/manage/projects/${id}/`);
+  async get(id: number, options?: { light?: boolean }): Promise<Project> {
+    // ?light=1 skips the heavy per-org indicator-assignment matrix + disaggregation
+    // rules + project-org role rows on the backend (≈10x faster on large projects).
+    // Only pass it from read-only scoping consumers that never read those fields.
+    const params = options?.light ? { light: '1' } : undefined;
+    const { data } = await api.get<Project>(`/manage/projects/${id}/`, params);
     return data;
   },
 

@@ -160,10 +160,14 @@ export function useProjects(filters?: ProjectFilters, config?: SWRConfiguration)
   );
 }
 
-export function useProject(id: number | null, config?: SWRConfiguration) {
+export function useProject(
+  id: number | null,
+  config?: SWRConfiguration & { light?: boolean },
+) {
+  const light = config?.light ?? false;
   return useSWR(
-    id ? ['project', id] : null,
-    () => projectsService.get(id!),
+    id ? ['project', id, light ? 'light' : 'full'] : null,
+    () => projectsService.get(id!, { light }),
     { ...defaultConfig, ...config }
   );
 }
