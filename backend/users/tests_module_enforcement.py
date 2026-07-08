@@ -33,14 +33,25 @@ class ModulePermissionEnforcementTests(APITestCase):
         self.assertEqual(self.client.get("/api/organizations/").status_code, 200)
 
     def test_explicit_deny_blocks_module_api(self):
-        # Admin explicitly disables the organizations module for the officer.
+        # Admin explicitly disables organizations AND indicators for the officer.
         UserModulePermission.objects.create(
             user=self.officer, module="organizations", is_enabled=False, actions=[],
         )
+        UserModulePermission.objects.create(
+            user=self.officer, module="indicators", is_enabled=False, actions=[],
+        )
         self._auth(self.officer)
-        self.assertEqual(self.client.get("/api/organizations/").status_code, 403)
-        # A module that was NOT denied stays reachable (no collateral lockout).
-        self.assertEqual(self.client.get("/api/indicators/").status_code, 200)
+        # 'organizations' is an intentional READ exception: the org tree is a shared
+        # lookup every screen needs (coordinator scoping, pickers, review-queue org
+        # resolution), so authenticated reads stay open regardless of the module
+        # grant — but WRITES remain module-gated, so an explicit deny still blocks
+        # them.
+        self.assertEqual(self.client.get("/api/organizations/").status_code, 200)
+        self.assertEqual(
+            self.client.post("/api/organizations/", {}, format="json").status_code, 403
+        )
+        # A fully-gated module is blocked even on read by the explicit deny.
+        self.assertEqual(self.client.get("/api/indicators/").status_code, 403)
 
     def test_enabled_empty_actions_also_denies(self):
         UserModulePermission.objects.create(

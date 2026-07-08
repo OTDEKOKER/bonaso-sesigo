@@ -55,9 +55,19 @@ class GuardWiringTests(SimpleTestCase):
         self.assertGreaterEqual(src.count("validate_aggregate_value("), 2)  # both write points
 
     def test_subprocess_importer_validates(self):
-        # Lives in frontend/scripts (sibling of the backend BASE_DIR).
-        src = Path(settings.BASE_DIR).parent.joinpath(
-            "frontend/scripts/import_selected_q3_workbook.py"
-        ).read_text(encoding="utf-8", errors="ignore")
+        # The importer lives in frontend/scripts — a sibling of the backend
+        # BASE_DIR in a source checkout, but mounted at /app/workbook-imports in
+        # the deployed container (see compose.server.yaml). Look in both places so
+        # this passes whether the suite runs from a full checkout or inside the
+        # container, and skip only if the frontend tree isn't present at all (e.g.
+        # a backend-only test image).
+        candidates = [
+            Path(settings.BASE_DIR).parent / "frontend/scripts/import_selected_q3_workbook.py",
+            Path(settings.BASE_DIR) / "workbook-imports/import_selected_q3_workbook.py",
+        ]
+        path = next((candidate for candidate in candidates if candidate.exists()), None)
+        if path is None:
+            self.skipTest("frontend/scripts importer not mounted in this test environment")
+        src = path.read_text(encoding="utf-8", errors="ignore")
         self.assertIn("from aggregates.validation import validate_aggregate_value", src)
         self.assertIn("validate_aggregate_value(item[\"value\"]", src)
