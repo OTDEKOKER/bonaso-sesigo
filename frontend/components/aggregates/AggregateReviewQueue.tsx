@@ -992,6 +992,12 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                   actingAggregateId === aggregateId && actingReviewAction === "delete";
                 const canApprove = item.status === "reviewed";
                 const canReview = item.status === "pending" || item.status === "flagged";
+                // A record already marked `reviewed` gets no "Review" button (that
+                // action is done), but both tiers of M&E still need to open it and
+                // inspect the submitted values — the Officer to double-check their own
+                // sign-off, the Manager before final approval. Available to anyone who
+                // can open this queue (both M&E Officers and Managers/admins).
+                const canViewReviewed = item.status === "reviewed";
                 const latestItemFlagEntry = getLatestFlagEntry(item);
 
                 return (
@@ -1058,6 +1064,21 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                             >
                               <Eye className="mr-2 h-4 w-4" />
                               {isReviewing ? "Reviewing..." : "Review"}
+                            </Button>
+                          ) : null}
+                          {canViewReviewed ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setReviewingAggregate(item);
+                                setIsManualEditMode(false);
+                                setReviewNotes("");
+                                loadCorrectionDraft(item);
+                              }}
+                              disabled={Boolean(actingAggregateId)}
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View
                             </Button>
                           ) : null}
                           <Button
@@ -1392,13 +1413,28 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                   >
                     Edit Record
                   </Button>
-                  <Button
-                    onClick={() => void handleReviewSubmit()}
-                    disabled={Boolean(actingAggregateId)}
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    Mark Reviewed
-                  </Button>
+                  {reviewingAggregate?.status === "reviewed" && canApproveRows ? (
+                    <Button
+                      onClick={async () => {
+                        if (!reviewingAggregate) return;
+                        await onApprove(String(reviewingAggregate.id));
+                        setReviewingAggregate(null);
+                        setReviewNotes("");
+                      }}
+                      disabled={Boolean(actingAggregateId)}
+                    >
+                      <Check className="mr-2 h-4 w-4" />
+                      Approve
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => void handleReviewSubmit()}
+                      disabled={Boolean(actingAggregateId)}
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      Mark Reviewed
+                    </Button>
+                  )}
                 </>
               )}
             </DialogFooter>
