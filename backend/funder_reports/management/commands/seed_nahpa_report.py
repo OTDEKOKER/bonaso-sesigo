@@ -327,9 +327,18 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
+            # Reporting year is derived per project (from its code/name, e.g.
+            # "NSC2026/27" -> "2026/27"), so each NAHPA project gets its OWN
+            # template. Keying update_or_create on the PROJECT (not name+year)
+            # prevents a second project's seed from re-assigning the first
+            # project's template (the "no project found" bug).
+            import re as _re
+            _m = _re.search(r"(\d{4})[/.\-](\d{2})", f"{project.code} {project.name}")
+            reporting_year = f"{_m.group(1)}/{_m.group(2)}" if _m else REPORTING_YEAR
             template, _ = ReportTemplate.objects.update_or_create(
-                name=TEMPLATE_NAME, reporting_year=REPORTING_YEAR,
-                defaults={"funder": "NAHPA", "project": project, "is_active": True,
+                name=TEMPLATE_NAME, project=project,
+                defaults={"funder": "NAHPA", "reporting_year": reporting_year,
+                          "is_active": True,
                           # System template (owner stays NULL → admin-managed) but
                           # visible to the whole project network incl. funders.
                           "visibility": "project",
