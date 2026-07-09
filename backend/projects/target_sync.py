@@ -18,6 +18,7 @@ All sync work is wrapped in try/except so it can never break the originating wri
 import logging
 import threading
 
+from django.db import connection
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.utils import timezone
@@ -29,6 +30,25 @@ logger = logging.getLogger(__name__)
 QUARTERS = ('Q1', 'Q2', 'Q3', 'Q4')
 QUARTER_FIELD = {'Q1': 'q1_target', 'Q2': 'q2_target', 'Q3': 'q3_target', 'Q4': 'q4_target'}
 _guard = threading.local()
+
+# ``CoordinatorTarget`` is an UNMANAGED model backed by a long-lived table that
+# exists in production but is NOT created by migrations (so it is absent from the
+# test database). Probe once and skip the two-way sync when the table is missing,
+# so tests — and any partial environment — never hit a noisy "no such table"
+# error. In production the table is present, so behaviour is unchanged.
+_ct_table_available: bool | None = None
+
+
+def _coordinator_target_available() -> bool:
+    global _ct_table_available
+    if _ct_table_available is None:
+        try:
+            _ct_table_available = (
+                CoordinatorTarget._meta.db_table in connection.introspection.table_names()
+            )
+        except Exception:  # pragma: no cover - never let a probe block a write
+            _ct_table_available = True
+    return _ct_table_available
 
 
 def _syncing() -> bool:
@@ -89,7 +109,7 @@ def sync_coordinator_target_to_pot(ct):
 
 @receiver(post_save, sender=ProjectIndicatorOrganizationTarget, dispatch_uid='pot_to_ct_save')
 def _pot_saved(sender, instance, **kwargs):
-    if _syncing():
+    if _syncing() or not _coordinator_target_available():
         return
     _guard.active = True
     try:
@@ -102,7 +122,7 @@ def _pot_saved(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=ProjectIndicatorOrganizationTarget, dispatch_uid='pot_to_ct_delete')
 def _pot_deleted(sender, instance, **kwargs):
-    if _syncing():
+    if _syncing() or not _coordinator_target_available():
         return
     _guard.active = True
     try:
@@ -119,7 +139,7 @@ def _pot_deleted(sender, instance, **kwargs):
 
 @receiver(post_save, sender=CoordinatorTarget, dispatch_uid='ct_to_pot_save')
 def _ct_saved(sender, instance, **kwargs):
-    if _syncing():
+    if _syncing() or not _coordinator_target_available():
         return
     _guard.active = True
     try:
