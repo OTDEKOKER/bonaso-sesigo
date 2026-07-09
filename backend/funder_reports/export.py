@@ -13,49 +13,16 @@ from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+_COMPLIANCE_LABELS = {
+    'submitted': 'Submitted', 'late': 'Late', 'not_submitted': 'Not submitted',
+    'not_opened': 'Not opened', 'na': 'N/A',
+}
 
-def figure_to_xlsx(payload: dict, *, figure, user) -> bytes:
-    wb = Workbook()
 
-    # ── Data sheet: categories × series (+ target / achievement %) ────────────
-    ws = wb.active
-    ws.title = 'Data'
+def _write_context_sheet(wb, payload, user):
+    """Context sheet: filters, scope, narrative, warnings, metadata."""
     bold = Font(bold=True)
-    ws['A1'] = f"{payload.get('figure_number', '')} {payload.get('title', figure.title)}".strip()
-    ws['A1'].font = Font(bold=True, size=13)
-
-    header = ['Category'] + [s['name'] for s in payload.get('series', [])]
-    if payload.get('target'):
-        header.append('Target')
-    if payload.get('achievement_percent'):
-        header.append('Achievement %')
-    row0 = 3
-    for c, h in enumerate(header, start=1):
-        cell = ws.cell(row=row0, column=c, value=h)
-        cell.font = bold
-
-    categories = payload.get('categories', [])
-    series = payload.get('series', [])
-    for i, cat in enumerate(categories):
-        r = row0 + 1 + i
-        ws.cell(row=r, column=1, value=cat)
-        col = 2
-        for s in series:
-            ws.cell(row=r, column=col, value=s['data'][i] if i < len(s['data']) else None)
-            col += 1
-        if payload.get('target'):
-            ws.cell(row=r, column=col, value=payload['target'][i] if i < len(payload['target']) else None)
-            col += 1
-        if payload.get('achievement_percent'):
-            ap = payload['achievement_percent']
-            ws.cell(row=r, column=col, value=ap[i] if i < len(ap) else None)
-
     totals = payload.get('totals', {})
-    tr = row0 + 1 + len(categories) + 1
-    ws.cell(row=tr, column=1, value='TOTAL').font = bold
-    ws.cell(row=tr, column=2, value=totals.get('total'))
-
-    # ── Context sheet: filters, scope, narrative, warnings, metadata ──────────
     ctx = wb.create_sheet('Context')
     lines = [
         ('Figure', f"{payload.get('figure_number', '')} {payload.get('title', '')}".strip()),
@@ -93,6 +60,65 @@ def figure_to_xlsx(payload: dict, *, figure, user) -> bytes:
         r += 1
         ctx.cell(row=r, column=1, value=f'• {w}')
 
+
+def figure_to_xlsx(payload: dict, *, figure, user) -> bytes:
+    wb = Workbook()
+
+    # ── Data sheet: categories × series (+ target / achievement %) ────────────
+    ws = wb.active
+    ws.title = 'Data'
+    bold = Font(bold=True)
+    ws['A1'] = f"{payload.get('figure_number', '')} {payload.get('title', figure.title)}".strip()
+    ws['A1'].font = Font(bold=True, size=13)
+
+    # Reporting-compliance matrix: coordinator × quarter status labels.
+    compliance = payload.get('compliance')
+    if compliance and compliance.get('rows'):
+        quarters = compliance['quarters']
+        for c, h in enumerate(['Coordinator / CSO'] + quarters, start=1):
+            ws.cell(row=3, column=c, value=h).font = bold
+        for i, row in enumerate(compliance['rows']):
+            r = 4 + i
+            ws.cell(row=r, column=1, value=row['coordinator'])
+            for j, cell in enumerate(row['cells']):
+                ws.cell(row=r, column=2 + j, value=_COMPLIANCE_LABELS.get(cell['status'], cell['status']))
+        _write_context_sheet(wb, payload, user)
+        buf = BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    header = ['Category'] + [s['name'] for s in payload.get('series', [])]
+    if payload.get('target'):
+        header.append('Target')
+    if payload.get('achievement_percent'):
+        header.append('Achievement %')
+    row0 = 3
+    for c, h in enumerate(header, start=1):
+        cell = ws.cell(row=row0, column=c, value=h)
+        cell.font = bold
+
+    categories = payload.get('categories', [])
+    series = payload.get('series', [])
+    for i, cat in enumerate(categories):
+        r = row0 + 1 + i
+        ws.cell(row=r, column=1, value=cat)
+        col = 2
+        for s in series:
+            ws.cell(row=r, column=col, value=s['data'][i] if i < len(s['data']) else None)
+            col += 1
+        if payload.get('target'):
+            ws.cell(row=r, column=col, value=payload['target'][i] if i < len(payload['target']) else None)
+            col += 1
+        if payload.get('achievement_percent'):
+            ap = payload['achievement_percent']
+            ws.cell(row=r, column=col, value=ap[i] if i < len(ap) else None)
+
+    totals = payload.get('totals', {})
+    tr = row0 + 1 + len(categories) + 1
+    ws.cell(row=tr, column=1, value='TOTAL').font = bold
+    ws.cell(row=tr, column=2, value=totals.get('total'))
+
+    _write_context_sheet(wb, payload, user)
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -136,6 +162,21 @@ def report_to_docx(*, template_name: str, period_label: str, sections: list, use
             if totals.get('achievement_percent') is not None:
                 meta.append(f"Achievement: {totals.get('achievement_percent')}%")
             doc.add_paragraph(' · '.join(str(m) for m in meta))
+
+            compliance = fig.get('compliance')
+            if compliance and compliance.get('rows'):
+                quarters = compliance['quarters']
+                table = doc.add_table(rows=1, cols=1 + len(quarters))
+                table.style = 'Light Grid Accent 1'
+                hdr = table.rows[0].cells
+                hdr[0].text = 'Coordinator / CSO'
+                for i, q in enumerate(quarters):
+                    hdr[1 + i].text = q
+                for row in compliance['rows']:
+                    cells = table.add_row().cells
+                    cells[0].text = str(row['coordinator'])
+                    for i, c in enumerate(row['cells']):
+                        cells[1 + i].text = _COMPLIANCE_LABELS.get(c['status'], c['status'])
 
             categories = fig.get('categories', [])
             series = fig.get('series', [])

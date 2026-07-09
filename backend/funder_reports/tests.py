@@ -157,6 +157,32 @@ class GenerationTests(ReportBase):
         self.assertEqual(out["completeness"]["missing"], 1)
 
 
+class ComplianceTests(ReportBase):
+    def test_compliance_matrix_reflects_submissions(self):
+        """Table 1 compliance is per-coordinator × quarter submission status from
+        raw Aggregate submissions (not indicators). A quarter with a submission
+        for the coordinator's org reads 'submitted'; an elapsed quarter without
+        one reads 'not_submitted'; a future quarter reads 'not_opened'."""
+        from projects.models import ProjectOrganizationHierarchy
+        from datetime import date
+        sub = Organization.objects.create(name="Sub C", code="FR_SC", type="cso")
+        self.project.organizations.add(sub)
+        ProjectOrganization.objects.create(project=self.project, organization=self.org_a, is_coordinator=True, role="coordinator")
+        ProjectOrganization.objects.create(project=self.project, organization=sub, role="sub_grantee")
+        ProjectOrganizationHierarchy.objects.create(project=self.project, parent_organization=self.org_a, child_organization=sub, is_active=True)
+        # A Q1 (Apr-Jun) submission for the coordinator's sub in a past fiscal year.
+        Aggregate.objects.create(indicator=self.ind_reach, project=self.project, organization=sub,
+                                 period_start=date(2024, 4, 1), period_end=date(2024, 6, 30),
+                                 value={"total": 5}, status="approved", created_by=self.admin)
+        fig = self._figure(chart_type=ChartType.COMPLIANCE, grouping_dimension=Dimension.COORDINATOR)
+        out = generate_figure(fig, project=self.project, period_start=date(2024, 4, 1), period_end=date(2024, 6, 30))
+        self.assertEqual(out["chart_type"], ChartType.COMPLIANCE)
+        row = next(r for r in out["compliance"]["rows"] if r["coordinator"] == "Alpha CSO")
+        by_q = {c["quarter"]: c["status"] for c in row["cells"]}
+        self.assertEqual(by_q["Q1"], "submitted")
+        self.assertEqual(by_q["Q2"], "not_submitted")  # elapsed, nothing submitted
+
+
 class CoordinatorGroupingTests(ReportBase):
     def test_group_by_coordinator_rolls_up_suborgs(self):
         """A sub-org's data rolls up to its coordinator (per the PROJECT

@@ -9,7 +9,14 @@ import { api, fetchWithAuth, normalizeApiError, type PaginatedResponse } from '.
 
 export type ChartType =
   | 'achieved_vs_target' | 'grouped_bar' | 'stacked_bar' | 'horizontal_bar'
-  | 'line' | 'pie' | 'heatmap' | 'cascade' | 'table';
+  | 'line' | 'pie' | 'heatmap' | 'cascade' | 'table' | 'compliance';
+
+export type ComplianceStatus = 'submitted' | 'late' | 'not_submitted' | 'not_opened' | 'na';
+export interface ComplianceMatrix {
+  quarters: string[];
+  fiscal_year: number;
+  rows: Array<{ coordinator: string; cells: Array<{ quarter: string; status: ComplianceStatus }> }>;
+}
 
 export type Visibility = 'private' | 'organization' | 'network' | 'project' | 'funder' | 'public';
 
@@ -92,6 +99,7 @@ export interface GeneratedFigure {
   target?: number[];
   achievement_percent?: (number | null)[];
   ratio_percent?: number | null;
+  compliance?: ComplianceMatrix;
   totals: { total: number; target?: number; achievement_percent?: number | null };
   completeness: { expected: number; reporting: number; missing: number; missing_organization_ids: number[] };
   warnings: string[];

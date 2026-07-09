@@ -28,7 +28,7 @@ from projects.models import (
     ProjectIndicatorAssignment, ProjectOrganization,
 )
 
-from .models import Dimension, CalculationMode, TargetMode, MappingRole
+from .models import Dimension, CalculationMode, TargetMode, MappingRole, ChartType
 
 # Roles that contribute a positive "achieved" value.
 ACHIEVED_ROLES = {
@@ -91,6 +91,8 @@ class FigureGenerator:
     # ── public ────────────────────────────────────────────────────────────────
     def build(self) -> dict:
         fig = self.figure
+        if fig.chart_type == ChartType.COMPLIANCE:
+            return self._compliance_result()
         mappings = list(fig.mappings.select_related('indicator').all())
         achieved = [m for m in mappings if m.role in ACHIEVED_ROLES]
         if not achieved:
@@ -382,6 +384,86 @@ class FigureGenerator:
                     annual = sum(_f(r[f'q{i}_target']) for i in (1, 2, 3, 4))
                 by_org[r['organization_id']] += annual
         return [round(by_org.get(k, 0.0), 2) for k in org_keys]
+
+    # ── compliance (reporting submission status) ─────────────────────────────────
+    def _compliance_result(self) -> dict:
+        """Per-coordinator × quarter reporting-submission status. Sourced from raw
+        ``Aggregate`` SUBMISSIONS (not AggregateFact, not indicators) checked
+        against the admin ``ReportingPeriod`` window + the quarter-completion floor.
+        Status per cell: submitted / late / not_submitted / not_opened / na."""
+        from datetime import date
+        from aggregates.models import Aggregate
+        from aggregates import reporting_control as rc
+
+        cmap = self._coordinator_map()
+        coord_orgs: dict = defaultdict(set)
+        for org_id, coord_id in cmap.items():
+            coord_orgs[coord_id].add(org_id)
+
+        info = rw.quarter_of_period(self.period_start, self.period_end)
+        fiscal_year = info[1] if info else (
+            self.period_start.year if self.period_start.month >= 4 else self.period_start.year - 1)
+        today = date.today()
+        quarters = [1, 2, 3, 4]
+        coord_names = dict(
+            Organization.objects.filter(id__in=list(coord_orgs)).values_list('id', 'name'))
+
+        rows = []
+        for coord_id in sorted(coord_orgs, key=lambda c: (coord_names.get(c) or '')):
+            cells = []
+            for q in quarters:
+                ps, pe = rw.quarter_period_range(q, fiscal_year)
+                # Any submission whose period falls within the quarter counts —
+                # covers both quarterly workbooks and monthly submissions.
+                first = (
+                    Aggregate.objects.filter(
+                        project=self.project, organization_id__in=coord_orgs[coord_id],
+                        period_start__gte=ps, period_end__lte=pe,
+                    ).order_by('created_at').values_list('created_at', flat=True).first()
+                )
+                period = rc.get_reporting_period(self.project, ps, pe)
+                elapsed = rw.period_has_fully_elapsed(pe, today)
+                cells.append({'quarter': f'Q{q}',
+                              'status': self._compliance_status(first, period, elapsed)})
+            rows.append({'coordinator': coord_names.get(coord_id, f'Coordinator {coord_id}'),
+                         'cells': cells})
+
+        if not rows:
+            self.warnings.append(
+                'No coordinators are configured for this project, so reporting '
+                'compliance cannot be shown.')
+        reporting = sum(1 for r in rows if any(c['status'] in ('submitted', 'late') for c in r['cells']))
+        return {
+            'figure_id': self.figure.id, 'figure_number': self.figure.figure_number,
+            'title': self.figure.title, 'description': self.figure.description,
+            'chart_type': ChartType.COMPLIANCE,
+            'grouping_dimension': Dimension.COORDINATOR,
+            'secondary_grouping_dimension': Dimension.PERIOD,
+            'categories': [], 'series': [],  # keep chart/export consumers safe
+            'compliance': {'quarters': [f'Q{q}' for q in quarters],
+                           'fiscal_year': fiscal_year, 'rows': rows},
+            'warnings': self.warnings,
+            'totals': {'total': 0},
+            'completeness': {'expected': len(rows), 'reporting': reporting,
+                             'missing': len(rows) - reporting, 'missing_organization_ids': []},
+            'narrative': self.figure.narrative_template or '',
+            'applied_filters': {}, 'scope': {
+                'unrestricted': self.org_ids is None,
+                'organization_ids': sorted(self.org_ids) if self.org_ids is not None else None,
+                'approved_only': not self.include_unapproved},
+            'period_start': str(self.period_start), 'period_end': str(self.period_end),
+        }
+
+    @staticmethod
+    def _compliance_status(first_submission, period, elapsed) -> str:
+        if first_submission is not None:
+            closes = getattr(period, 'submission_closes', None) if period else None
+            return 'late' if (closes and first_submission > closes) else 'submitted'
+        # Nothing submitted: distinguish "window never opened" from "missed it".
+        opened = elapsed  # quarter-completion floor: a fully-elapsed quarter is open
+        if period is not None:
+            opened = period.status in ('open', 'closed')  # admin window overrides
+        return 'not_submitted' if opened else 'not_opened'
 
     # ── ratio calc ───────────────────────────────────────────────────────────────
     def _ratio(self, mappings, base):

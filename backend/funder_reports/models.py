@@ -28,6 +28,7 @@ class ChartType(models.TextChoices):
     HEATMAP = 'heatmap', 'Heatmap (age × sex)'
     CASCADE = 'cascade', 'Cascade / funnel'
     TABLE = 'table', 'Table'
+    COMPLIANCE = 'compliance', 'Reporting-compliance matrix'
 
 
 class Dimension(models.TextChoices):

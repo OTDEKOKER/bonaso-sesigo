@@ -55,7 +55,7 @@ def F(number, title, chart, group, secondary=Dimension.NONE, target=TargetMode.N
 
 STRUCTURE = [
     ("Reporting Compliance", "Reporting Compliance", [
-        F("Table 1", "Compliance to Reporting by CSO and Quarter", ChartType.TABLE,
+        F("Table 1", "Compliance to Reporting by CSO and Quarter", ChartType.COMPLIANCE,
           Dimension.COORDINATOR, expected=0,
           narrative="Submission status (submitted / late / not submitted) by CSO and quarter."),
         F("Table 2", "CSO Capacity Building and Communication (Media Platforms)", ChartType.TABLE,

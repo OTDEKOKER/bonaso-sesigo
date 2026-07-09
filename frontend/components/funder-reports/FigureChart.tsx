@@ -205,6 +205,57 @@ function FigureTable({ figure }: { figure: GeneratedFigure }) {
   );
 }
 
+// ── reporting-compliance matrix (coordinator × quarter status badges) ────────
+const COMPLIANCE_BADGE: Record<string, { label: string; cls: string }> = {
+  submitted: { label: "Submitted", cls: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  late: { label: "Late", cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  not_submitted: { label: "Not submitted", cls: "bg-red-100 text-red-800 border-red-200" },
+  not_opened: { label: "Not opened", cls: "bg-slate-100 text-slate-500 border-slate-200" },
+  na: { label: "N/A", cls: "bg-slate-100 text-slate-500 border-slate-200" },
+};
+
+function ComplianceTable({ figure }: { figure: GeneratedFigure }) {
+  const m = figure.compliance;
+  if (!m || !m.rows.length) {
+    return <div className="flex h-24 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">No coordinators configured for this project.</div>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b">
+            <th className="px-3 py-2 text-left font-medium text-muted-foreground">Coordinator / CSO</th>
+            {m.quarters.map((q) => <th key={q} className="px-3 py-2 text-center font-medium text-slate-700">{q}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {m.rows.map((row) => (
+            <tr key={row.coordinator} className="border-b border-slate-100">
+              <th className="px-3 py-2 text-left font-normal whitespace-nowrap">{row.coordinator}</th>
+              {row.cells.map((c) => {
+                const b = COMPLIANCE_BADGE[c.status] ?? COMPLIANCE_BADGE.na;
+                return (
+                  <td key={c.quarter} className="px-3 py-2 text-center">
+                    <span className={`inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${b.cls}`}>{b.label}</span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+        {["submitted", "late", "not_submitted", "not_opened"].map((s) => (
+          <span key={s} className="inline-flex items-center gap-1">
+            <span className={`inline-block h-2.5 w-2.5 rounded-full border ${COMPLIANCE_BADGE[s].cls}`} />{COMPLIANCE_BADGE[s].label}
+          </span>
+        ))}
+        <span className="ml-auto">FY {m.fiscal_year}/{String((m.fiscal_year + 1) % 100).padStart(2, "0")}</span>
+      </div>
+    </div>
+  );
+}
+
 export function FigureChart({ figure, height = 320 }: { figure: GeneratedFigure; height?: number }) {
   const rows = toRows(figure);
   const seriesNames = figure.series.map((s) => s.name);
@@ -214,6 +265,9 @@ export function FigureChart({ figure, height = 320 }: { figure: GeneratedFigure;
   const isCascade = figure.chart_type === "cascade";
   const isTableType = figure.chart_type === "table";
   const showStats = isTarget || isCascade || figure.ratio_percent != null;
+
+  // Reporting-compliance matrix — its own status-badge table (not a chart).
+  if (figure.chart_type === "compliance") return <ComplianceTable figure={figure} />;
 
   if (!figure.categories.length) return <EmptyState figure={figure} />;
 
