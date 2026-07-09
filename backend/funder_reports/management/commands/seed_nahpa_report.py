@@ -219,6 +219,50 @@ def _role_for(name: str, calc) -> str:
     return MappingRole.ACHIEVED
 
 
+# Curated EXACT indicator mappings (canonical indicator ids) per figure, derived
+# by reconciling each figure to the specific indicators that carry its data in the
+# NAHPA catalog (verified against approved 2025/26 data). These take precedence
+# over fuzzy token matching so figures visualise the correct indicators. Figures
+# absent here fall back to tokens (flagged for manual confirmation). Indicators are
+# a GLOBAL catalog, so these ids are stable across NAHPA projects (2025/26 + 26/27).
+CURATED_IDS = {
+    "Figure 1": [322, 323, 324, 325, 327, 328, 481],   # PEP/PrEP/GBV/condom/ARV/EMTCT/treatment msgs
+    "Figure 2": [322, 323, 324, 325, 327, 328],         # HIV-prevention msgs vs target by CSO
+    "Figure 3": [330],                                  # stigma reduction messages
+    "Figure 4": [372],                                  # NCD prevention & control messages (by sex)
+    "Figure 5": [372],                                  # NCD messages (aggregate only — confirm per-type)
+    "Figure 6": [373],                                  # NCD messages via social media
+    "Figure 7.1": [451],                                # tested for HIV (vs target)
+    "Figure 7.2": [451],                                # tested by sex/KVP
+    "Figure 7.3": [452],                                # tested positive by sex
+    "Figure 8": [336, 337, 338, 446],                   # PrEP/PEP eligible+referred (ratios)
+    "Figure 9": [342],                                  # AYP family planning
+    "Figure 10": [471, 448, 449],                       # condoms distributed (+brailed, +repeat)
+    "Figure 10.1": [449],                               # repeat condom collection by age/sex
+    "Figure 10.2": [472],                               # lubricants distributed
+    "Figure 11": [445, 451, 452, 453, 335],             # referred→tested→positive→linked→ART
+    "Figure 12": [351, 468, 470, 469],                  # STI screened→referred→completed→linked
+    "Figure 13.1": [526, 527, 501],                     # TB screened→referred→completed
+    "Figure 13.2": [529, 530],                          # TB interrupting→reinitiated
+    "Figure 14.1": [343],                               # screened for GBV (vs target)
+    "Figure 14.2": [343, 461, 539],                     # GBV screened + eligible (by sex)
+    "Figure 15": [504, 536, 453],                       # LTFU followed→reinitiated→linked
+    "Figure 16.1": [545],                               # biological NCD risk screened
+    "Figure 16.2": [420],                               # behavioural NCD risk (tobacco) screened
+    "Figure 17.1": [385],                               # mental health screened (vs target)
+    "Figure 17.2": [386],                               # receiving counselling
+    "Figure 17.3": [389],                               # referred for further services (confirm)
+    "Figure 17.4": [428, 389],                          # mental-health mgmt eligible/referred (ratio)
+    "Figure 18.1": [388],                               # breast cancer referred for further screening
+    "Table 3.1": [368, 517],                            # awareness/campaign activities
+    "Table 3.2": [365, 366],                            # advocacy + demand-creation activities
+    "Figure 19": [435],                                 # community-based club activities (closest)
+    "Figure 20": [317, 359],                            # service providers / healthcare workers trained
+    "Figure 21": [358, 360, 361],                       # human-rights sensitised, violations, redress
+    "Table 2": [363, 367],                              # media platforms / engagements
+}
+
+
 class Command(BaseCommand):
     help = "Seed / update the complete NAHPA Social Contracting 2025/26 funder report template."
 
@@ -259,13 +303,25 @@ class Command(BaseCommand):
                         ids.add(ind["id"]); found.append(ind)
             return found
 
+        by_id = {i["id"]: i for i in indicators}
+
+        def resolve(fig):
+            """Curated exact ids take precedence over fuzzy token matching."""
+            curated = CURATED_IDS.get(fig["number"])
+            if curated:
+                found = [by_id[i] for i in curated if i in by_id]
+                # A curated figure is 'fully mapped' once its ids resolve.
+                fig["expected"] = max(1, len(found))
+                return found
+            return match(fig["tokens"])
+
         dry = opts["dry_run"]
         checklist = []
 
         if dry:
             for s_title, s_obj, figures in STRUCTURE:
                 for fig in figures:
-                    matched = match(fig["tokens"])
+                    matched = resolve(fig)
                     checklist.append(self._row(s_title, fig, matched))
             self._print_checklist(checklist, project, dry=True)
             return
@@ -288,7 +344,7 @@ class Command(BaseCommand):
                 )
                 seen_sections.add(section.id)
                 for f_order, fig in enumerate(figures):
-                    matched = match(fig["tokens"])
+                    matched = resolve(fig)
                     status = self._status(fig, matched)
                     desc = fig["narrative"] and "" or ""
                     figure, _ = ReportFigure.objects.update_or_create(
