@@ -271,6 +271,20 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
       { title: "Dashboards", href: "/analysis/dashboards" },
     ],
   },
+  {
+    title: "Funder Reports",
+    href: "/funder-reports",
+    icon: <FileBarChart className="h-4 w-4" />,
+    children: [
+      { title: "Generate Report", href: "/funder-reports" },
+      { title: "Report Builder", href: "/funder-reports/builder" },
+    ],
+  },
+  {
+    title: "Reporting Periods",
+    href: "/reporting-periods",
+    icon: <CalendarDays className="h-4 w-4" />,
+  },
 ]
 
 export function AppSidebar() {
