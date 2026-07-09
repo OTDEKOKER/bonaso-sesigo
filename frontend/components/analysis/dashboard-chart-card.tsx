@@ -77,6 +77,7 @@ import {
 } from "@/lib/analytics/chart-filter-flags";
 import type { Aggregate } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SESIGO_CHART_PALETTE, SESIGO_SEMANTIC_COLORS } from "@/lib/chart-theme";
 
 const BONASO_COLORS = {
   darkAccent: "rgb(4, 40, 18)",
@@ -87,20 +88,16 @@ const BONASO_COLORS = {
   lightGrey: "rgb(121, 121, 121)",
   alternateLight: "rgb(138, 191, 235)",
   alternateUberLight: "rgb(161, 246, 238)",
-  target: "#82ca9d",
+  // Standardized on the canonical SESIGO palette so the target colour matches
+  // the Excel export and the funder-report charts (was a one-off "#82ca9d").
+  target: SESIGO_SEMANTIC_COLORS.target,
   white: "#ffffff",
 } as const;
 
-const PROFESSIONAL_CHART_COLORS = [
-  "#4F81BD",
-  "#ED7D31",
-  "#A5A5A5",
-  "#FFC000",
-  "#4472C4",
-  "#70AD47",
-  "#255E91",
-  "#9E480E",
-] as const;
+// Series colours are the single canonical SESIGO palette (lib/chart-theme), the
+// same list the backend Excel export uses — so a series keeps its colour on
+// screen and in exports instead of the old bespoke Office palette here.
+const PROFESSIONAL_CHART_COLORS = SESIGO_CHART_PALETTE;
 
 
 const AGE_ORDER: Record<string, number> = {

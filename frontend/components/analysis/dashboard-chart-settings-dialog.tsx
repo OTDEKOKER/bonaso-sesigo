@@ -391,7 +391,6 @@ export function DashboardChartSettingsDialog(
     setSaving(true);
     try {
       const chartService = dashboardSettingsService as unknown as {
-        updateChart: (dashboardId: number, chartId: number, request: Record<string, unknown>) => Promise<unknown>;
         saveChart: (dashboardId: number, request: Record<string, unknown>) => Promise<unknown>;
       };
 
@@ -403,11 +402,11 @@ export function DashboardChartSettingsDialog(
           custom_analysis: { ...customState, title: name.trim() || customState.title },
         };
 
-        if (existing?.id) {
-          await chartService.updateChart(dashboard.id, existing.id, payload);
-        } else {
-          await chartService.saveChart(dashboard.id, payload);
-        }
+        // saveChart upserts by request.id: when `existing` carries an id it
+        // replaces that chart, otherwise it appends a new one. (There is no
+        // separate updateChart on dashboardSettingsService — calling one crashed
+        // every edit with "updateChart is not a function".)
+        await chartService.saveChart(dashboard.id, payload);
       } else {
         const payload = {
           ...(existing ?? {}),
@@ -429,11 +428,8 @@ export function DashboardChartSettingsDialog(
           template_mode: "standard",
         };
 
-        if (existing?.id) {
-          await chartService.updateChart(dashboard.id, existing.id, payload);
-        } else {
-          await chartService.saveChart(dashboard.id, payload);
-        }
+        // saveChart upserts by request.id (see custom branch above).
+        await chartService.saveChart(dashboard.id, payload);
       }
 
       await onSaved(dashboard.id);
