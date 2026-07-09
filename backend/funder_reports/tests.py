@@ -206,6 +206,42 @@ class CoordinatorGroupingTests(ReportBase):
         self.assertEqual(out["totals"]["target"], 100)
         self.assertEqual(out["totals"]["achievement_percent"], 80.0)
 
+    def test_indicator_grouping_keeps_mapping_order_for_cascade(self):
+        """Cascade/funnel stages must stay in configured mapping order, never be
+        reordered by value (a later, larger stage would otherwise jump ahead)."""
+        stage2 = Indicator.objects.create(
+            name="Number tested positive", code="FR_POS", type="number", created_by=self.admin)
+        stage3 = Indicator.objects.create(
+            name="Number initiated on ART", code="FR_ART", type="number", created_by=self.admin)
+        # Stage 1 (reach) large, stage 2 small, stage 3 medium → value-sort would
+        # scramble the sequence; mapping order must win.
+        def _stage_fact(ind, value):
+            agg, created = Aggregate.objects.get_or_create(
+                indicator=ind, project=self.project, organization=self.org_a,
+                period_start=PS, period_end=PE,
+                defaults={"value": {"total": value}, "status": "approved", "created_by": self.admin})
+            if created:
+                AggregateFact.objects.filter(aggregate=agg).delete()
+            AggregateFact.objects.create(
+                aggregate=agg, indicator=ind, canonical_indicator=ind, project=self.project,
+                organization=self.org_a, period_start=PS, period_end=PE, status="approved",
+                is_training=False, primary="All", secondary="All", band="Total", value=value)
+
+        self._fact(self.org_a, 1000)  # ind_reach = stage 1
+        _stage_fact(stage2, 200)      # stage 2 (small)
+        _stage_fact(stage3, 500)      # stage 3 (medium) — value-sort would misorder
+        fig = ReportFigure.objects.create(
+            report_section=self.section, figure_number="CAS", title="Cascade",
+            chart_type=ChartType.CASCADE, grouping_dimension=Dimension.INDICATOR)
+        for order, ind in enumerate((self.ind_reach, stage2, stage3)):
+            ReportFigureIndicatorMapping.objects.create(
+                report_figure=fig, indicator=ind, role=MappingRole.ACHIEVED, display_order=order)
+        out = generate_figure(fig, project=self.project, period_start=PS, period_end=PE)
+        self.assertEqual(
+            out["categories"],
+            ["Number of people reached with HIV prevention messages",
+             "Number tested positive", "Number initiated on ART"])
+
     def test_coordinator_falls_back_to_org_when_none_defined(self):
         # No is_coordinator orgs on this project → grouping degrades gracefully
         # to per-organization so the figure still renders.

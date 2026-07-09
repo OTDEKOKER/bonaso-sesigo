@@ -281,8 +281,14 @@ class FigureGenerator:
                 'coordinator in this project and was excluded from the rollup.'
             )
 
-        # Order categories: for indicator grouping keep mapping order; else by value desc.
-        category_keys = sorted(cat_totals, key=lambda k: -cat_totals[k])
+        # Order categories: for indicator grouping keep the configured MAPPING
+        # order (cascade/funnel stages must read testing→positive→ART in sequence,
+        # never reordered by value); every other grouping is ranked by value desc.
+        if primary_dim == Dimension.INDICATOR:
+            order = {k: i for i, k in enumerate(label_by_indicator)}
+            category_keys = sorted(cat_totals, key=lambda k: (order.get(k, len(order)), -cat_totals[k]))
+        else:
+            category_keys = sorted(cat_totals, key=lambda k: -cat_totals[k])
         p_labels = self._labels_for(primary_dim, category_keys, label_by_indicator)
 
         if s_field:

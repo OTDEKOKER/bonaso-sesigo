@@ -84,14 +84,21 @@ STRUCTURE = [
           calc=CalculationMode.ACHIEVEMENT_PERCENT,
           tokens=[["ncd", "prevention", "message"], ["reached", "ncd"]], expected=1,
           narrative="{total} people reached with NCD prevention and control messages."),
+        # The NCD message types are the message-type disaggregation (stored in
+        # AggregateFact.primary) of the single "NCD prevention messages" indicator
+        # (#372), NOT separate indicators — so group by that disaggregation to show
+        # the 8 cleaned types (Tobacco Control, Alcohol Reduction, Physical Activity,
+        # …). Grouping by indicator collapsed this figure to a single bar.
         F("Figure 5", "NCD Prevention Messages by Message Type",
-          ChartType.HORIZONTAL_BAR, Dimension.INDICATOR,
+          ChartType.HORIZONTAL_BAR, Dimension.KEY_POPULATION,
           tokens=[["tobacco"], ["physical activity"], ["blood pressure"], ["cervical cancer"],
                   ["prostate cancer"], ["breast cancer"], ["psychoeducation"], ["alcohol"],
                   ["healthy diet"], ["weight"], ["blood glucose"], ["waist"]], expected=7,
           narrative="Tobacco control messages reached the most people."),
+        # Same shape as Figure 5 — the social-media NCD indicator (#373) carries the
+        # message types in its disaggregation, so group by that (not by indicator).
         F("Figure 6", "NCD Prevention Messages Through Social Media",
-          ChartType.HORIZONTAL_BAR, Dimension.INDICATOR,
+          ChartType.HORIZONTAL_BAR, Dimension.KEY_POPULATION,
           tokens=[["social media", "tobacco"], ["social media", "ncd"], ["online", "message"]], expected=1),
     ]),
     ("Objective 2: Promote Access to Services", "Objective 2", [
@@ -265,6 +272,21 @@ CURATED_IDS = {
 }
 
 
+# Short, report-style series labels (label_override) for the HIV message-type
+# indicators, so Figure 1's legend/table reads "PEP messages" not the full
+# "Number of People Reached with PEP Messages". Full names still show in tooltips
+# elsewhere; keyed by canonical indicator id.
+LABEL_OVERRIDES = {
+    322: "PEP messages",
+    323: "PrEP messages",
+    324: "GBV messages",
+    325: "Condom use messages",
+    327: "ARV-based prevention messages",
+    328: "EMTCT messages",
+    481: "HIV treatment messages",
+}
+
+
 class Command(BaseCommand):
     help = "Seed / update the complete NAHPA Social Contracting 2025/26 funder report template."
 
@@ -378,6 +400,7 @@ class Command(BaseCommand):
                         ReportFigureIndicatorMapping.objects.create(
                             report_figure=figure, indicator_id=ind["id"],
                             role=_role_for(ind["name"], fig["calc"]), display_order=i,
+                            label_override=LABEL_OVERRIDES.get(ind["id"], ""),
                         )
                     checklist.append(self._row(s_title, fig, matched))
             # Idempotent reconcile: drop figures/sections no longer defined.
