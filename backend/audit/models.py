@@ -33,6 +33,18 @@ class AuditEvent(models.Model):
         ('backup_restored', 'Backup restored'),
         ('restore_failed', 'Restore failed'),
         ('environment_override', 'Environment override'),
+        # ── Quarterly Reporting Control Framework ────────────────────────────
+        ('reporting_window_override', 'Reporting window override'),
+        ('reporting_period_created', 'Reporting period created'),
+        ('reporting_period_updated', 'Reporting period updated'),
+        ('reporting_scheduled', 'Reporting scheduled'),
+        ('reporting_opened', 'Reporting opened'),
+        ('reporting_closed', 'Reporting closed'),
+        ('reporting_reopened', 'Reporting reopened'),
+        ('reporting_archived', 'Reporting archived'),
+        ('late_reporting_enabled', 'Late reporting enabled'),
+        ('late_reporting_disabled', 'Late reporting disabled'),
+        ('reporting_submission_blocked', 'Reporting submission blocked'),
     ]
 
     actor = models.ForeignKey(

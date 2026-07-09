@@ -23,6 +23,7 @@ from .models import Aggregate
 from .pagination import AggregatePagination
 from .serializers import AggregateSerializer, AggregateLightSerializer
 from . import reporting_workbook as rw
+from . import reporting_control
 
 
 def _is_truthy(value):
@@ -360,6 +361,68 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 "existing report before submitting this period."
             )
 
+    def _early_reporting_override_requested(self) -> bool:
+        """True when the caller explicitly asked to bypass the quarter-completion
+        rule (superusers only — see :meth:`_assert_period_reporting_eligible`)."""
+        request = getattr(self, 'request', None)
+        if request is None:
+            return False
+        data = getattr(request, 'data', None) or {}
+        params = getattr(request, 'query_params', None) or {}
+        return _is_truthy(data.get('allow_early_reporting')) or _is_truthy(
+            params.get('allow_early_reporting')
+        )
+
+    def _assert_period_reporting_eligible(self, *, project, organization,
+                                          period_start, period_end):
+        """Quarterly Reporting Control Framework runtime gate (single choke-point).
+
+        Delegates the timing decision to the shared reporting-control service
+        (:mod:`aggregates.reporting_control`): a period may only be reported after
+        it has fully elapsed (quarter-completion floor) AND, when an administrator
+        has configured a :class:`ReportingPeriod` for that project+quarter, only
+        while that window is Open (or a Late window is active). When no period is
+        configured the floor alone applies, preserving backward compatibility.
+
+        A superuser may perform a deliberate, audited emergency override by
+        sending ``allow_early_reporting=true`` alongside the submission; the
+        override is recorded once per request in the audit stream. Periods that
+        are already eligible pass straight through, so organisations submitting
+        workbooks they already downloaded for a completed, open quarter are
+        unaffected.
+        """
+        decision = reporting_control.evaluate_window(
+            project, period_start, period_end, now=timezone.now(),
+        )
+        if decision.can_submit:
+            return
+        user = getattr(getattr(self, 'request', None), 'user', None)
+        if self._early_reporting_override_requested() and getattr(user, 'is_superuser', False):
+            if not getattr(self, '_early_override_audited', False):
+                record_audit_event(
+                    action='reporting_window_override',
+                    request=self.request,
+                    object_type='reporting_period',
+                    object_id=decision.period_id,
+                    organization=organization,
+                    project=project,
+                    description=(
+                        'Emergency reporting-window override: accepted a report for '
+                        f'period {period_start}–{period_end} while reporting was '
+                        f'not permitted (state={decision.state}).'
+                    ),
+                    metadata={
+                        'period_start': str(period_start),
+                        'period_end': str(period_end),
+                        'window_state': decision.state,
+                        'reporting_period_id': decision.period_id,
+                        'earliest_open_date': str(decision.earliest_open_date),
+                    },
+                )
+                self._early_override_audited = True
+            return
+        raise ValidationError(decision.message)
+
     @staticmethod
     def _values_equal(a, b) -> bool:
         """Order-insensitive equality for aggregate JSON ``value`` payloads.
@@ -403,6 +466,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         source='api',
         skip_unchanged=True,
         enforce_period_exclusivity=True,
+        enforce_quarter_completion=True,
     ):
         """Idempotent upsert of one pending aggregate on its natural key.
 
@@ -433,6 +497,17 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             and (notes or "") == (existing.notes or "")
         ):
             return existing, self.OUTCOME_UNCHANGED
+
+        # Quarter-completion rule: block reporting on a period that has not yet
+        # fully elapsed. Only NEW records are gated — an ``existing`` row can
+        # only exist for a period that was legitimately open when it was created,
+        # so re-submitting/editing an in-flight report (e.g. a workbook already
+        # downloaded for a completed quarter) is never blocked.
+        if enforce_quarter_completion and existing is None:
+            self._assert_period_reporting_eligible(
+                project=project, organization=organization,
+                period_start=period_start, period_end=period_end,
+            )
 
         # C2: never let a second reporting cadence overlap an existing report for
         # the same indicator/org (would double-count in rollups). The identical
@@ -1007,6 +1082,80 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             if row['period_start'] and row['period_end']
         ]
         return Response({'count': len(results), 'results': results})
+
+    @action(detail=False, methods=['get'], url_path='reporting-status')
+    def reporting_status(self, request):
+        """Read-only reporting-window status for one (project, period), for the
+        organisation dashboard. The frontend uses this ONLY to display status and
+        enable/disable buttons — every actual write is still independently gated
+        by the same :mod:`reporting_control` service, so a tampered client can
+        never bypass the rules.
+
+        Query params: ``project`` (required) + a period selector
+        (``quarter``+``fiscal_year`` or ``period_start``+``period_end``), and an
+        optional ``organization`` to fold in that org's submission status.
+        """
+        project_id = request.query_params.get('project')
+        if not project_id:
+            raise ValidationError('project is required.')
+        try:
+            project = Project.objects.get(pk=project_id)
+        except (Project.DoesNotExist, ValueError, TypeError):
+            raise ValidationError('Unknown project.')
+
+        resolved = self._resolve_period(request)
+        if not resolved:
+            raise ValidationError('A valid period (quarter+fiscal_year or period_start+period_end) is required.')
+        _quarter, _fy, period_start, period_end, label, _ptype = resolved
+
+        now = timezone.now()
+        decision = reporting_control.evaluate_window(project, period_start, period_end, now=now)
+
+        # Days remaining until the relevant edge (close, or late-close if late).
+        days_remaining = None
+        edge = decision.late_closes if decision.is_late else decision.submission_closes
+        if edge is not None:
+            days_remaining = max(0, (edge - now).days)
+
+        payload = {
+            'project': project.id,
+            'period_start': period_start.isoformat(),
+            'period_end': period_end.isoformat(),
+            'period_label': label,
+            'quarter': decision.quarter,
+            'fiscal_year': decision.fiscal_year,
+            'state': decision.state,
+            'can_submit': decision.can_submit,
+            'message': decision.message,
+            'reporting_period_id': decision.period_id,
+            'submission_opens': decision.submission_opens.isoformat() if decision.submission_opens else None,
+            'submission_closes': decision.submission_closes.isoformat() if decision.submission_closes else None,
+            'allow_late_reporting': decision.allow_late_reporting,
+            'late_reporting_opens': decision.late_opens.isoformat() if decision.late_opens else None,
+            'late_reporting_closes': decision.late_closes.isoformat() if decision.late_closes else None,
+            'earliest_open_date': decision.earliest_open_date.isoformat() if decision.earliest_open_date else None,
+            'days_remaining': days_remaining,
+            'is_late': decision.is_late,
+        }
+
+        org_id = request.query_params.get('organization')
+        if org_id:
+            allowed = self._allowed_org_ids_for_user()
+            if allowed is not None and int(org_id) not in allowed:
+                raise PermissionDenied('You do not have access to that organization.')
+            existing = list(
+                Aggregate.objects.filter(
+                    project=project, organization_id=org_id,
+                    period_start=period_start, period_end=period_end,
+                ).values_list('status', flat=True)
+            )
+            payload['submission'] = {
+                'organization': int(org_id),
+                'has_submitted': bool(existing),
+                'statuses': sorted(set(existing)),
+                'row_count': len(existing),
+            }
+        return Response(payload)
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -1928,6 +2077,16 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         # Scope/training check up front (without indicator) for a clean 403.
         self._assert_write_scope(project=project, organization=organization)
+
+        # Quarter-completion rule: reject the whole upload up front when the
+        # workbook's period has not yet fully elapsed (one clear message instead
+        # of a per-row failure), unless a superuser supplies an audited override.
+        # Workbooks for a completed quarter — including any already downloaded —
+        # pass straight through.
+        self._assert_period_reporting_eligible(
+            project=project, organization=organization,
+            period_start=period_start, period_end=period_end,
+        )
 
         errors = []
         to_write = []

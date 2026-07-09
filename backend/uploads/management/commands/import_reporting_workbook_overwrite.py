@@ -1462,6 +1462,15 @@ class Command(BaseCommand):
         parser.add_argument("--period-end", required=True, help="Quarter end date, for example 2025-12-31")
         parser.add_argument("--category", default="ncd", help="Indicator category to use for new indicators")
         parser.add_argument("--dry-run", action="store_true", help="Parse and print what would be imported without saving")
+        parser.add_argument(
+            "--allow-early",
+            action="store_true",
+            help=(
+                "Emergency override: import even though the reporting period has "
+                "not fully elapsed. Blocked by default (quarter-completion rule); "
+                "the override is recorded in the audit log."
+            ),
+        )
 
     def handle(self, *args, **options):
         workbook_path = Path(options["workbook"]).expanduser()
@@ -1471,6 +1480,50 @@ class Command(BaseCommand):
         project = Project.objects.filter(id=options["project_id"]).first()
         if not project:
             raise CommandError(f"Project not found: {options['project_id']}")
+
+        # Quarterly Reporting Control Framework: the CLI shares the SAME window
+        # service as every HTTP write path, so it honours both the quarter-
+        # completion floor and any administrator-configured reporting window.
+        # Block early/out-of-window imports unless an explicit, audited override
+        # is given.
+        from aggregates import reporting_control
+        from datetime import date as _date
+
+        def _as_date(v):
+            return v if isinstance(v, _date) else _date.fromisoformat(str(v)[:10])
+
+        from audit.recording import record_audit_event
+        decision = reporting_control.evaluate_window(
+            project, _as_date(options["period_start"]), _as_date(options["period_end"]),
+        )
+        if not decision.can_submit:
+            if not options.get("allow_early"):
+                raise CommandError(
+                    decision.message + " Pass --allow-early to override in an emergency."
+                )
+            record_audit_event(
+                action='reporting_window_override',
+                object_type='reporting_period',
+                object_id=decision.period_id,
+                project=project,
+                description=(
+                    'Emergency reporting-window override via '
+                    'import_reporting_workbook_overwrite for period '
+                    f'{options["period_start"]}–{options["period_end"]} '
+                    f'(state={decision.state}).'
+                ),
+                metadata={
+                    'period_start': str(options["period_start"]),
+                    'period_end': str(options["period_end"]),
+                    'window_state': decision.state,
+                    'reporting_period_id': decision.period_id,
+                    'command': 'import_reporting_workbook_overwrite',
+                },
+            )
+            self.stderr.write(
+                "WARNING: --allow-early set; importing while reporting was not "
+                f"permitted (state={decision.state}); recorded in the audit log."
+            )
 
         coordinator = None
         if options.get("coordinator_id"):

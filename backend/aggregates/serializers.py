@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Aggregate
+from django.core.exceptions import ValidationError as DjangoValidationError
+from .models import Aggregate, ReportingPeriod
 from .validation import validate_aggregate_value
 
 
@@ -97,3 +98,61 @@ class AggregateLightSerializer(serializers.ModelSerializer):
             'period_start', 'period_end', 'value', 'status', 'updated_at',
         ]
         read_only_fields = fields
+
+
+class ReportingPeriodSerializer(serializers.ModelSerializer):
+    """Admin-facing serializer for :class:`ReportingPeriod`.
+
+    Coverage dates are always derived from (quarter, fiscal_year) server-side, so
+    they are read-only; the client only supplies the project/quarter/fiscal-year
+    and the administrator-controlled window. ``status`` transitions go through the
+    dedicated lifecycle actions (open/close/schedule/…), never a raw PATCH, so it
+    is read-only here too.
+    """
+
+    project_name = serializers.CharField(source='project.name', read_only=True)
+    project_code = serializers.CharField(source='project.code', read_only=True)
+    quarter_label = serializers.CharField(read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    earliest_open_date = serializers.DateField(read_only=True)
+
+    class Meta:
+        model = ReportingPeriod
+        fields = [
+            'id', 'project', 'project_name', 'project_code',
+            'fiscal_year', 'quarter', 'quarter_label',
+            'coverage_start', 'coverage_end', 'earliest_open_date',
+            'submission_opens', 'submission_closes', 'status',
+            'allow_late_reporting', 'late_reporting_opens', 'late_reporting_closes',
+            'notes', 'created_by', 'created_by_name', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'coverage_start', 'coverage_end', 'earliest_open_date',
+            'status', 'created_by', 'created_at', 'updated_at',
+        ]
+
+    def validate(self, attrs):
+        # Run the model's invariants (quarter-completion floor on the window,
+        # window ordering, late-window ordering) through DRF so mis-configured
+        # windows are rejected with field errors instead of a 500.
+        instance = ReportingPeriod(**{**self._instance_kwargs(), **attrs})
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, 'message_dict') else exc.messages)
+        return attrs
+
+    def _instance_kwargs(self):
+        if self.instance is None:
+            return {}
+        return {
+            'project': self.instance.project,
+            'fiscal_year': self.instance.fiscal_year,
+            'quarter': self.instance.quarter,
+            'status': self.instance.status,
+            'submission_opens': self.instance.submission_opens,
+            'submission_closes': self.instance.submission_closes,
+            'allow_late_reporting': self.instance.allow_late_reporting,
+            'late_reporting_opens': self.instance.late_reporting_opens,
+            'late_reporting_closes': self.instance.late_reporting_closes,
+        }

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO
 
 from openpyxl import Workbook, load_workbook
@@ -128,6 +128,87 @@ def fiscal_year_label(fiscal_start_year: int) -> str:
 
 def quarter_label(quarter: int, fiscal_start_year: int) -> str:
     return f"Q{int(quarter)} {fiscal_year_label(fiscal_start_year)}"
+
+
+# ── Quarter-completion rule (reporting eligibility) ──────────────────────────
+# An organisation may only report on a period AFTER that period has fully
+# elapsed — a period must represent what is being reported on, not when data is
+# entered. So Q1 (Apr–Jun) may only open on 1 Jul, Q2 (Jul–Sep) on 1 Oct, etc.
+# These helpers are the single source of truth for that rule; the aggregate
+# write path (all HTTP submit endpoints + the overwrite CLI) enforces it.
+
+_QUARTER_START_MONTHS = {4: 1, 7: 2, 10: 3, 1: 4}
+
+
+def _as_date(value):
+    """Coerce a ``date`` / ``datetime`` / ISO string (as read from a serializer
+    or an openpyxl cell) to a plain ``date``, or ``None`` if it cannot be."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def quarter_of_period(period_start: date, period_end: date):
+    """Reverse-map an exact fiscal-quarter ``[start, end]`` window to
+    ``(quarter, fiscal_start_year)``, or ``None`` when the dates are not a
+    canonical quarter (e.g. a monthly or yearly period)."""
+    period_start = _as_date(period_start)
+    period_end = _as_date(period_end)
+    if period_start is None or period_end is None:
+        return None
+    q = _QUARTER_START_MONTHS.get(period_start.month)
+    if q is None:
+        return None
+    fy = period_start.year if q != 4 else period_start.year - 1
+    if quarter_period_range(q, fy) == (period_start, period_end):
+        return q, fy
+    return None
+
+
+def earliest_reporting_open_date(period_end: date) -> date:
+    """The first day reporting for a period may open — the day AFTER the period
+    fully elapses (Q1 ends 30 Jun → opens 1 Jul)."""
+    return _as_date(period_end) + timedelta(days=1)
+
+
+def period_has_fully_elapsed(period_end: date, today: date | None = None) -> bool:
+    """True once the reporting period has ended (``today`` is strictly after
+    ``period_end``), i.e. reporting is eligible to open."""
+    period_end = _as_date(period_end)
+    if period_end is None:
+        return True
+    today = _as_date(today) or date.today()
+    return today >= earliest_reporting_open_date(period_end)
+
+
+def _format_open_date(open_date: date) -> str:
+    # "1 October 2025" — no zero-padded day, and %-d is not portable.
+    return f"{open_date.day} {open_date:%B %Y}"
+
+
+def reporting_not_yet_eligible_message(period_start: date, period_end: date) -> str:
+    """The exact rejection message for an early-reporting attempt."""
+    period_start = _as_date(period_start)
+    period_end = _as_date(period_end)
+    open_str = _format_open_date(earliest_reporting_open_date(period_end))
+    info = quarter_of_period(period_start, period_end)
+    if info is not None:
+        q, _fy = info
+        return (
+            f"Q{q} reporting cannot be opened yet because the reporting quarter "
+            f"has not ended. Q{q} may only open from {open_str}."
+        )
+    return (
+        "Reporting for this period cannot be opened yet because the period has "
+        f"not ended. It may only open from {open_str}."
+    )
 
 
 # ── Yearly / monthly periods (period_type selector) ─────────────────────────

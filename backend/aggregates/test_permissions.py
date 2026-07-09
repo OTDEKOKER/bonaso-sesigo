@@ -245,8 +245,10 @@ class AggregateHierarchyPermissionTests(APITestCase):
             {
                 "project": self.project.id,
                 "organization": self.sub1.id,
-                "period_start": "2026-07-01",
-                "period_end": "2026-09-30",
+                # An elapsed quarter (Q1 FY2026, Apr-Jun) so the quarter-completion
+                # rule allows the write; this test only exercises bulk_create perms.
+                "period_start": "2026-04-01",
+                "period_end": "2026-06-30",
                 "data": [{"indicator": self.indicator.id, "value": {"total": 4}}],
             },
             format="json",

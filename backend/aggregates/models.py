@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class Aggregate(models.Model):
@@ -195,3 +196,197 @@ class DataQualityScore(models.Model):
 
     def __str__(self):
         return f"DQScore[{self.scope_type}:{self.scope_id}] {self.score} ({self.label})"
+
+
+class ReportingPeriod(models.Model):
+    """Administrator-controlled reporting window for one project + fiscal quarter.
+
+    This is the governance overlay for the Quarterly Reporting Control Framework.
+    It does NOT replace SESIGO's eligibility architecture (project assignment +
+    indicator assignment stay the source of truth) and it does NOT own any
+    reporting data — aggregates keep their own natural key. A ``ReportingPeriod``
+    only answers "may an assigned org submit for this quarter *right now*?".
+
+    Backward-compatibility contract: a period is an *overlay*. When no
+    ``ReportingPeriod`` row exists for a project+quarter, the write path falls
+    back to the always-on quarter-completion floor (a period may only be reported
+    after it has fully elapsed — see ``reporting_workbook.period_has_fully_elapsed``).
+    So introducing this model never blocks an org that could already report, and
+    workbooks already downloaded for a completed quarter still submit.
+
+    ``fiscal_year`` is the Botswana fiscal *start* year (e.g. 2025 == FY 2025/26),
+    matching ``reporting_workbook.quarter_period_range`` — the single fiscal
+    calendar implementation. ``quarter`` is 1-4 (Q1 Apr-Jun … Q4 Jan-Mar).
+    Coverage dates are derived from (quarter, fiscal_year) and kept authoritative.
+    """
+
+    STATUS_DRAFT = 'draft'
+    STATUS_SCHEDULED = 'scheduled'
+    STATUS_OPEN = 'open'
+    STATUS_CLOSED = 'closed'
+    STATUS_ARCHIVED = 'archived'
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_SCHEDULED, 'Scheduled'),
+        (STATUS_OPEN, 'Open'),
+        (STATUS_CLOSED, 'Closed'),
+        (STATUS_ARCHIVED, 'Archived'),
+    ]
+
+    QUARTER_CHOICES = [(1, 'Q1'), (2, 'Q2'), (3, 'Q3'), (4, 'Q4')]
+
+    project = models.ForeignKey(
+        'projects.Project',
+        on_delete=models.CASCADE,
+        related_name='reporting_periods',
+    )
+    fiscal_year = models.PositiveIntegerField(
+        help_text="Botswana fiscal START year, e.g. 2025 for FY 2025/26.",
+    )
+    quarter = models.PositiveSmallIntegerField(choices=QUARTER_CHOICES)
+
+    # Derived from (quarter, fiscal_year); persisted so the DB can index/filter
+    # on coverage without recomputing, and kept authoritative in save().
+    coverage_start = models.DateField()
+    coverage_end = models.DateField()
+
+    # Administrator-controlled submission window. Nullable so a Draft can be
+    # created before dates are decided; enforced when the period is opened.
+    submission_opens = models.DateTimeField(null=True, blank=True)
+    submission_closes = models.DateTimeField(null=True, blank=True)
+
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_DRAFT,
+    )
+
+    allow_late_reporting = models.BooleanField(default=False)
+    late_reporting_opens = models.DateTimeField(null=True, blank=True)
+    late_reporting_closes = models.DateTimeField(null=True, blank=True)
+
+    notes = models.TextField(blank=True, default='')
+
+    created_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_reporting_periods',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-fiscal_year', '-quarter', 'project_id']
+        constraints = [
+            # Exactly one reporting period per project + fiscal quarter. Because
+            # the row is unique, "only one Open for the same project and quarter"
+            # is guaranteed structurally, not just by status.
+            models.UniqueConstraint(
+                fields=['project', 'fiscal_year', 'quarter'],
+                name='uniq_reporting_period_project_fy_quarter',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['project', 'status'], name='rp_project_status_idx'),
+            models.Index(fields=['project', 'fiscal_year', 'quarter'], name='rp_project_fyq_idx'),
+            models.Index(fields=['status'], name='rp_status_idx'),
+            models.Index(fields=['fiscal_year', 'quarter'], name='rp_fyq_idx'),
+            models.Index(fields=['submission_opens'], name='rp_sub_opens_idx'),
+            models.Index(fields=['submission_closes'], name='rp_sub_closes_idx'),
+            models.Index(fields=['coverage_start', 'coverage_end'], name='rp_coverage_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.project.code} Q{self.quarter} FY{self.fiscal_year} ({self.status})"
+
+    # ── Derived coverage (single fiscal calendar) ────────────────────────────
+    def _expected_coverage(self):
+        from . import reporting_workbook as rw
+        return rw.quarter_period_range(self.quarter, self.fiscal_year)
+
+    def save(self, *args, **kwargs):
+        # Coverage is always authoritative from (quarter, fiscal_year) — never
+        # let a caller set an inconsistent window.
+        self.coverage_start, self.coverage_end = self._expected_coverage()
+        super().save(*args, **kwargs)
+
+    # ── Convenience labels (reuse the shared quarter utilities) ──────────────
+    @property
+    def quarter_label(self) -> str:
+        from . import reporting_workbook as rw
+        return rw.quarter_label(self.quarter, self.fiscal_year)
+
+    @property
+    def earliest_open_date(self):
+        """First calendar day this quarter may open (day after it elapses)."""
+        from . import reporting_workbook as rw
+        return rw.earliest_reporting_open_date(self.coverage_end)
+
+    @staticmethod
+    def _coerce_dt(value):
+        """Parse an ISO datetime string into an aware datetime; pass through
+        ``None``/datetime unchanged."""
+        if value in (None, ''):
+            return None
+        if isinstance(value, str):
+            from django.utils.dateparse import parse_datetime
+            parsed = parse_datetime(value)
+            value = parsed if parsed is not None else value
+        if hasattr(value, 'utcoffset') and value.utcoffset() is None:
+            value = timezone.make_aware(value, timezone.get_current_timezone())
+        return value
+
+    def clean(self):
+        """Validate an admin-configured window. The hard rule — a quarter may
+        never open before it has fully elapsed — is enforced here so it cannot be
+        bypassed by mis-configuring dates; the write-path service is the runtime
+        guard for actual submissions."""
+        from django.core.exceptions import ValidationError
+
+        if self.quarter not in (1, 2, 3, 4):
+            raise ValidationError({'quarter': 'Quarter must be 1-4.'})
+
+        # Coerce any datetime fields still holding ISO strings (lifecycle actions
+        # assign raw request values) into aware datetimes, so clean() and save()
+        # both see real datetimes and comparisons never blow up on a str.
+        for field in ('submission_opens', 'submission_closes',
+                      'late_reporting_opens', 'late_reporting_closes'):
+            setattr(self, field, self._coerce_dt(getattr(self, field)))
+
+        # Coverage is derived from (quarter, fiscal_year). Compute it here so
+        # clean() is self-sufficient even before save() has populated the fields
+        # (e.g. when the serializer validates an unsaved instance).
+        from . import reporting_workbook as rw
+        expected_start, expected_end = self._expected_coverage()
+        self.coverage_start, self.coverage_end = expected_start, expected_end
+        earliest = rw.earliest_reporting_open_date(expected_end)
+
+        opens = self.submission_opens
+        closes = self.submission_closes
+        if opens and closes and closes <= opens:
+            raise ValidationError(
+                {'submission_closes': 'Submission close must be after submission open.'}
+            )
+
+        # Quarter-completion rule: the window may not open before the quarter ends.
+        if opens is not None and timezone.localdate(opens) < earliest:
+            raise ValidationError({
+                'submission_opens': (
+                    f'Q{self.quarter} reporting cannot open before the quarter has '
+                    f'fully elapsed. The earliest it may open is {earliest.isoformat()}.'
+                )
+            })
+
+        if self.allow_late_reporting:
+            lo, lc = self.late_reporting_opens, self.late_reporting_closes
+            if lo and lc and lc <= lo:
+                raise ValidationError(
+                    {'late_reporting_closes': 'Late-reporting close must be after its open.'}
+                )
+            if lo and closes and lo < closes:
+                raise ValidationError({
+                    'late_reporting_opens': (
+                        'Late reporting must open on or after the normal submission '
+                        'deadline.'
+                    )
+                })

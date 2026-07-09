@@ -204,3 +204,69 @@ class PeriodOverlapGuardTests(HardeningTestBase):
         # Re-submitting the same period is the normal upsert, not an overlap.
         resp = self._submit(date(2026, 4, 1), date(2026, 6, 30))
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+
+class QuarterCompletionRuleTests(HardeningTestBase):
+    """A reporting period may only be submitted AFTER it has fully elapsed."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        from django.utils import timezone
+        from aggregates import reporting_workbook as rw
+        today = timezone.localdate()
+        # A quarter that has clearly not ended yet (two fiscal years out).
+        cls.future_start, cls.future_end = rw.quarter_period_range(2, today.year + 2)
+        # A quarter that has clearly elapsed.
+        cls.past_start, cls.past_end = rw.quarter_period_range(1, today.year - 2)
+        cls.superuser = User.objects.create_superuser(
+            username="hard_super", email="hard_super@example.com",
+            password="TestPass123!", role="admin", organization=cls.org,
+        )
+
+    def _submit(self, period_start, period_end, value=7, extra=None):
+        payload = {
+            "indicator": self.indicator.id, "project": self.project.id,
+            "organization": self.org.id,
+            "period_start": str(period_start), "period_end": str(period_end),
+            "value": {"total": value},
+        }
+        if extra:
+            payload.update(extra)
+        return self.client.post("/api/aggregates/", payload, format="json")
+
+    def test_future_quarter_is_blocked(self):
+        self.client.force_authenticate(self.admin)
+        resp = self._submit(self.future_start, self.future_end)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cannot be opened yet", str(resp.data))
+
+    def test_elapsed_quarter_is_allowed(self):
+        self.client.force_authenticate(self.admin)
+        resp = self._submit(self.past_start, self.past_end)
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+    def test_override_requires_superuser(self):
+        # Non-superuser admin cannot bypass even with the flag.
+        self.client.force_authenticate(self.admin)
+        resp = self._submit(self.future_start, self.future_end,
+                            extra={"allow_early_reporting": True})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_superuser_override_is_allowed_and_audited(self):
+        from audit.models import AuditEvent
+        self.client.force_authenticate(self.superuser)
+        resp = self._submit(self.future_start, self.future_end,
+                            extra={"allow_early_reporting": True})
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            AuditEvent.objects.filter(action="reporting_window_override").exists()
+        )
+
+    def test_existing_future_row_can_still_be_updated(self):
+        # Grandfather: a row already on file (e.g. a workbook already in flight)
+        # may be re-submitted/edited even if its period has not elapsed.
+        self._existing_aggregate(self.future_start, self.future_end, status_value="pending")
+        self.client.force_authenticate(self.admin)
+        resp = self._submit(self.future_start, self.future_end, value=42)
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
