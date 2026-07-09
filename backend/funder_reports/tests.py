@@ -157,6 +157,66 @@ class GenerationTests(ReportBase):
         self.assertEqual(out["completeness"]["missing"], 1)
 
 
+class CoordinatorGroupingTests(ReportBase):
+    def test_group_by_coordinator_rolls_up_suborgs(self):
+        """A sub-org's data rolls up to its coordinator (per the PROJECT
+        hierarchy); orgs outside every coordinator subtree are excluded."""
+        from projects.models import ProjectOrganizationHierarchy
+        sub = Organization.objects.create(name="Sub One", code="FR_SUB", type="cso")
+        self.project.organizations.add(sub)
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.org_a,
+            is_coordinator=True, role="coordinator",
+        )
+        ProjectOrganization.objects.create(
+            project=self.project, organization=sub, role="sub_grantee",
+        )
+        ProjectOrganizationHierarchy.objects.create(
+            project=self.project, parent_organization=self.org_a,
+            child_organization=sub, is_active=True,
+        )
+        self._fact(self.org_a, 100)  # coordinator's own contribution
+        self._fact(sub, 40)          # rolled up under the coordinator
+        self._fact(self.org_b, 999)  # no coordinator → dropped from the rollup
+        fig = self._figure(grouping_dimension=Dimension.COORDINATOR)
+        out = generate_figure(fig, project=self.project, period_start=PS, period_end=PE)
+        self.assertEqual(out["categories"], ["Alpha CSO"])
+        self.assertEqual(out["series"][0]["data"], [140.0])
+        self.assertTrue(any("not mapped to a coordinator" in w for w in out["warnings"]))
+
+    def test_coordinator_target_uses_coordinator_org_target(self):
+        from projects.models import ProjectOrganizationHierarchy
+        sub = Organization.objects.create(name="Sub Two", code="FR_SUB2", type="cso")
+        self.project.organizations.add(sub)
+        ProjectOrganization.objects.create(
+            project=self.project, organization=self.org_a, is_coordinator=True, role="coordinator")
+        ProjectOrganization.objects.create(
+            project=self.project, organization=sub, role="sub_grantee")
+        ProjectOrganizationHierarchy.objects.create(
+            project=self.project, parent_organization=self.org_a, child_organization=sub, is_active=True)
+        self._fact(sub, 80)
+        ProjectIndicatorOrganizationTarget.objects.create(
+            project_indicator=self.pi, organization=self.org_a, q1_target=100)
+        fig = self._figure(grouping_dimension=Dimension.COORDINATOR,
+                           chart_type=ChartType.ACHIEVED_VS_TARGET,
+                           target_mode=TargetMode.ORG_QUARTER,
+                           calculation_mode=CalculationMode.ACHIEVEMENT_PERCENT)
+        out = generate_figure(fig, project=self.project, period_start=PS, period_end=PE)
+        self.assertEqual(out["categories"], ["Alpha CSO"])
+        self.assertEqual(out["totals"]["target"], 100)
+        self.assertEqual(out["totals"]["achievement_percent"], 80.0)
+
+    def test_coordinator_falls_back_to_org_when_none_defined(self):
+        # No is_coordinator orgs on this project → grouping degrades gracefully
+        # to per-organization so the figure still renders.
+        self._fact(self.org_a, 100)
+        self._fact(self.org_b, 40)
+        fig = self._figure(grouping_dimension=Dimension.COORDINATOR)
+        out = generate_figure(fig, project=self.project, period_start=PS, period_end=PE)
+        self.assertEqual(set(out["categories"]), {"Alpha CSO", "Beta CSO"})
+        self.assertEqual(out["totals"]["total"], 140)
+
+
 class ApiTests(ReportBase):
     def test_officer_cannot_edit_system_template(self):
         # Self-service lets anyone create their OWN template, but a system template

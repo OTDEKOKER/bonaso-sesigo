@@ -131,7 +131,9 @@ class FigureGenerator:
         # Targets + achievement %.
         target_values = None
         totals = {'total': round(total_achieved, 2)}
-        if fig.target_mode != TargetMode.NONE and primary_dim == Dimension.ORGANIZATION:
+        if fig.target_mode != TargetMode.NONE and primary_dim in (
+            Dimension.ORGANIZATION, Dimension.COORDINATOR,
+        ):
             target_values = self._targets_by_org(indicator_ids, category_keys)
             result['target'] = target_values
             total_target = sum(target_values)
@@ -228,35 +230,56 @@ class FigureGenerator:
     def _pivot(self, base, primary_dim, secondary_dim, label_by_indicator):
         """Return (category_labels, series, category_keys). Categories are the
         primary-dimension buckets (x-axis); series are secondary-dimension splits.
-        When there is no secondary dimension a single 'Value' series is returned."""
-        p_field = _DIM_FIELD.get(primary_dim)
-        s_field = _DIM_FIELD.get(secondary_dim) if secondary_dim != Dimension.NONE else None
+        When there is no secondary dimension a single 'Value' series is returned.
 
-        if p_field is None:  # NONE / unsupported (e.g. district/coordinator)
-            if primary_dim in (Dimension.DISTRICT, Dimension.COORDINATOR):
+        ``coordinator`` is a virtual dimension: facts are grouped by organization
+        and each org is rolled up to its coordinator using the PROJECT-SPECIFIC
+        hierarchy (org membership changes per project), so a fact only counts if
+        its org sits under one of this project's coordinators."""
+        p_field, p_remap = self._dim_group(primary_dim)
+        if secondary_dim != Dimension.NONE:
+            s_field, s_remap = self._dim_group(secondary_dim)
+        else:
+            s_field, s_remap = None, None
+
+        if p_field is None:  # NONE / unsupported (district has no aggregate-fact column)
+            if primary_dim == Dimension.DISTRICT:
                 self.warnings.append(
-                    f'Grouping by {primary_dim} is not available from aggregate '
-                    f'facts; showing an overall total instead.'
+                    'Grouping by district is not available from aggregate facts; '
+                    'showing an overall total instead.'
                 )
             total = _f(base.aggregate(s=Sum('value'))['s'])
             return ['Total'], [{'name': 'Value', 'data': [round(total, 2)]}], ['Total']
 
-        group_fields = [p_field] + ([s_field] if s_field else [])
+        group_fields = [p_field] + ([s_field] if s_field and s_field != p_field else [])
         rows = base.values(*group_fields).annotate(v=Sum('value'))
 
         cat_totals: dict = defaultdict(float)
         cell: dict = defaultdict(float)
         series_keys: list = []
+        dropped = False
         for r in rows:
-            pk = r[p_field]
+            pk = p_remap(r[p_field])
+            if pk is None:  # e.g. org not mapped to any of this project's coordinators
+                dropped = True
+                continue
             cat_totals[pk] += _f(r['v'])
             if s_field:
-                sk = r[s_field]
+                sk = s_remap(r[s_field] if s_field != p_field else r[p_field])
+                if sk is None:
+                    dropped = True
+                    continue
                 cell[(pk, sk)] += _f(r['v'])
                 if sk not in series_keys:
                     series_keys.append(sk)
             else:
                 cell[(pk, '_')] += _f(r['v'])
+
+        if dropped and Dimension.COORDINATOR in (primary_dim, secondary_dim):
+            self.warnings.append(
+                'Some reported data is from organisations not mapped to a '
+                'coordinator in this project and was excluded from the rollup.'
+            )
 
         # Order categories: for indicator grouping keep mapping order; else by value desc.
         category_keys = sorted(cat_totals, key=lambda k: -cat_totals[k])
@@ -275,8 +298,47 @@ class FigureGenerator:
 
         return p_labels, series, category_keys
 
+    def _dim_group(self, dim):
+        """Return (aggregate_field, key_remap) for a grouping dimension. Coordinator
+        is virtual — group by organization then roll each org up to its coordinator
+        (per THIS project's hierarchy); an org outside every coordinator subtree
+        remaps to None and is dropped from the rollup."""
+        if dim == Dimension.COORDINATOR:
+            cmap = self._coordinator_map()
+            if not cmap:
+                # No coordinators configured for this project → fall back to a
+                # plain per-organization grouping so the figure still renders.
+                return 'organization_id', (lambda k: k)
+            return 'organization_id', (lambda k: cmap.get(k))
+        return _DIM_FIELD.get(dim), (lambda k: k)
+
+    def _coordinator_map(self) -> dict:
+        """{org_id -> coordinator_org_id} for THIS project. Coordinators are the
+        project's ``is_coordinator`` orgs; each coordinator's subtree is resolved
+        through the project-specific hierarchy (which differs per project), so the
+        same org can belong to different coordinators in different projects."""
+        cached = getattr(self, '_coord_map_cache', None)
+        if cached is not None:
+            return cached
+        from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
+        coord_ids = list(
+            ProjectOrganization.objects.filter(
+                project=self.project, is_coordinator=True,
+            ).values_list('organization_id', flat=True)
+        )
+        mapping: dict = {}
+        for cid in coord_ids:
+            scope = resolve_organization_scope_with_project_hierarchy(
+                cid, project=self.project,
+            ) or {cid}
+            for oid in scope:
+                mapping.setdefault(oid, cid)
+            mapping[cid] = cid  # a coordinator always rolls up to itself
+        self._coord_map_cache = mapping
+        return mapping
+
     def _labels_for(self, dim, keys, label_by_indicator):
-        if dim == Dimension.ORGANIZATION:
+        if dim in (Dimension.ORGANIZATION, Dimension.COORDINATOR):
             names = dict(Organization.objects.filter(id__in=keys).values_list('id', 'name'))
             return [names.get(k, f'Org {k}') for k in keys]
         if dim == Dimension.INDICATOR:
