@@ -33,6 +33,7 @@ urlpatterns = [
     # Utility apps
     path('api/flags/', include('flags.urls')),
     path('api/analysis/', include('analysis.urls')),  # dashboard lives here
+    path('api/reports/', include('funder_reports.urls')),  # funder report builder
     path('api/profiles/', include('profiles.urls')),
     path('api/uploads/', include('uploads.urls')),
     path('api/messages/', include('messaging.urls')),
