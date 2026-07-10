@@ -265,16 +265,30 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         # they are assigned to (project hierarchy / org scope is layered on top
         # via the filter backends when a project is selected).
         queryset = filter_queryset_by_assigned_projects(queryset, user, 'project_id')
-        org_ids = get_user_organization_ids(user)
+        # Scope to the user's org subtree. When a single project is in scope,
+        # resolve the subtree through THAT project's hierarchy (own + descendants)
+        # — coordinator↔sub-grantee membership differs per project — matching the
+        # project-aware coordinator/organization filters. Falls back to the global
+        # tree when browsing across projects (no single project selected).
+        org_ids = get_user_organization_ids(user, project_id=self._request_project_id())
         if org_ids:
             return filter_queryset_by_org_ids(queryset, 'organization_id', org_ids)
         return Aggregate.objects.none()
 
-    def _allowed_org_ids_for_user(self):
+    def _request_project_id(self):
+        raw = self.request.query_params.get('project')
+        try:
+            return int(raw) if raw not in (None, '') else None
+        except (TypeError, ValueError):
+            return None
+
+    def _allowed_org_ids_for_user(self, project=None):
         user = self.request.user
         if is_organization_admin(user):
             return None
-        return set(get_user_organization_ids(user) or [])
+        # For writes, scope by the target project's hierarchy so a coordinator
+        # M&E officer may submit for any sub-grantee beneath them in THAT project.
+        return set(get_user_organization_ids(user, project=project) or [])
 
     def _assert_write_scope(self, *, project, organization, indicator=None):
         user = self.request.user
@@ -294,7 +308,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 f"Project '{project.name}' is {project_status} and no longer "
                 "accepts new data submissions."
             )
-        allowed_org_ids = self._allowed_org_ids_for_user()
+        allowed_org_ids = self._allowed_org_ids_for_user(project=project)
         if allowed_org_ids is not None:
             if not organization or organization.id not in allowed_org_ids:
                 raise PermissionDenied('You do not have permission to submit aggregates for this organization.')
@@ -1140,7 +1154,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         org_id = request.query_params.get('organization')
         if org_id:
-            allowed = self._allowed_org_ids_for_user()
+            allowed = self._allowed_org_ids_for_user(project=project)
             if allowed is not None and int(org_id) not in allowed:
                 raise PermissionDenied('You do not have access to that organization.')
             existing = list(

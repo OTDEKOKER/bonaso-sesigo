@@ -3,11 +3,27 @@ from __future__ import annotations
 from typing import Iterable
 
 
-def get_user_organization_ids(user) -> list[int]:
+def get_user_organization_ids(user, project=None, project_id=None) -> list[int]:
+    """The org ids a user is scoped to: their own org + its descendants.
+
+    ``project``/``project_id`` (optional) resolve the descendants through THAT
+    project's hierarchy (``resolve_organization_scope_with_project_hierarchy``) —
+    coordinator↔sub-grantee membership differs per project, so a project-scoped
+    caller (e.g. the aggregate review queue) must scope by the project it is
+    viewing, not the single global org tree. With neither argument the behaviour
+    is unchanged (global tree), so project-agnostic callers are unaffected.
+    """
     if not getattr(user, "organization_id", None):
         return []
 
     organization = user.organization
+    if project is not None or project_id is not None:
+        from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
+        scope = resolve_organization_scope_with_project_hierarchy(
+            organization.id, project=project, project_id=project_id
+        )
+        return sorted(scope or {organization.id})
+
     descendants = organization.get_descendants()
     return [organization.id] + [child.id for child in descendants]
 

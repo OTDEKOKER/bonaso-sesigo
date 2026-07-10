@@ -348,3 +348,74 @@ class AggregateHierarchyPermissionTests(APITestCase):
         ).first()
         self.assertIsNotNone(event)
         self.assertTrue(event.metadata.get("bulk"))
+
+
+class ProjectHierarchyScopeTests(APITestCase):
+    """The org scope must follow the PROJECT hierarchy when a project is in
+    scope, not just the single global org tree — coordinator↔sub membership
+    differs per project (e.g. NAHPA 2025/26 vs 2026/27)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        # A sub that is NOT a global-tree child of the coordinator: only the
+        # project's hierarchy_overrides links them.
+        cls.coord = Organization.objects.create(name="PH Coord", code="PH_COORD", type="cso")
+        cls.sub = Organization.objects.create(name="PH Sub", code="PH_SUB", type="cso")
+        cls.admin = User.objects.create_user(
+            username="ph_admin", email="ph_admin@example.com",
+            password="TestPass123!", role="admin", organization=cls.coord)
+        cls.coord_officer = User.objects.create_user(
+            username="ph_off", email="ph_off@example.com",
+            password="TestPass123!", role="officer", organization=cls.coord)
+        cls.project = Project.objects.create(
+            name="PH Project", code="PH-1",
+            start_date=date(2026, 1, 1), end_date=date(2026, 12, 31), created_by=cls.admin,
+            hierarchy_overrides={str(cls.coord.id): [str(cls.sub.id)]})
+        cls.project.organizations.add(cls.coord, cls.sub)
+        cls.indicator = Indicator.objects.create(
+            name="PH Ind", code="PH_IND", type="number", created_by=cls.admin)
+        ProjectIndicator.objects.create(project=cls.project, indicator=cls.indicator)
+
+    def test_global_scope_excludes_project_only_sub(self):
+        from organizations.access import get_user_organization_ids
+        ids = get_user_organization_ids(self.coord_officer)
+        self.assertIn(self.coord.id, ids)
+        self.assertNotIn(self.sub.id, ids)  # not a global-tree child
+
+    def test_project_scope_includes_project_hierarchy_sub(self):
+        from organizations.access import get_user_organization_ids
+        ids = get_user_organization_ids(self.coord_officer, project=self.project)
+        self.assertIn(self.coord.id, ids)
+        self.assertIn(self.sub.id, ids)  # linked only via the project hierarchy
+
+    def _pending(self):
+        return Aggregate.objects.create(
+            indicator=self.indicator, project=self.project, organization=self.sub,
+            period_start=date(2026, 1, 1), period_end=date(2026, 3, 31),
+            value={"total": 5}, status="pending", created_by=self.admin)
+
+    def test_review_queue_scoped_by_project_hierarchy(self):
+        agg = self._pending()
+        self.client.force_authenticate(self.coord_officer)
+        # No project filter → global scope → the project-only sub is invisible.
+        globally = self.client.get("/api/aggregates/")
+        self.assertNotIn(agg.id, [row["id"] for row in globally.json()["results"]])
+        # With the project filter → project hierarchy → the sub's row is visible.
+        scoped = self.client.get(f"/api/aggregates/?project={self.project.id}")
+        self.assertIn(agg.id, [row["id"] for row in scoped.json()["results"]])
+
+    def test_coordinator_officer_can_submit_for_project_hierarchy_sub(self):
+        self.client.force_authenticate(self.coord_officer)
+        response = self.client.post(
+            "/api/aggregates/",
+            {
+                "indicator": self.indicator.id,
+                "project": self.project.id,
+                "organization": self.sub.id,
+                "period_start": "2026-01-01",
+                "period_end": "2026-03-31",
+                "value": {"total": 7},
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
