@@ -653,7 +653,24 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     )
   }
 
-  if (error || !project || !isResolvedProject) {
+  if (error) {
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "The project could not be loaded."
+
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-3 text-center">
+        <p className="font-medium text-foreground">Unable to load project</p>
+        <p className="max-w-md text-sm text-muted-foreground">{message}</p>
+        <Button variant="outline" onClick={() => mutateProject()}>
+          Try again
+        </Button>
+      </div>
+    )
+  }
+
+  if (!project || !isResolvedProject) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <p className="text-muted-foreground">Project not found</p>

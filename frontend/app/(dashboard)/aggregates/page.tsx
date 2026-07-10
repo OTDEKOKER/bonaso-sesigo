@@ -54,6 +54,7 @@ import {
   isValidDateRange,
   parseNumberInput,
   resolveParentOrganizationId,
+  type OrganizationWithParent,
   type AggregateValue,
   type AggregateEntryMatrixConfig,
 } from "@/lib/aggregates/aggregate-helpers";
@@ -1027,7 +1028,12 @@ function AggregatesPageContent() {
   // coordinator that has queued work. Declared AFTER reviewQueueAggregates: it
   // reads it in its dependency array, so it must not be hoisted above it (TDZ).
   const reviewQueueCoordinatorContext = useMemo(() => {
-    const orgById = new Map(organizations.map((org) => [String(org.id), org]));
+    const orgById = new Map<string, OrganizationWithParent>(
+      organizations.map((org) => [
+        String((org as OrganizationWithParent).id),
+        org as OrganizationWithParent,
+      ]),
+    );
     const coordinatorIdByOrganizationId: Record<string, string> = {};
     const coordinatorNameById = new Map<string, string>();
 
