@@ -686,6 +686,34 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
         return Response({'detail': 'Hierarchy links updated.', 'links_updated': len(desired_pairs)})
 
+    @action(detail=True, methods=['get'], url_path='indicator-assignments')
+    def indicator_assignments(self, request, pk=None):
+        """Lightweight active project-indicator assignments, optionally scoped to
+        one ``?organization=<id>``. The Add-Entry dialog needs only the selected
+        org's workbook indicators — not the whole (≈9k-row) assignment matrix the
+        full project detail carries — so this returns just {indicator, org, source}
+        tuples for that org (a few dozen rows)."""
+        project = self.get_object()
+        rows = ProjectIndicatorAssignment.objects.filter(
+            project_indicator__project=project, is_active=True,
+        )
+        org_id = request.query_params.get('organization')
+        if org_id:
+            rows = rows.filter(organization_id=org_id)
+        rows = rows.values(
+            'project_indicator__indicator_id', 'organization_id',
+            'assignment_source', 'is_active',
+        )
+        return Response([
+            {
+                'indicator': str(r['project_indicator__indicator_id']),
+                'organization': str(r['organization_id']),
+                'assignment_source': r['assignment_source'],
+                'is_active': r['is_active'],
+            }
+            for r in rows
+        ])
+
     @action(detail=True, methods=['post'])
     def set_indicator_assignments(self, request, pk=None):
         """Upsert project indicator assignments and optional disaggregation rules."""

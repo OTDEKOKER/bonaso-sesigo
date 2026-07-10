@@ -215,6 +215,23 @@ export const projectsService = {
   },
 
   /**
+   * Lightweight active indicator assignments for ONE organization in a project
+   * (a few dozen rows), instead of downloading the whole several-MB project
+   * detail just to read one org's workbook indicators.
+   * Django endpoint: GET /api/manage/projects/:id/indicator-assignments/?organization=:orgId
+   */
+  async getIndicatorAssignments(
+    id: number,
+    organizationId: number | string,
+  ): Promise<Array<{ indicator: string; organization: string; assignment_source: string; is_active: boolean }>> {
+    const { data } = await api.get<Array<{ indicator: string; organization: string; assignment_source: string; is_active: boolean }>>(
+      `/manage/projects/${id}/indicator-assignments/`,
+      { organization: String(organizationId) },
+    );
+    return data;
+  },
+
+  /**
    * Create a new project
    * Django endpoint: POST /api/manage/projects/
    */
