@@ -233,7 +233,7 @@ export interface ProjectIndicatorAssignment {
   organization: string
   organization_name?: string
   organization_code?: string
-  assignment_source?: "project_scope" | "organization_target" | "manual" | "aggregate_history"
+  assignment_source?: "project_scope" | "organization_target" | "manual" | "aggregate_history" | "workbook_layout"
   is_active: boolean
   assignment_metadata?: Record<string, unknown>
 }

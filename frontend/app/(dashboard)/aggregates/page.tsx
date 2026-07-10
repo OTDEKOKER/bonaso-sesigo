@@ -204,12 +204,13 @@ function AggregatesPageContent() {
   const { data: indicatorsData } = useAllIndicators();
   const { data: organizationsData } = useAllOrganizations();
   const selectedProjectId = formProject ? Number(formProject) : null;
-  // Aggregates only reads organizations / organization_targets / project_indicators
-  // / project_hierarchy_links off the project detail — never the heavy per-org
-  // assignment matrix — so use the light projection (≈10x faster server-side).
+  // The Add-Entries dialog scopes its indicator list to the selected org's ACTIVE
+  // project_indicator_assignments, so this project load needs the full projection
+  // (the light one omits the assignment matrix). The ProjectDetailSerializer was
+  // optimised (N+1 + .values()) so the full detail is ~1s even on 89-org projects.
   const { data: selectedProjectData } = useProject(selectedProjectId, {
     keepPreviousData: false,
-    light: true,
+    light: false,
   });
   const selectedProjectDetail =
     selectedProjectData && String(selectedProjectData.id) === formProject
@@ -687,24 +688,20 @@ function AggregatesPageContent() {
       ),
     );
 
-    const scoped = visibleOrganizations.filter((organization) =>
-      projectOrganizationIds.has(String(organization.id)),
-    );
-
-    return scoped
-      .filter(
-        (organization) =>
-          canReportAcrossOrganizations ||
-          writableOrganizationIds.has(String(organization.id)),
-      )
+    // Match the reporting-workbook Organization picker: a coordinator M&E officer
+    // manages every sub-grantee beneath them and the backend authorises reporting
+    // for any descendant, so the Add-Entry picker offers the user's full visible
+    // scope within the project (own + descendants) — not just their own writable
+    // org (which collapsed every coordinator to a single row and hid the subs).
+    return visibleOrganizations
+      .filter((organization) => projectOrganizationIds.has(String(organization.id)))
+      .slice()
       .sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")));
   }, [
-    canReportAcrossOrganizations,
     formProject,
     visibleOrganizations,
     selectedProjectDetail?.organizations,
     selectedProjectSummary?.organizations,
-    writableOrganizationIds,
   ]);
   const availableFormOrganizationOptions = useMemo(
     () =>
@@ -750,43 +747,56 @@ function AggregatesPageContent() {
   );
 
   const availableIndicatorIds = useMemo(() => {
-    if (!formProject || !formOrganization || !selectedProjectDetail) return new Set<string>();
+    if (!formProject || !formOrganization || !selectedProjectDetail) {
+      return new Set<string>();
+    }
 
     const organizationId = String(formOrganization);
-    const ids = new Set<string>();
 
-    const organizationTargets =
-      selectedProjectDetail.organization_targets?.filter(
-        (target) => String(target.organization) === organizationId,
-      ) || [];
+    // Show the indicators PLACED IN THE COORDINATOR'S WORKBOOK (the WorkbookLayout
+    // is the single gate for what an org downloads/reports). Placing an indicator
+    // in the layout auto-assigns it down the coordinator tree with source
+    // 'workbook_layout', so those assignments == the org's workbook indicators.
+    // Add-Entry exists to fill an indicator an org missed in its uploaded workbook,
+    // so it must offer exactly that set — not the broader project_scope /
+    // organization_target assignments.
+    const workbookIndicatorIds = new Set(
+      (selectedProjectDetail.project_indicator_assignments || [])
+        .filter(
+          (assignment) =>
+            String(assignment.organization) === organizationId &&
+            assignment.is_active &&
+            assignment.assignment_source === "workbook_layout",
+        )
+        .map((assignment) => String(assignment.indicator)),
+    );
+    if (workbookIndicatorIds.size > 0) return workbookIndicatorIds;
 
-    organizationTargets.forEach((target) => ids.add(String(target.indicator)));
-
-    (selectedProjectDetail.project_indicators || []).forEach((projectIndicator) => {
-      ids.add(String(projectIndicator.indicator));
-    });
-
-    return ids;
+    // Fallback for orgs whose coordinator has no workbook layout yet: any active
+    // assignment, so the dialog is never empty when the org can legitimately report.
+    return new Set(
+      (selectedProjectDetail.project_indicator_assignments || [])
+        .filter(
+          (assignment) =>
+            String(assignment.organization) === organizationId && assignment.is_active,
+        )
+        .map((assignment) => String(assignment.indicator)),
+    );
   }, [formOrganization, formProject, selectedProjectDetail]);
 
   const availableIndicators = useMemo(() => {
     if (!formProject || !formOrganization || !selectedProjectDetail) return [];
 
-    const organizationId = String(formOrganization);
-
-    return indicators.filter((indicator) => {
-      const indicatorId = String(indicator.id);
-      if (availableIndicatorIds.size > 0 && !availableIndicatorIds.has(indicatorId)) {
-        return false;
-      }
-
-      const attachedOrganizations = new Set(
-        (indicator.organizations || []).map((value) => String(value)),
-      );
-
-      return attachedOrganizations.size === 0 || attachedOrganizations.has(organizationId);
-    });
-  }, [availableIndicatorIds, formOrganization, formProject, indicators, selectedProjectDetail]);
+    return indicators.filter((indicator) =>
+      availableIndicatorIds.has(String(indicator.id)),
+    );
+  }, [
+    availableIndicatorIds,
+    formOrganization,
+    formProject,
+    indicators,
+    selectedProjectDetail,
+  ]);
 
   const indicatorConfigs = useMemo<Record<string, AggregateEntryMatrixConfig>>(
     () =>
