@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.http import HttpResponse
 import csv
 import json
+import logging
 import re
 from collections import Counter
 from pathlib import Path
@@ -24,6 +25,9 @@ from .pagination import AggregatePagination
 from .serializers import AggregateSerializer, AggregateLightSerializer
 from . import reporting_workbook as rw
 from . import reporting_control
+
+
+logger = logging.getLogger(__name__)
 
 
 def _is_truthy(value):
@@ -248,6 +252,39 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 'new_value': aggregate.value,
             },
         )
+
+    def _resolve_open_correction_flags(self, aggregate, *, note):
+        """Close open data-quality flags once a flagged aggregate's value has been
+        corrected and resubmitted (status → ``pending``).
+
+        Without this, correcting a flagged record moves it back into the review
+        queue but leaves its ``open`` flag dangling forever — the record never
+        cleanly "proceeds to the next step" and keeps showing as flagged in the
+        Flags / Data-Quality views. Consistency (coherence) flags are owned by the
+        save-time signal, which re-raises them if the corrected value is still
+        internally inconsistent, so they are skipped here. Never blocks the write.
+        """
+        try:
+            from . import data_quality as dq
+
+            open_flags = Flag.objects.filter(
+                content_type='aggregate', object_id=aggregate.id, status='open',
+            )
+            for flag in open_flags:
+                if (flag.metadata or {}).get('category') == dq.CATEGORY_CONSISTENCY:
+                    continue  # owned by the coherence signal
+                flag.status = 'resolved'
+                flag.resolution_notes = note
+                flag.resolved_at = timezone.now()
+                flag.resolved_by = self.request.user
+                flag.save(update_fields=[
+                    'status', 'resolution_notes', 'resolved_at', 'resolved_by', 'updated_at',
+                ])
+        except Exception:  # flag bookkeeping must never break the primary write
+            logger.exception(
+                "Correction flag auto-resolve failed for aggregate %s",
+                getattr(aggregate, 'pk', None),
+            )
 
     def get_queryset(self):
         queryset = Aggregate.objects.select_related(
@@ -563,6 +600,12 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             aggregate, outcome=outcome, previous_status=previous_status,
             old_value=old_value, source=source,
         )
+        # A real correction to a flagged record clears its standing flag so it
+        # leaves the correction queue cleanly and re-enters review as pending.
+        if existing is not None:
+            self._resolve_open_correction_flags(
+                aggregate, note=f'Auto-resolved: value corrected and resubmitted via {source}.',
+            )
         return aggregate, outcome
 
     def perform_create(self, serializer):
@@ -634,6 +677,11 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
 
         if needs_rereview:
             self._notify_pending_submission(aggregate)
+            # A real correction clears any standing flag so a flagged record
+            # leaves the correction queue and re-enters review as pending.
+            self._resolve_open_correction_flags(
+                aggregate, note='Auto-resolved: value corrected and resubmitted.',
+            )
             if previous_status in self.REVIEW_LOCKED_STATUSES:
                 outcome = self.OUTCOME_RESET_FROM_REVIEW
             else:
