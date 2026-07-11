@@ -334,12 +334,20 @@ class FigureGenerator:
                 project=self.project, is_coordinator=True,
             ).values_list('organization_id', flat=True)
         )
+        # Permission scope: a non-admin (e.g. a coordinator M&E officer) may only
+        # see their own tree. Restrict the coordinators — and every org rolled up
+        # under them — to the caller's allowed org scope, so figures grouped by
+        # coordinator and the compliance matrix never surface another coordinator.
+        if self.org_ids is not None:
+            coord_ids = [cid for cid in coord_ids if cid in self.org_ids]
         mapping: dict = {}
         for cid in coord_ids:
             scope = resolve_organization_scope_with_project_hierarchy(
                 cid, project=self.project,
             ) or {cid}
             for oid in scope:
+                if self.org_ids is not None and oid not in self.org_ids:
+                    continue
                 mapping.setdefault(oid, cid)
             mapping[cid] = cid  # a coordinator always rolls up to itself
         self._coord_map_cache = mapping

@@ -182,6 +182,25 @@ class ComplianceTests(ReportBase):
         self.assertEqual(by_q["Q1"], "submitted")
         self.assertEqual(by_q["Q2"], "not_submitted")  # elapsed, nothing submitted
 
+    def test_compliance_scoped_to_caller_org_tree(self):
+        """A non-admin (e.g. a coordinator M&E officer) must only see their own
+        coordinator in the compliance matrix — never another coordinator's row."""
+        from datetime import date
+        # Two coordinators in the same project.
+        ProjectOrganization.objects.create(project=self.project, organization=self.org_a, is_coordinator=True, role="coordinator")
+        ProjectOrganization.objects.create(project=self.project, organization=self.org_b, is_coordinator=True, role="coordinator")
+        fig = self._figure(chart_type=ChartType.COMPLIANCE, grouping_dimension=Dimension.COORDINATOR)
+        # Admin (org_ids=None) sees both.
+        admin_rows = {r["coordinator"] for r in generate_figure(
+            fig, project=self.project, period_start=date(2024, 4, 1), period_end=date(2024, 6, 30),
+            org_ids=None)["compliance"]["rows"]}
+        self.assertEqual(admin_rows, {"Alpha CSO", "Beta CSO"})
+        # A user scoped to org_a only sees Alpha, never Beta.
+        scoped_rows = {r["coordinator"] for r in generate_figure(
+            fig, project=self.project, period_start=date(2024, 4, 1), period_end=date(2024, 6, 30),
+            org_ids={self.org_a.id})["compliance"]["rows"]}
+        self.assertEqual(scoped_rows, {"Alpha CSO"})
+
 
 class CoordinatorGroupingTests(ReportBase):
     def test_group_by_coordinator_rolls_up_suborgs(self):
