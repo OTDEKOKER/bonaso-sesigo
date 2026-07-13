@@ -20,7 +20,7 @@ from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
-from .models import Aggregate
+from .models import Aggregate, AggregateFact
 from .pagination import AggregatePagination
 from .serializers import AggregateSerializer, AggregateLightSerializer
 from . import reporting_workbook as rw
@@ -2488,6 +2488,12 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                     reviewed_by_id=request.user.id,
                     updated_at=reviewed_at,
                 )
+                # A bulk .update() bypasses the post_save fact-sync signal, so the
+                # flattened AggregateFact projection would keep the old status and
+                # stay invisible to approved-only reads (dashboards, funder reports).
+                # Only status changes here (values are untouched), so sync the
+                # projection status in the same transaction.
+                AggregateFact.objects.filter(aggregate_id__in=found_ids).update(status='approved')
 
             skipped = len(set(aggregate_ids) - found_ids)
 

@@ -82,6 +82,29 @@ class AggregateHierarchyPermissionTests(APITestCase):
             value={"total": 5}, status=status_value, created_by=self.sub1_officer,
         )
 
+    def test_bulk_approve_syncs_fact_projection(self):
+        """bulk_approve uses a bulk .update() that bypasses the post_save fact-sync
+        signal; it must still flip the AggregateFact projection to 'approved' so
+        the data is visible to approved-only reads (dashboards / funder reports)."""
+        from aggregates.models import AggregateFact
+        agg = self._aggregate(self.sub1, status_value="pending")
+        # The fact-sync signal fires on_commit (never inside the test transaction),
+        # so create the pending projection row explicitly.
+        AggregateFact.objects.filter(aggregate=agg).delete()
+        AggregateFact.objects.create(
+            aggregate=agg, indicator=self.indicator, canonical_indicator=self.indicator,
+            project=self.project, organization=self.sub1, period_start=agg.period_start,
+            period_end=agg.period_end, status="pending", is_training=False,
+            primary="All", secondary="All", band="Total", value=5)
+        self.client.force_authenticate(self.coordinator)
+        resp = self.client.post("/api/aggregates/bulk_approve/", {"ids": [agg.id]}, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        agg.refresh_from_db()
+        self.assertEqual(agg.status, "approved")
+        # every fact under the aggregate is now approved (no stale projection)
+        self.assertFalse(
+            AggregateFact.objects.filter(aggregate=agg).exclude(status="approved").exists())
+
     # --- Coordinator (parent-org manager) ----------------------------------
 
     def test_coordinator_can_approve_descendant_aggregate(self):
