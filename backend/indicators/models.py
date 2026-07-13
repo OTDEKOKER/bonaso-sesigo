@@ -132,7 +132,7 @@ class Indicator(models.Model):
     )
     
     class Meta:
-        ordering = ['category', 'name']
+        ordering = ['category', 'name', 'id']
 
     def __str__(self):
         return f"{self.code} - {self.name}"

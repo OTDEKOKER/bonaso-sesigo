@@ -80,7 +80,7 @@ class Project(models.Model):
     )
     
     class Meta:
-        ordering = ['-start_date']
+        ordering = ['-start_date', '-id']
     
     def __str__(self):
         return f"{self.name} ({self.code})"
@@ -451,7 +451,7 @@ class Task(models.Model):
     )
     
     class Meta:
-        ordering = ['due_date', '-priority']
+        ordering = ['due_date', '-priority', 'id']
     
     def __str__(self):
         return f"{self.name} ({self.project.name})"
@@ -489,7 +489,7 @@ class Deadline(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ['due_date']
+        ordering = ['due_date', 'id']
     
     def __str__(self):
         return f"{self.name} - {self.due_date}"
@@ -529,7 +529,7 @@ class ProjectActivity(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['start_date', 'title']
+        ordering = ['start_date', 'title', 'id']
 
     def __str__(self):
         return f"{self.project.name} – {self.title}"

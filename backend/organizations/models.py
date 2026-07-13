@@ -36,7 +36,7 @@ class Organization(models.Model):
     # ✅ Removed created_by to break circular dependency
 
     class Meta:
-        ordering = ['name']
+        ordering = ['name', 'id']
 
     def __str__(self):
         return f"{self.name} ({self.code})"

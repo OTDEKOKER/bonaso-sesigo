@@ -264,12 +264,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'core.pagination.DefaultPageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_FILTER_BACKENDS': (
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
-        'rest_framework.filters.OrderingFilter',
+        # StableOrderingFilter appends the primary key as a tie-breaker so
+        # LIMIT/OFFSET pagination is deterministic (rows don't jump/duplicate
+        # between pages when the sort column has ties).
+        'core.filters.StableOrderingFilter',
     ),
     # Throttling. Scoped rates protect the public/unauthenticated surface
     # (event check-in) and the authentication endpoints (SEC-1: brute-force /

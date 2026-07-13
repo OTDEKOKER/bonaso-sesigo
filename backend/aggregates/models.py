@@ -62,7 +62,7 @@ class Aggregate(models.Model):
     )
     
     class Meta:
-        ordering = ['-period_start']
+        ordering = ['-period_start', '-id']
         unique_together = ['indicator', 'project', 'organization', 'period_start', 'period_end']
         indexes = [
             models.Index(fields=['-period_start'], name='agg_period_start_idx'),
@@ -188,7 +188,7 @@ class DataQualityScore(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
-        ordering = ['-created_at', '-score']
+        ordering = ['-created_at', '-score', '-id']
         indexes = [
             models.Index(fields=['scope_type', 'scope_id', '-created_at'], name='dqscore_scope_idx'),
             models.Index(fields=['mode', 'scope_type', '-created_at'], name='dqscore_mode_scope_idx'),
@@ -276,7 +276,7 @@ class ReportingPeriod(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-fiscal_year', '-quarter', 'project_id']
+        ordering = ['-fiscal_year', '-quarter', 'project_id', 'id']
         constraints = [
             # Exactly one reporting period per project + fiscal quarter. Because
             # the row is unique, "only one Open for the same project and quarter"

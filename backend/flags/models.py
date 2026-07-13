@@ -77,7 +77,7 @@ class Flag(models.Model):
     )
     
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-created_at', '-id']
     
     def __str__(self):
         return f"{self.title} ({self.get_status_display()})"

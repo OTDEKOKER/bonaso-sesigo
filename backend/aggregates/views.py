@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 import django_filters
-from rest_framework.filters import OrderingFilter
+from rest_framework.filters import OrderingFilter, SearchFilter
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
@@ -169,8 +169,15 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     pagination_class = AggregatePagination
     required_module = 'aggregates'
     permission_classes = [IsAuthenticated, HasModulePermission]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = AggregateFilterSet
+    # Server-side free-text search for the review queue (?search=). Matches the
+    # indicator code/name, the org/project name and the notes so the queue can be
+    # filtered authoritatively on the server instead of over one loaded page.
+    search_fields = [
+        'indicator__code', 'indicator__name',
+        'organization__name', 'project__name', 'notes',
+    ]
     ordering_fields = ['period_start', 'period_end', 'created_at']
     ordering = ['-period_start']
 

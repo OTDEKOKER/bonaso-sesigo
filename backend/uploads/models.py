@@ -51,8 +51,8 @@ class Upload(models.Model):
     )
     
     class Meta:
-        ordering = ['-created_at']
-    
+        ordering = ['-created_at', '-id']
+
     def __str__(self):
         return self.name
 
@@ -147,8 +147,8 @@ class ImportJob(models.Model):
     )
     
     class Meta:
-        ordering = ['-created_at']
-    
+        ordering = ['-created_at', '-id']
+
     def __str__(self):
         return f"Import: {self.upload.name} ({self.status})"
 
@@ -193,7 +193,7 @@ class ExportJob(models.Model):
     )
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-created_at', '-id']
 
     def __str__(self):
         return f"Export: {self.job_type} ({self.status})"

@@ -84,7 +84,7 @@ class AuditEvent(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-created_at', '-id']
         indexes = [
             models.Index(fields=['-created_at'], name='audit_created_idx'),
             models.Index(fields=['action'], name='audit_action_idx'),

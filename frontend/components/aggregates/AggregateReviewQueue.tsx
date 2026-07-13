@@ -64,6 +64,20 @@ type AggregateReviewQueueProps = {
   coordinators?: Array<{ id: string | number; name: string }>;
   /** organization id → the coordinator id it reports under, for coordinator filtering. */
   coordinatorIdByOrganizationId?: Record<string, string>;
+  /** When true the parent resolves the project/organization/coordinator/search
+   *  filters SERVER-SIDE (``items`` already the filtered subset), so the dialog
+   *  drives the filters as controlled inputs, sources the dropdown options from
+   *  the full ``projects``/``organizations``/``coordinators`` lists (not the
+   *  filtered rows) and skips its own client-side row filtering. */
+  serverFiltered?: boolean;
+  searchQuery?: string;
+  onSearchQueryChange?: (value: string) => void;
+  projectFilter?: string;
+  onProjectFilterChange?: (value: string) => void;
+  organizationFilter?: string;
+  onOrganizationFilterChange?: (value: string) => void;
+  coordinatorFilter?: string;
+  onCoordinatorFilterChange?: (value: string) => void;
   indicators: Array<{ id: string | number; name: string; code?: string }>;
   onReview: (aggregateId: string, notes: string) => Promise<void>;
   onApprove: (aggregateId: string) => Promise<void>;
@@ -217,6 +231,15 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     organizations,
     coordinators = [],
     coordinatorIdByOrganizationId = {},
+    serverFiltered = false,
+    searchQuery: searchQueryProp,
+    onSearchQueryChange,
+    projectFilter: projectFilterProp,
+    onProjectFilterChange,
+    organizationFilter: organizationFilterProp,
+    onOrganizationFilterChange,
+    coordinatorFilter: coordinatorFilterProp,
+    onCoordinatorFilterChange,
     indicators,
     onReview,
     onApprove,
@@ -242,10 +265,20 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     ? buildCorrectionDraft(initialReviewAggregate, indicatorById)
     : emptyCorrectionDraft;
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [projectFilter, setProjectFilter] = useState("all");
-  const [organizationFilter, setOrganizationFilter] = useState("all");
-  const [coordinatorFilter, setCoordinatorFilter] = useState("all");
+  // Filters are controlled by the parent when it resolves them server-side;
+  // otherwise the dialog owns them (client-side filtering, e.g. correction queue).
+  const [searchQueryState, setSearchQueryState] = useState("");
+  const [projectFilterState, setProjectFilterState] = useState("all");
+  const [organizationFilterState, setOrganizationFilterState] = useState("all");
+  const [coordinatorFilterState, setCoordinatorFilterState] = useState("all");
+  const searchQuery = searchQueryProp ?? searchQueryState;
+  const setSearchQuery = onSearchQueryChange ?? setSearchQueryState;
+  const projectFilter = projectFilterProp ?? projectFilterState;
+  const setProjectFilter = onProjectFilterChange ?? setProjectFilterState;
+  const organizationFilter = organizationFilterProp ?? organizationFilterState;
+  const setOrganizationFilter = onOrganizationFilterChange ?? setOrganizationFilterState;
+  const coordinatorFilter = coordinatorFilterProp ?? coordinatorFilterState;
+  const setCoordinatorFilter = onCoordinatorFilterChange ?? setCoordinatorFilterState;
   const [reviewingAggregate, setReviewingAggregate] = useState<Aggregate | null>(initialReviewAggregate);
   const [isManualEditMode, setIsManualEditMode] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -265,60 +298,85 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
   const [correctionPeriodEnd, setCorrectionPeriodEnd] = useState(initialCorrectionDraft.periodEnd);
   const [correctionNotes, setCorrectionNotes] = useState(initialCorrectionDraft.notes);
 
-  const projectOptions = useMemo(
+  // Filter dropdown options: when the parent filters server-side the visible
+  // ``items`` are already a narrowed subset, so the option lists must come from
+  // the full ``projects``/``organizations`` props (otherwise you could never
+  // switch away from the org you filtered to). Client-side mode derives them
+  // from the loaded rows, as before.
+  const projectOptions = useMemo<Array<[string, string]>>(
     () =>
-      Array.from(
-        new Map(
-          items.map((item) => [
-            String(item.project),
-            item.project_name || projectNameById.get(String(item.project)) || "Project",
-          ]),
-        ).entries(),
-      ).sort((left, right) => left[1].localeCompare(right[1])),
-    [items, projectNameById],
+      serverFiltered
+        ? projects
+            .map((project) => [String(project.id), project.name] as [string, string])
+            .sort((left, right) => left[1].localeCompare(right[1]))
+        : Array.from(
+            new Map(
+              items.map((item) => [
+                String(item.project),
+                item.project_name || projectNameById.get(String(item.project)) || "Project",
+              ]),
+            ).entries(),
+          ).sort((left, right) => left[1].localeCompare(right[1])),
+    [serverFiltered, projects, items, projectNameById],
   );
 
   // A reviewer scoped to a single coordinator (an M&E Officer) gets it locked in;
-  // a BONASO reviewer with several coordinators gets a real "All coordinators" filter.
-  const isCoordinatorLocked = coordinators.length === 1;
+  // a BONASO reviewer with several coordinators gets a real "All coordinators"
+  // filter. Never lock in server-filtered mode: the backend already restricts the
+  // queue to the reviewer's own scope, so "All coordinators" is safe and the
+  // coordinator list is the project's full set rather than "coordinators seen in
+  // the loaded rows".
+  const isCoordinatorLocked = !serverFiltered && coordinators.length === 1;
   const coordinatorForOrganization = (organizationId: string) =>
     coordinatorIdByOrganizationId[organizationId] ?? "";
 
   useEffect(() => {
-    if (coordinators.length === 1) {
+    if (!serverFiltered && coordinators.length === 1) {
       setCoordinatorFilter(String(coordinators[0].id));
     }
-  }, [coordinators]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coordinators, serverFiltered]);
 
   // Reset a chosen coordinator if it drops out of the available set (e.g. the last
-  // queued row under it was cleared).
+  // queued row under it was cleared). Client-side mode only — server-side options
+  // are the project's coordinators and don't churn with the loaded rows.
   useEffect(() => {
+    if (serverFiltered) return;
     if (
       coordinatorFilter !== "all" &&
       !coordinators.some((coordinator) => String(coordinator.id) === coordinatorFilter)
     ) {
       setCoordinatorFilter(coordinators.length === 1 ? String(coordinators[0].id) : "all");
     }
-  }, [coordinatorFilter, coordinators]);
-
-  const organizationOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          items
-            .filter(
-              (item) =>
-                coordinatorFilter === "all" ||
-                coordinatorForOrganization(String(item.organization)) === coordinatorFilter,
-            )
-            .map((item) => [String(item.organization), item.organization_name || "Organization"]),
-        ).entries(),
-      ).sort((left, right) => left[1].localeCompare(right[1])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, coordinatorFilter, coordinatorIdByOrganizationId],
+  }, [coordinatorFilter, coordinators, serverFiltered]);
+
+  const organizationOptions = useMemo<Array<[string, string]>>(
+    () =>
+      serverFiltered
+        ? organizations
+            .map((org) => [String(org.id), org.name] as [string, string])
+            .sort((left, right) => left[1].localeCompare(right[1]))
+        : Array.from(
+            new Map(
+              items
+                .filter(
+                  (item) =>
+                    coordinatorFilter === "all" ||
+                    coordinatorForOrganization(String(item.organization)) === coordinatorFilter,
+                )
+                .map((item) => [String(item.organization), item.organization_name || "Organization"]),
+            ).entries(),
+          ).sort((left, right) => left[1].localeCompare(right[1])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [serverFiltered, organizations, items, coordinatorFilter, coordinatorIdByOrganizationId],
   );
 
   const filteredItems = useMemo(() => {
+    // Server-filtered mode: the parent already fetched exactly the matching rows,
+    // so render them as-is (no second, client-side pass that could re-narrow).
+    if (serverFiltered) return items;
+
     const query = searchQuery.trim().toLowerCase();
 
     return items.filter((item) => {
@@ -351,6 +409,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    serverFiltered,
     coordinatorFilter,
     coordinatorIdByOrganizationId,
     indicatorNameById,
@@ -829,7 +888,9 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
               <div>
                 <p className="text-sm font-semibold">Filter queue</p>
                 <p className="text-xs text-muted-foreground">
-                  {filteredItems.length} of {items.length} queued
+                  {serverFiltered
+                    ? `${filteredItems.length} matching`
+                    : `${filteredItems.length} of ${items.length} queued`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">

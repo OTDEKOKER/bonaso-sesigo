@@ -39,6 +39,7 @@ import {
   useAllIndicators,
   useAllProjects,
   useProject,
+  useProjectCoordinators,
 } from "@/lib/hooks/use-api";
 import { useDefaultProject } from "@/lib/hooks/use-default-project";
 import { useModulePermissions } from "@/lib/permissions/module-permissions";
@@ -54,7 +55,6 @@ import {
   isValidDateRange,
   parseNumberInput,
   resolveParentOrganizationId,
-  type OrganizationWithParent,
   type AggregateValue,
   type AggregateEntryMatrixConfig,
 } from "@/lib/aggregates/aggregate-helpers";
@@ -64,7 +64,6 @@ import { AggregateChartDialog } from "@/components/aggregates/AggregateChartDial
 import { AggregateMatrixTable } from "@/components/aggregates/AggregateMatrixTable";
 import { AggregateReviewQueue } from "@/components/aggregates/AggregateReviewQueue";
 import type { AggregateIndicatorGroup } from "@/lib/aggregates/aggregate-helpers";
-import { isBonasoOrganizationName } from "@/lib/organization-hierarchy";
 import { isPlatformAdmin } from "@/lib/permissions";
 import type { Indicator, Project } from "@/lib/types";
 import {
@@ -526,14 +525,55 @@ function AggregatesPageContent() {
     return "status" in error ? Number(error.status) || null : null;
   }, [error]);
 
-  // Review/correction queue rows (pending / reviewed / flagged) are a small set
-  // (a few hundred rows at most) and need the full projection (notes, reviewer,
-  // timestamps), so they are fetched separately from the approved browse data
-  // rather than forcing the bulk fetch to carry every status and every field.
-  const queueFetchFilters = useMemo(
-    () => ({ ...(aggregateApiFilters || {}), status: "pending,reviewed,flagged" }),
-    [aggregateApiFilters],
+  // Review queue filters are resolved SERVER-SIDE (project / organization /
+  // coordinator / search) so the queue fetches only the matching subset instead
+  // of pulling every queued row and filtering in the browser — the client-side
+  // approach silently mis-scoped once the queue grew to thousands of rows.
+  const [reviewProjectFilter, setReviewProjectFilter] = useState("all");
+  const [reviewOrgFilter, setReviewOrgFilter] = useState("all");
+  const [reviewCoordinatorFilter, setReviewCoordinatorFilter] = useState("all");
+  const [reviewSearchInput, setReviewSearchInput] = useState("");
+  const [reviewSearch, setReviewSearch] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setReviewSearch(reviewSearchInput.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [reviewSearchInput]);
+  // Coordinator options for the review queue come from the selected project's
+  // hierarchy (project-aware), matching the coordinator filter elsewhere.
+  const { data: reviewCoordinatorData } = useProjectCoordinators(
+    reviewProjectFilter !== "all" ? reviewProjectFilter : null,
   );
+  const reviewCoordinatorOptions = useMemo(
+    () => (Array.isArray(reviewCoordinatorData) ? reviewCoordinatorData : []),
+    [reviewCoordinatorData],
+  );
+  // A coordinator selection only makes sense within a project.
+  useEffect(() => {
+    if (reviewProjectFilter === "all" && reviewCoordinatorFilter !== "all") {
+      setReviewCoordinatorFilter("all");
+    }
+  }, [reviewProjectFilter, reviewCoordinatorFilter]);
+
+  // Review/correction queue rows (pending / reviewed / flagged) are fetched
+  // separately from the approved browse data (they need the full projection:
+  // notes, reviewer, timestamps) and now carry the active review-queue filters
+  // so the server returns exactly the rows the reviewer is looking at.
+  const queueFetchFilters = useMemo(() => {
+    const f: Record<string, string> = {
+      ...(aggregateApiFilters || {}),
+      status: "pending,reviewed,flagged",
+    };
+    if (reviewProjectFilter !== "all") f.project = reviewProjectFilter;
+    if (reviewOrgFilter !== "all") f.organization = reviewOrgFilter;
+    if (reviewCoordinatorFilter !== "all") {
+      f.coordinator = reviewCoordinatorFilter;
+      // The coordinator subtree is project-aware; pass the project when one is
+      // chosen so the backend resolves the right hierarchy.
+      if (reviewProjectFilter !== "all") f.project = reviewProjectFilter;
+    }
+    if (reviewSearch) f.search = reviewSearch;
+    return f;
+  }, [aggregateApiFilters, reviewProjectFilter, reviewOrgFilter, reviewCoordinatorFilter, reviewSearch]);
   const { data: queueAggregatesData, mutate: mutateQueue } = useAllAggregates(
     queueFetchFilters,
     aggregateSwrConfig,
@@ -1030,45 +1070,9 @@ function AggregatesPageContent() {
   // parent is the BONASO umbrella — then the org itself sits at the coordinator
   // tier). A coordinator M&E Officer only ever has one coordinator here, so the
   // queue auto-selects it and hides the rest; a BONASO reviewer gets every
-  // coordinator that has queued work. Declared AFTER reviewQueueAggregates: it
-  // reads it in its dependency array, so it must not be hoisted above it (TDZ).
-  const reviewQueueCoordinatorContext = useMemo(() => {
-    const orgById = new Map<string, OrganizationWithParent>(
-      organizations.map((org) => [
-        String((org as OrganizationWithParent).id),
-        org as OrganizationWithParent,
-      ]),
-    );
-    const coordinatorIdByOrganizationId: Record<string, string> = {};
-    const coordinatorNameById = new Map<string, string>();
-
-    const resolveCoordinator = (organizationId: string) => {
-      const org = orgById.get(organizationId);
-      if (!org) return null;
-      const parentId = resolveParentOrganizationId(org);
-      const parent = parentId ? orgById.get(parentId) : undefined;
-      if (!parent || isBonasoOrganizationName(String(parent.name || ""))) {
-        return { id: String(org.id), name: String(org.name || `Organization ${org.id}`) };
-      }
-      return { id: String(parent.id), name: String(parent.name || `Organization ${parent.id}`) };
-    };
-
-    for (const item of reviewQueueAggregates) {
-      const organizationId = String(item.organization);
-      if (coordinatorIdByOrganizationId[organizationId]) continue;
-      const coordinator = resolveCoordinator(organizationId);
-      if (!coordinator) continue;
-      coordinatorIdByOrganizationId[organizationId] = coordinator.id;
-      coordinatorNameById.set(coordinator.id, coordinator.name);
-    }
-
-    const options = Array.from(coordinatorNameById.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((left, right) => left.name.localeCompare(right.name));
-
-    return { options, coordinatorIdByOrganizationId };
-  }, [organizations, reviewQueueAggregates]);
-
+  // coordinator that has queued work. (The review queue now resolves coordinator
+  // options server-side from the selected project's hierarchy, so the old
+  // client-side org→coordinator derivation is no longer needed here.)
   const correctionQueueAggregates = useMemo(
     () =>
       queueAggregates
@@ -1702,8 +1706,16 @@ function AggregatesPageContent() {
                 projectNameById={projectNameById}
                 projects={projects}
                 organizations={visibleOrganizationOptions}
-                coordinators={reviewQueueCoordinatorContext.options}
-                coordinatorIdByOrganizationId={reviewQueueCoordinatorContext.coordinatorIdByOrganizationId}
+                coordinators={reviewCoordinatorOptions}
+                serverFiltered
+                projectFilter={reviewProjectFilter}
+                onProjectFilterChange={setReviewProjectFilter}
+                organizationFilter={reviewOrgFilter}
+                onOrganizationFilterChange={setReviewOrgFilter}
+                coordinatorFilter={reviewCoordinatorFilter}
+                onCoordinatorFilterChange={setReviewCoordinatorFilter}
+                searchQuery={reviewSearchInput}
+                onSearchQueryChange={setReviewSearchInput}
                 indicators={indicatorOptions}
                 onReview={handleReviewAggregate}
                 onApprove={handleApproveAggregate}
