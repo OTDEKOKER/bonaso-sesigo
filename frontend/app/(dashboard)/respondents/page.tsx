@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, UserSquare2, Loader2 } from "lucide-react";
@@ -101,13 +101,30 @@ const extractSuffixForPrefix = (uniqueId: string, prefix: string): number | null
 export default function RespondentsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { data: respondentsData, isLoading, error, mutate } = useRespondents();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [genderFilter, setGenderFilter] = useState("all");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Filter server-side so search/gender apply across ALL respondents, not just
+  // the first loaded page (the list is paginated). Debounce the free text so we
+  // query once the user pauses.
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const respondentFilters = useMemo(() => {
+    const f: Record<string, string> = { page_size: "500" };
+    if (debouncedSearch) f.search = debouncedSearch;
+    if (genderFilter !== "all") f.gender = genderFilter;
+    return f;
+  }, [debouncedSearch, genderFilter]);
+
+  const { data: respondentsData, isLoading, error, mutate } = useRespondents(respondentFilters);
   const { data: organizationsData } = useAllOrganizations();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingUniqueId, setIsGeneratingUniqueId] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [genderFilter, setGenderFilter] = useState("all");
   const uniqueIdGenerationRef = useRef(0);
 
   const [formData, setFormData] = useState({
@@ -139,15 +156,10 @@ export default function RespondentsPage() {
   const respondents = respondentsData?.results || [];
   const organizations = organizationsData?.results || [];
 
-  // Apply filters and search
-  const filteredRespondents = respondents.filter((r) => {
-    const matchesSearch =
-      r.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.unique_id?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesGender = genderFilter === "all" || r.gender === genderFilter;
-    return matchesSearch && matchesGender;
-  });
+  // Search + gender are applied server-side (see respondentFilters), so the
+  // list already holds the matching rows — no second client-side pass that would
+  // re-narrow (and could drop server matches on phone/email that aren't shown).
+  const filteredRespondents = respondents;
 
   const activeCount = respondents.filter((r) => r.is_active).length;
   const inactiveCount = respondents.filter((r) => !r.is_active).length;
