@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import { OrganizationSelect } from "@/components/shared/organization-select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,9 +37,36 @@ import {
   Loader2,
 } from "lucide-react";
 import { flagsService } from "@/lib/api";
-import { useFlags, useFlagStats } from "@/lib/hooks/use-api";
+import type { FlagFilters } from "@/lib/api/services/reports";
+import {
+  useFlags,
+  useFlagStats,
+  useOrganizations,
+  useAllProjects,
+  useAllIndicators,
+  useProjectCoordinators,
+} from "@/lib/hooks/use-api";
 import type { Flag } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+
+const DQ_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "consistency", label: "Consistency" },
+  { value: "anomaly", label: "Anomaly" },
+  { value: "duplicate", label: "Duplicate" },
+  { value: "missing", label: "Missing (completeness)" },
+  { value: "traceability", label: "Traceability" },
+  { value: "validation", label: "Validation" },
+  { value: "fact_integrity", label: "Fact integrity" },
+  { value: "overlap", label: "Overlap" },
+];
+
+const FLAG_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "data_quality", label: "Data Quality" },
+  { value: "follow_up", label: "Follow Up" },
+  { value: "urgent", label: "Urgent" },
+  { value: "review", label: "Needs Review" },
+  { value: "other", label: "Other" },
+];
 
 const priorityColors: Record<string, string> = {
   low: "bg-info/20 text-info border-info/30",
@@ -64,24 +93,105 @@ const typeLabels: Record<string, string> = {
 export default function FlagsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { data: flagsData, isLoading, error, mutate } = useFlags();
-  const { data: statsData } = useFlagStats();
   const [selectedFlag, setSelectedFlag] = useState<Flag | null>(null);
   const [isResolveDialogOpen, setIsResolveDialogOpen] = useState(false);
   const [resolution, setResolution] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  // Every filter below is resolved server-side so it covers ALL flags, not just
+  // the page currently loaded in the table.
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterOrg, setFilterOrg] = useState<string>("all");
+  const [filterProject, setFilterProject] = useState<string>("all");
+  const [filterCoordinator, setFilterCoordinator] = useState<string>("all");
+  const [filterIndicator, setFilterIndicator] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+
+  // Debounce the free-text search so we hit the API once the user pauses.
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  // Coordinator options come from the selected project's hierarchy, matching the
+  // project-aware coordinator filter used elsewhere in the system.
+  const { data: orgData } = useOrganizations({ page_size: "1000" });
+  const { data: projectData } = useAllProjects();
+  const { data: indicatorData } = useAllIndicators();
+  const { data: coordinatorData } = useProjectCoordinators(
+    filterProject !== "all" ? filterProject : null,
+  );
+
+  const organizationOptions = useMemo(() => orgData?.results ?? [], [orgData]);
+  const projectOptions = useMemo(() => projectData ?? [], [projectData]);
+  const indicatorOptions = useMemo(
+    () =>
+      (indicatorData ?? []).map((ind) => ({
+        id: ind.id,
+        name: ind.code ? `${ind.code} — ${ind.name}` : ind.name,
+      })),
+    [indicatorData],
+  );
+  const coordinatorOptions = useMemo(() => coordinatorData ?? [], [coordinatorData]);
+
+  const flagFilters = useMemo<FlagFilters>(() => {
+    const f: FlagFilters = { page_size: "200" };
+    if (debouncedSearch) f.search = debouncedSearch;
+    if (filterStatus !== "all") f.status = filterStatus;
+    if (filterPriority !== "all") f.priority = filterPriority;
+    if (filterType !== "all") f.flag_type = filterType;
+    if (filterCategory !== "all") f.category = filterCategory;
+    if (filterOrg !== "all") f.organization = filterOrg;
+    if (filterProject !== "all") f.project = filterProject;
+    if (filterCoordinator !== "all") f.coordinator = filterCoordinator;
+    if (filterIndicator !== "all") f.indicator = filterIndicator;
+    if (dateFrom) f.date_from = dateFrom;
+    if (dateTo) f.date_to = dateTo;
+    return f;
+  }, [
+    debouncedSearch, filterStatus, filterPriority, filterType, filterCategory,
+    filterOrg, filterProject, filterCoordinator, filterIndicator, dateFrom, dateTo,
+  ]);
+
+  const { data: flagsData, isLoading, error, mutate } = useFlags(flagFilters);
+  const { data: statsData } = useFlagStats();
 
   const flags = useMemo(() => flagsData?.results ?? [], [flagsData?.results]);
 
-  const filteredFlags = useMemo(() => {
-    return flags.filter((flag) => {
-      if (filterStatus !== "all" && flag.status !== filterStatus) return false;
-      if (filterPriority !== "all" && flag.priority !== filterPriority) return false;
-      return true;
-    });
-  }, [filterPriority, filterStatus, flags]);
+  const hasActiveFilters =
+    !!debouncedSearch ||
+    [filterStatus, filterPriority, filterType, filterCategory, filterOrg,
+      filterProject, filterCoordinator, filterIndicator].some((v) => v !== "all") ||
+    !!dateFrom ||
+    !!dateTo;
+
+  const clearFilters = () => {
+    setSearchInput("");
+    setFilterStatus("all");
+    setFilterPriority("all");
+    setFilterType("all");
+    setFilterCategory("all");
+    setFilterOrg("all");
+    setFilterProject("all");
+    setFilterCoordinator("all");
+    setFilterIndicator("all");
+    setDateFrom("");
+    setDateTo("");
+  };
+
+  // A coordinator selection only makes sense within a project; clear it if the
+  // project filter is reset.
+  useEffect(() => {
+    if (filterProject === "all" && filterCoordinator !== "all") {
+      setFilterCoordinator("all");
+    }
+  }, [filterProject, filterCoordinator]);
 
   const computedStats = useMemo(() => {
     return {
@@ -289,50 +399,158 @@ export default function FlagsPage() {
       </div>
 
       <Card className="bg-card border-border">
-        <CardHeader>
+        <CardHeader className="space-y-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-foreground flex items-center gap-2">
               <FlagIcon className="h-5 w-5" />
               All Flags
             </CardTitle>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="w-full sm:w-[140px] bg-input border-border">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="open">Open</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="resolved">Resolved</SelectItem>
-                    <SelectItem value="dismissed">Dismissed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={filterPriority} onValueChange={setFilterPriority}>
-                  <SelectTrigger className="w-full sm:w-[140px] bg-input border-border">
-                    <SelectValue placeholder="Priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Priority</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            {hasActiveFilters ? (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Filter className="h-4 w-4" />
+            <span className="text-sm">Filters</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Input
+              placeholder="Search title or description..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="bg-input border-border"
+            />
+
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="resolved">Resolved</SelectItem>
+                <SelectItem value="dismissed">Dismissed</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={filterPriority} onValueChange={setFilterPriority}>
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue placeholder="Priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priority</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {FLAG_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterCategory} onValueChange={setFilterCategory}>
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {DQ_CATEGORY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <OrganizationSelect
+              organizations={organizationOptions}
+              value={filterOrg}
+              onChange={setFilterOrg}
+              includeAll
+              allLabel="All Organizations"
+              placeholder="Organization"
+            />
+
+            <Select value={filterProject} onValueChange={setFilterProject}>
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue placeholder="Project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projectOptions.map((project) => (
+                  <SelectItem key={project.id} value={String(project.id)}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={filterCoordinator}
+              onValueChange={setFilterCoordinator}
+              disabled={filterProject === "all"}
+            >
+              <SelectTrigger className="bg-input border-border">
+                <SelectValue
+                  placeholder={filterProject === "all" ? "Coordinator (pick a project)" : "Coordinator"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Coordinators</SelectItem>
+                {coordinatorOptions.map((coord) => (
+                  <SelectItem key={coord.id} value={String(coord.id)}>
+                    {coord.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <OrganizationSelect
+              organizations={indicatorOptions}
+              value={filterIndicator}
+              onChange={setFilterIndicator}
+              includeAll
+              allLabel="All Indicators"
+              placeholder="Indicator"
+              searchPlaceholder="Search indicators..."
+              emptyLabel="No indicators found."
+            />
+
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="bg-input border-border"
+              aria-label="Created from"
+            />
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="bg-input border-border"
+              aria-label="Created to"
+            />
           </div>
         </CardHeader>
         <CardContent>
-          <DataTable
-            data={filteredFlags}
-            columns={columns}
-            searchable
-            searchPlaceholder="Search flags..."
-          />
+          <DataTable data={flags} columns={columns} />
         </CardContent>
       </Card>
 

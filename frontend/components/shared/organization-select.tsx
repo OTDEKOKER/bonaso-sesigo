@@ -34,6 +34,8 @@ export function OrganizationSelect(props: {
   noneLabel?: string;
   disabled?: boolean;
   className?: string;
+  searchPlaceholder?: string;
+  emptyLabel?: string;
 }) {
   const {
     organizations,
@@ -46,6 +48,8 @@ export function OrganizationSelect(props: {
     noneLabel = "General / none",
     disabled = false,
     className,
+    searchPlaceholder = "Search organizations...",
+    emptyLabel = "No organizations found.",
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -96,12 +100,12 @@ export function OrganizationSelect(props: {
       <PopoverContent className="z-[60] w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput
-            placeholder="Search organizations..."
+            placeholder={searchPlaceholder}
             value={search}
             onValueChange={setSearch}
           />
           <CommandList>
-            <CommandEmpty>No organizations found.</CommandEmpty>
+            <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
               {includeAll && (
                 <CommandItem

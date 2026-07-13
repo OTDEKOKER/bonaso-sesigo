@@ -183,6 +183,15 @@ export interface FlagFilters {
   priority?: string;
   organization?: string;
   assigned_to?: string;
+  content_type?: string;
+  // Cross-system filters resolved server-side (project/indicator via the linked
+  // aggregate, coordinator via the project org hierarchy, category from metadata).
+  project?: string;
+  coordinator?: string;
+  indicator?: string;
+  category?: string;
+  date_from?: string;
+  date_to?: string;
   page?: string;
   page_size?: string;
 }
