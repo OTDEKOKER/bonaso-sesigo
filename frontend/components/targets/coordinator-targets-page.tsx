@@ -10,7 +10,7 @@ import {
   type CoordinatorTargetBulkAssignRequest,
   type CoordinatorTargetFilters,
 } from "@/lib/api";
-import type { Project } from "@/lib/types";
+import type { Project, ProjectIndicatorTarget } from "@/lib/types";
 import { useAuth } from "@/lib/contexts/auth-context";
 import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import {
@@ -18,6 +18,7 @@ import {
   useCoordinatorTargets,
   useCoordinatorTargetOptions,
   useCoordinatorTargetRollup,
+  useProject,
   useProjectCoordinators,
 } from "@/lib/hooks/use-api";
 import { useDefaultProject } from "@/lib/hooks/use-default-project";
@@ -93,6 +94,14 @@ function isBackendUnavailable(error: unknown): boolean {
 
 function coerceId(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+// Prepend `{ value, label }` to an option list when that id isn't already
+// present, so a Select bound to it renders its label instead of a blank trigger.
+function ensureOption(options: NamedOption[], id: unknown, name?: string | null): NamedOption[] {
+  const value = coerceId(id);
+  if (!value || options.some((option) => option.value === value)) return options;
+  return [{ value, label: name || `#${value}` }, ...options];
 }
 
 /**
@@ -297,6 +306,51 @@ export function CoordinatorTargetsPage() {
       .filter((option) => option.value)
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [optionsData]);
+
+  // The `optionsData` sets above list only indicators/coordinators that ALREADY
+  // have a target — right for the filter bar, but wrong for the create/bulk/edit
+  // dialogs, which must be able to assign a target to any of the project's
+  // indicators (not just the ones already targeted). Source the dialogs' full
+  // indicator set from the project's own indicators (light detail ≈0.5s), and
+  // their coordinators from the authoritative project-hierarchy set.
+  const selectedProjectIdNumber =
+    filters.projectId !== "all" && filters.projectId ? Number(filters.projectId) : null;
+  const { data: projectDetail } = useProject(
+    canEditTargets ? selectedProjectIdNumber : null,
+    { light: true },
+  );
+  const dialogIndicatorOptions = useMemo<NamedOption[]>(() => {
+    const projectIndicators =
+      (projectDetail as { project_indicators?: ProjectIndicatorTarget[] } | undefined)
+        ?.project_indicators ?? [];
+    const byId = new Map<string, string>();
+    for (const item of projectIndicators) {
+      const value = coerceId(item.indicator);
+      if (!value || byId.has(value)) continue;
+      byId.set(value, item.indicator_name || `Indicator ${value}`);
+    }
+    // Fall back to the target-derived set before the project detail resolves (or
+    // when no project is chosen) so the dialogs are never empty.
+    if (byId.size === 0) return indicatorOptions;
+    return Array.from(byId.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [projectDetail, indicatorOptions]);
+  const dialogCoordinatorOptions = filterCoordinatorOptions;
+
+  // The edit dialog opens on an EXISTING target whose coordinator/indicator may
+  // sit outside the clean project sets (e.g. a legacy target on an org that is no
+  // longer a project coordinator). Guarantee the record's own selection is
+  // present so its Select isn't rendered blank.
+  const editIndicatorOptions = useMemo<NamedOption[]>(
+    () => ensureOption(dialogIndicatorOptions, editTarget?.indicator_id, editTarget?.indicator_name),
+    [dialogIndicatorOptions, editTarget],
+  );
+  const editCoordinatorOptions = useMemo<NamedOption[]>(
+    () =>
+      ensureOption(dialogCoordinatorOptions, editTarget?.coordinator_id, editTarget?.coordinator_name),
+    [dialogCoordinatorOptions, editTarget],
+  );
 
   const fiscalYears = useMemo(
     () =>
@@ -620,8 +674,8 @@ export function CoordinatorTargetsPage() {
           onOpenChange={setCreateOpen}
           submitting={saving}
           projects={projectOptions}
-          coordinators={coordinatorOptions}
-          indicators={indicatorOptions}
+          coordinators={dialogCoordinatorOptions}
+          indicators={dialogIndicatorOptions}
           defaultProjectId={filters.projectId !== "all" ? filters.projectId : undefined}
           onSubmit={handleSaveTarget}
         />
@@ -636,8 +690,8 @@ export function CoordinatorTargetsPage() {
           submitting={saving}
           existing={editTarget}
           projects={projectOptions}
-          coordinators={coordinatorOptions}
-          indicators={indicatorOptions}
+          coordinators={editCoordinatorOptions}
+          indicators={editIndicatorOptions}
           onSubmit={handleSaveTarget}
         />
       ) : null}
@@ -648,8 +702,8 @@ export function CoordinatorTargetsPage() {
           onOpenChange={setBulkAssignOpen}
           submitting={bulkSaving}
           projects={projectOptions}
-          coordinators={coordinatorOptions}
-          indicators={indicatorOptions}
+          coordinators={dialogCoordinatorOptions}
+          indicators={dialogIndicatorOptions}
           preselectedIndicatorId={filters.indicatorId !== "all" ? filters.indicatorId : null}
           defaultProjectId={filters.projectId !== "all" ? filters.projectId : undefined}
           onSubmit={handleBulkAssign}
