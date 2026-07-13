@@ -6,7 +6,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import models, transaction, IntegrityError
@@ -110,8 +110,21 @@ class IndicatorViewSet(viewsets.ModelViewSet):
         if user.is_superuser or user.is_staff or user.role == 'admin':
             return queryset
         elif user.organization:
+            # An indicator is tagged with its workbook reporting roster — the
+            # coordinator plus the sub-grantees that report on it — not the
+            # reviewer's own org. A coordinator (or higher-tier M&E) reviews its
+            # sub-grantees' submissions, so it must SEE indicators reported on by
+            # any org beneath it in the hierarchy; otherwise the review UI can't
+            # resolve the record's indicator (blank picker + missing disaggregation
+            # config). Read is scoped to the caller's org subtree; writes stay
+            # pinned to the caller's own org tag so edit rights aren't widened.
+            if self.request.method in SAFE_METHODS:
+                from organizations.access import get_user_organization_ids
+                scope_ids = get_user_organization_ids(user) or [user.organization_id]
+            else:
+                scope_ids = [user.organization_id]
             return queryset.filter(
-                models.Q(organizations=user.organization) | models.Q(organizations__isnull=True)
+                models.Q(organizations__in=scope_ids) | models.Q(organizations__isnull=True)
             ).distinct()
         return queryset.filter(organizations__isnull=True)
     
