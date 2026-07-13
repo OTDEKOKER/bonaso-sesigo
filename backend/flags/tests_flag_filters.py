@@ -127,3 +127,12 @@ class FlagFilterTests(APITestCase):
         ids = self._ids(self.client.get("/api/flags/"))
         self.assertEqual(
             ids, {self.flag_p1_x_a.id, self.flag_p1_y_a.id, self.flag_p2_x_b.id})
+
+    def test_page_size_query_param_is_honoured(self):
+        # Without page_size_query_param the endpoint would ignore this and cap at
+        # the default page size, silently truncating a filtered result set.
+        resp = self.client.get("/api/flags/", {"page_size": "2"})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual(resp.data["count"], 3)
+        self.assertEqual(len(resp.data["results"]), 2)
+        self.assertIsNotNone(resp.data["next"])

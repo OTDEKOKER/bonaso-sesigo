@@ -6,6 +6,7 @@ from users.permissions import HasModulePermission
 import django_filters
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db import models
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids
@@ -14,6 +15,15 @@ from aggregates.models import Aggregate
 
 from .models import Flag, FlagComment
 from .serializers import FlagSerializer, FlagCommentSerializer
+
+
+class FlagPagination(PageNumberPagination):
+    """Let the Flags page request a large page so a filtered/searched result set
+    is shown in full (the default 20 would silently truncate filtered results)."""
+
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 1000
 
 
 class FlagFilterSet(django_filters.FilterSet):
@@ -82,6 +92,7 @@ class FlagViewSet(viewsets.ModelViewSet):
     required_module = 'flags'
     serializer_class = FlagSerializer
     permission_classes = [IsAuthenticated, HasModulePermission]
+    pagination_class = FlagPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = FlagFilterSet
     search_fields = ['title', 'description']
