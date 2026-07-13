@@ -456,6 +456,48 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
     [reviewingAggregate],
   );
 
+  // The indicator/project/organization option lists are scoped to the reviewer's
+  // access, but a queued record can reference an entity outside that scope (e.g.
+  // an org-scoped indicator the reviewer's org isn't linked to). A Radix Select
+  // whose value has no matching item renders blank, so guarantee the record's own
+  // selection is always present as an option — using the denormalized *_name for
+  // its label — otherwise the correction dropdowns show empty.
+  const correctionIndicatorOptions = useMemo(() => {
+    if (!reviewingAggregate) return indicators;
+    const currentId = String(reviewingAggregate.indicator ?? "");
+    if (!currentId || indicators.some((option) => String(option.id) === currentId)) {
+      return indicators;
+    }
+    const label =
+      reviewingAggregate.indicator_name ||
+      indicatorNameById.get(currentId) ||
+      `Indicator ${currentId}`;
+    return [{ id: currentId, name: label }, ...indicators];
+  }, [indicators, indicatorNameById, reviewingAggregate]);
+
+  const correctionProjectOptions = useMemo(() => {
+    if (!reviewingAggregate) return projects;
+    const currentId = String(reviewingAggregate.project ?? "");
+    if (!currentId || projects.some((option) => String(option.id) === currentId)) {
+      return projects;
+    }
+    const label =
+      reviewingAggregate.project_name ||
+      projectNameById.get(currentId) ||
+      `Project ${currentId}`;
+    return [{ id: currentId, name: label }, ...projects];
+  }, [projects, projectNameById, reviewingAggregate]);
+
+  const correctionOrganizationOptions = useMemo(() => {
+    if (!reviewingAggregate) return organizations;
+    const currentId = String(reviewingAggregate.organization ?? "");
+    if (!currentId || organizations.some((option) => String(option.id) === currentId)) {
+      return organizations;
+    }
+    const label = reviewingAggregate.organization_name || `Organization ${currentId}`;
+    return [{ id: currentId, name: label }, ...organizations];
+  }, [organizations, reviewingAggregate]);
+
   const loadCorrectionDraft = (aggregate: Aggregate) => {
     const draft = buildCorrectionDraft(aggregate, indicatorById);
     setCorrectionIndicatorId(draft.indicatorId);
@@ -1242,7 +1284,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                                   <SelectValue placeholder="Select indicator" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {indicators.map((indicatorOption) => (
+                                  {correctionIndicatorOptions.map((indicatorOption) => (
                                     <SelectItem key={indicatorOption.id} value={String(indicatorOption.id)}>
                                       {indicatorOption.name}
                                     </SelectItem>
@@ -1260,7 +1302,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                                   <SelectValue placeholder="Select project" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {projects.map((projectOption) => (
+                                  {correctionProjectOptions.map((projectOption) => (
                                     <SelectItem key={projectOption.id} value={String(projectOption.id)}>
                                       {projectOption.name}
                                     </SelectItem>
@@ -1281,7 +1323,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
                                   <SelectValue placeholder="Select organization" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {organizations.map((organizationOption) => (
+                                  {correctionOrganizationOptions.map((organizationOption) => (
                                     <SelectItem
                                       key={organizationOption.id}
                                       value={String(organizationOption.id)}
