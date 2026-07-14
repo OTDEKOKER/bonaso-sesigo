@@ -315,7 +315,7 @@ function ServicePathwayCardsPanel({
             to choose the indicators for each pathway stage.
           </div>
         ) : (
-          <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {normalizedItems.map((item) => {
               const maxStageValue = Math.max(...item.stages.map((stage) => stage.value), 1);
               return (
