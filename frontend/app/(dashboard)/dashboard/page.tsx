@@ -1208,6 +1208,7 @@ function DashboardPageContent({
         selectedQuarter,
         includeHivPreventionMessageTypeByCso: false,
         servicePathwayConfig,
+        selectedProjectId: selectedProjectId || null,
         isLoading: aggregatesLoading || indicatorsLoading || !analyticsEnabled,
         hasError: Boolean(aggregatesError),
       });
@@ -1224,6 +1225,7 @@ function DashboardPageContent({
       indicatorsLoading,
       organizations,
       scopedOrganizationIds,
+      selectedProjectId,
       servicePathwayConfig,
     ],
   );

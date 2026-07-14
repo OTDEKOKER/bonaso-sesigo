@@ -265,6 +265,7 @@ function ServicePathwayCardsPanel({
                 ? stage.label
                 : `Stage ${stageIndex + 1}`,
             value: toSafeNumber(stage.value),
+            target: toSafeNumber(stage.target),
           })),
           title: typeof item.title === "string" && item.title.trim() ? item.title : "Pathway",
           total: toSafeNumber(item.total),
@@ -314,7 +315,7 @@ function ServicePathwayCardsPanel({
             to choose the indicators for each pathway stage.
           </div>
         ) : (
-          <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {normalizedItems.map((item) => {
               const maxStageValue = Math.max(...item.stages.map((stage) => stage.value), 1);
               return (
@@ -341,15 +342,23 @@ function ServicePathwayCardsPanel({
 
                   <div className="space-y-3">
                     {item.stages.map((stage) => {
+                      // With a target, the bar shows progress toward it (actual/target);
+                      // otherwise it falls back to relative-to-largest-stage sizing.
                       const width =
-                        stage.value <= 0
-                          ? 0
-                          : clamp(Math.round((stage.value / maxStageValue) * 100), 0, 100);
+                        stage.target > 0
+                          ? clamp(Math.round((stage.value / stage.target) * 100), 0, 100)
+                          : stage.value <= 0
+                            ? 0
+                            : clamp(Math.round((stage.value / maxStageValue) * 100), 0, 100);
                       return (
                         <div key={`${item.id}-${stage.label}`} className="space-y-1.5">
                           <div className="flex items-center justify-between gap-3 text-xs">
                             <span className="min-w-0 break-words font-medium text-foreground">{stage.label}</span>
-                            <span className="shrink-0 text-muted-foreground">{formatWholeNumber(stage.value)}</span>
+                            <span className="shrink-0 text-muted-foreground">
+                              {stage.target > 0
+                                ? `${formatWholeNumber(stage.value)} / ${formatWholeNumber(stage.target)}`
+                                : formatWholeNumber(stage.value)}
+                            </span>
                           </div>
                           <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
                             <div

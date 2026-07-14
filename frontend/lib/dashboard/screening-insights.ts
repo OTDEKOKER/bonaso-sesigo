@@ -59,7 +59,7 @@ export type ScreeningDashboardInsights = {
   servicePathways: Array<{
     id: string;
     title: string;
-    stages: Array<{ id: string; color: string; label: string; value: number }>;
+    stages: Array<{ id: string; color: string; label: string; value: number; target: number }>;
     total: number;
     indicatorDetails: Array<{
       stageId: string;
@@ -303,6 +303,9 @@ type BuildHomeDashboardScreeningInsightsInput = {
   selectedQuarter?: 1 | 2 | 3 | 4 | null;
   includeHivPreventionMessageTypeByCso?: boolean;
   servicePathwayConfig?: ConfiguredPathway[] | null;
+  // When a single project is selected, pathway stage TARGETS are summed only for
+  // that project (so actual/target stay apples-to-apples); null = all projects.
+  selectedProjectId?: string | null;
   isLoading: boolean;
   hasError: boolean;
 };
@@ -824,6 +827,7 @@ export function buildHomeDashboardScreeningInsights({
   selectedQuarter = null,
   includeHivPreventionMessageTypeByCso = true,
   servicePathwayConfig = null,
+  selectedProjectId = null,
   isLoading,
   hasError,
 }: BuildHomeDashboardScreeningInsightsInput): ScreeningDashboardInsights {
@@ -1026,6 +1030,7 @@ export function buildHomeDashboardScreeningInsights({
     Array<{ cardId: string; stageId: string; stageLabel: string; color?: string }>
   >();
   const configPathwayTotals = new Map<string, Map<string, number>>();
+  const configPathwayTargets = new Map<string, Map<string, number>>();
   const configPathwayDetails = new Map<
     string,
     Map<string, { stageId: string; stageLabel: string; code: string; name: string; value: number }>
@@ -1033,6 +1038,7 @@ export function buildHomeDashboardScreeningInsights({
   if (hasConfiguredPathways) {
     for (const pathway of configuredPathways) {
       configPathwayTotals.set(pathway.id, new Map(pathway.stages.map((stage) => [stage.id, 0])));
+      configPathwayTargets.set(pathway.id, new Map(pathway.stages.map((stage) => [stage.id, 0])));
       configPathwayDetails.set(pathway.id, new Map());
       for (const stage of pathway.stages) {
         for (const indicatorId of stage.indicatorIds || []) {
@@ -1410,6 +1416,22 @@ export function buildHomeDashboardScreeningInsights({
         quarterTargetValue !== null ? quarterTargetValue : toSafeNumber(targetRow.target_value);
       if (targetValue <= 0) continue;
 
+      // Config-driven pathway TARGETS: sum this indicator's target into each stage
+      // it feeds. When a single project is filtered, count only that project's
+      // target so the card's actual/target stay apples-to-apples.
+      if (hasConfiguredPathways) {
+        const configTargetMatches = configStageByIndicatorId.get(indicatorId);
+        if (
+          configTargetMatches &&
+          (!selectedProjectId || String(targetRow.project || "") === String(selectedProjectId))
+        ) {
+          for (const match of configTargetMatches) {
+            const targets = configPathwayTargets.get(match.cardId);
+            if (targets) targets.set(match.stageId, (targets.get(match.stageId) || 0) + targetValue);
+          }
+        }
+      }
+
       if (hivTestingKey) {
         const hivTestingEntry = hivTestingTotals.get(hivTestingKey);
         if (hivTestingEntry) {
@@ -1644,11 +1666,13 @@ export function buildHomeDashboardScreeningInsights({
     // period), not which cards appear.
     servicePathways: configuredPathways.map((pathway, pathwayIndex) => {
       const stageValues = configPathwayTotals.get(pathway.id);
+      const stageTargets = configPathwayTargets.get(pathway.id);
       const stages = pathway.stages.map((stage, stageIndex) => ({
         id: stage.id,
         color: stage.color || PATHWAY_STAGE_FALLBACK_COLORS[stageIndex % PATHWAY_STAGE_FALLBACK_COLORS.length],
         label: stage.label,
         value: stageValues?.get(stage.id) || 0,
+        target: stageTargets?.get(stage.id) || 0,
       }));
       return {
         id: pathway.id || `pathway-${pathwayIndex}`,
