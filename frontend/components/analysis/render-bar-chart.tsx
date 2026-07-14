@@ -24,6 +24,7 @@ import {
   getSeriesColor,
   shouldUseHorizontalBarLayout,
   truncateAxisLabel,
+  valueAxisTitle,
 } from "@/components/analysis/chart-theme";
 import type { BarLikeChart, DrilldownTarget } from "@/lib/visualization/engine";
 
@@ -57,7 +58,7 @@ export function RenderBarChart(props: {
 }) {
   const { chart, onDrilldown, density = "normal", size = "medium", activeFilters = {} } = props;
   const isHorizontal = shouldUseHorizontalBarLayout(chart.data, chart.xKey);
-  const showValueLabels = chart.data.length <= 8 && chart.series.length === 1;
+  const showValueLabels = chart.data.length <= 12 && chart.series.length === 1;
   const primaryFilterValues = chart.drilldownDimension ? activeFilters[chart.drilldownDimension] || [] : [];
   const secondaryFilterValues = chart.secondaryDrilldownDimension
     ? activeFilters[chart.secondaryDrilldownDimension] || []
@@ -73,8 +74,8 @@ export function RenderBarChart(props: {
           margin={{
             top: 8,
             right: 28,
-            left: isHorizontal ? 24 : 4,
-            bottom: isHorizontal ? 4 : 18,
+            left: isHorizontal ? 24 : 8,
+            bottom: isHorizontal ? 22 : 18,
           }}
           barCategoryGap={isHorizontal ? "18%" : "24%"}
         >
@@ -92,6 +93,7 @@ export function RenderBarChart(props: {
                 tick={{ fill: "#64748b", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
+                label={valueAxisTitle(chart.yAxisLabel, "horizontal")}
               />
               <YAxis
                 type="category"
@@ -121,7 +123,8 @@ export function RenderBarChart(props: {
                 tick={{ fill: "#64748b", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
-                width={50}
+                width={64}
+                label={valueAxisTitle(chart.yAxisLabel, "vertical")}
               />
             </>
           )}

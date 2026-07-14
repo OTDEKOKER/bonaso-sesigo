@@ -101,6 +101,29 @@ export function truncateAxisLabel(value: unknown, maxLength = 22) {
   return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
+// Recharts `label` config for the VALUE axis, so every chart carries a titled
+// axis (e.g. "Number of People") matching the reporting convention. Reads the
+// label the visualization engine already derives from the data — not hardcoded
+// per chart. Returns undefined when there is no label so nothing renders.
+export function valueAxisTitle(text: string | undefined | null, orientation: "vertical" | "horizontal") {
+  const value = String(text ?? "").trim();
+  if (!value) return undefined;
+  return orientation === "vertical"
+    ? {
+        value,
+        angle: -90 as const,
+        position: "insideLeft" as const,
+        offset: 6,
+        style: { textAnchor: "middle" as const, fill: "#64748b", fontSize: 11, fontWeight: 500 },
+      }
+    : {
+        value,
+        position: "insideBottom" as const,
+        offset: -2,
+        style: { textAnchor: "middle" as const, fill: "#64748b", fontSize: 11, fontWeight: 500 },
+      };
+}
+
 export function getSeriesColor(seriesKey: string, index: number) {
   const normalized = seriesKey.toLowerCase();
   if (normalized === "male" || normalized.includes("male")) {

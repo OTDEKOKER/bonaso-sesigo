@@ -3872,6 +3872,46 @@ export function DashboardChartCard(props: DashboardChartCardProps) {
                       paddingAngle={pieDisplayData.length > 1 ? 2 : 0}
                       stroke="#ffffff"
                       strokeWidth={2}
+                      labelLine={false}
+                      label={(sliceProps: {
+                        cx?: number;
+                        cy?: number;
+                        midAngle?: number;
+                        innerRadius?: number;
+                        outerRadius?: number;
+                        value?: number;
+                        percent?: number;
+                      }) => {
+                        // On-slice value/percentage labels, matching the report's
+                        // pie convention. Tiny slices stay in the Breakdown legend.
+                        const pct = (sliceProps.percent ?? 0) * 100;
+                        if (pct < 5) return <></>;
+                        const RADIAN = Math.PI / 180;
+                        const cx = Number(sliceProps.cx ?? 0);
+                        const cy = Number(sliceProps.cy ?? 0);
+                        const innerR = Number(sliceProps.innerRadius ?? 0);
+                        const outerR = Number(sliceProps.outerRadius ?? 0);
+                        const r = innerR + (outerR - innerR) * 0.5;
+                        const x = cx + r * Math.cos(-Number(sliceProps.midAngle ?? 0) * RADIAN);
+                        const y = cy + r * Math.sin(-Number(sliceProps.midAngle ?? 0) * RADIAN);
+                        const text =
+                          pct >= 8
+                            ? `${formatChartNumber(sliceProps.value)} (${formatChartPercent(pct)})`
+                            : formatChartPercent(pct);
+                        return (
+                          <text
+                            x={x}
+                            y={y}
+                            fill="#ffffff"
+                            fontSize={10}
+                            fontWeight={700}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                          >
+                            {text}
+                          </text>
+                        );
+                      }}
                     >
                       {pieDisplayData.map((entry, index) => (
                         <Cell key={entry.key} fill={getPresentationChartColor(index)} stroke={getPresentationChartColor(index)} />

@@ -24,6 +24,7 @@ import {
   getSeriesColor,
   shouldUseHorizontalBarLayout,
   truncateAxisLabel,
+  valueAxisTitle,
 } from "@/components/analysis/chart-theme";
 import type { BarLikeChart, DrilldownTarget } from "@/lib/visualization/engine";
 
@@ -82,8 +83,8 @@ export function RenderStackedBarChart(props: {
           margin={{
             top: 8,
             right: 28,
-            left: isHorizontal ? 24 : 4,
-            bottom: isHorizontal ? 4 : 18,
+            left: isHorizontal ? 24 : 8,
+            bottom: isHorizontal ? 22 : 18,
           }}
           barCategoryGap="20%"
         >
@@ -101,6 +102,7 @@ export function RenderStackedBarChart(props: {
                 tick={{ fill: "#64748b", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
+                label={valueAxisTitle(chart.yAxisLabel, "horizontal")}
               />
               <YAxis
                 type="category"
@@ -130,7 +132,8 @@ export function RenderStackedBarChart(props: {
                 tick={{ fill: "#64748b", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
-                width={50}
+                width={64}
+                label={valueAxisTitle(chart.yAxisLabel, "vertical")}
               />
             </>
           )}

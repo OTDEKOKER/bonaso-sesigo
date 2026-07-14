@@ -23,6 +23,7 @@ import {
   getChartHeightClass,
   getSeriesColor,
   truncateAxisLabel,
+  valueAxisTitle,
 } from "@/components/analysis/chart-theme";
 import type { BarLikeChart } from "@/lib/visualization/engine";
 
@@ -46,7 +47,7 @@ export function RenderLineChart(props: {
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={chart.data}
-          margin={{ top: 8, right: 28, left: 8, bottom: 8 }}
+          margin={{ top: 8, right: 28, left: 12, bottom: 8 }}
         >
           <defs>
             <linearGradient id="trendAreaFill" x1="0" y1="0" x2="0" y2="1">
@@ -80,7 +81,8 @@ export function RenderLineChart(props: {
             tick={{ fill: "#64748b", fontSize: 12 }}
             axisLine={false}
             tickLine={false}
-            width={52}
+            width={64}
+            label={valueAxisTitle(chart.yAxisLabel, "vertical")}
           />
           <Tooltip cursor={{ stroke: "#cbd5e1", strokeDasharray: "4 4" }} content={<ExecutiveTooltip />} />
           {chart.series[0] ? (
