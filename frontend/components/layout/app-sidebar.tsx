@@ -267,7 +267,7 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
     href: "/analysis",
     icon: <FileBarChart className="h-4 w-4" />,
     children: [
-      { title: "Reports", href: "/analysis/reports" },
+      { title: "Analytics", href: "/analysis/reports" },
       { title: "Dashboards", href: "/analysis/dashboards" },
     ],
   },
