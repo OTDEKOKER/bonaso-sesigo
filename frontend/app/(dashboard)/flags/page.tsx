@@ -129,7 +129,7 @@ export default function FlagsPage() {
   );
 
   const organizationOptions = useMemo(() => orgData?.results ?? [], [orgData]);
-  const projectOptions = useMemo(() => projectData ?? [], [projectData]);
+  const projectOptions = useMemo(() => projectData?.results ?? [], [projectData]);
   const indicatorOptions = useMemo(
     () =>
       (indicatorData ?? []).map((ind) => ({
