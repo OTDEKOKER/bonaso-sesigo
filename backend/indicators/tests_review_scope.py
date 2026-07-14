@@ -18,10 +18,10 @@ class IndicatorReviewScopeTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
         # HQ -> coordinator -> sub-grantee, plus an unrelated org.
-        cls.hq = Organization.objects.create(name="HQ")
-        cls.coordinator = Organization.objects.create(name="Coordinator", parent=cls.hq)
-        cls.subgrantee = Organization.objects.create(name="Sub-grantee", parent=cls.coordinator)
-        cls.other = Organization.objects.create(name="Unrelated")
+        cls.hq = Organization.objects.create(name="HQ", code="RS_HQ")
+        cls.coordinator = Organization.objects.create(name="Coordinator", code="RS_COORD", parent=cls.hq)
+        cls.subgrantee = Organization.objects.create(name="Sub-grantee", code="RS_SUB", parent=cls.coordinator)
+        cls.other = Organization.objects.create(name="Unrelated", code="RS_UNREL")
 
         # Reporting-roster indicator: tagged to the coordinator + sub-grantee only.
         cls.roster_ind = Indicator.objects.create(name="Screened", code="RS_ROSTER", type="number")
