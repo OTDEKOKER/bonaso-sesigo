@@ -11,15 +11,19 @@
  * chart immediately reflects the change.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -32,6 +36,8 @@ import {
   funderReportsService, type GeneratedFigure, type ReportFigure, type ReportSection,
 } from "@/lib/api/services/funderReports";
 import { FigureChart } from "@/components/funder-reports/FigureChart";
+import { getIndicatorDisplayName } from "@/lib/indicators/display-name";
+import { cn } from "@/lib/utils";
 
 const CHART_TYPES = ["achieved_vs_target", "grouped_bar", "stacked_bar", "horizontal_bar", "line", "pie", "heatmap", "cascade", "table"];
 const DIMENSIONS = ["none", "organization", "coordinator", "indicator", "sex", "age", "key_population", "district", "period"];
@@ -56,8 +62,10 @@ export function FigureEditor(props: Props) {
   const { toast } = useToast();
   const [form, setForm] = useState<Partial<ReportFigure>>(figure);
   const [mappings, setMappings] = useState(figure.mappings ?? []);
-  const [indicators, setIndicators] = useState<Array<{ id: number; name: string; code?: string }>>([]);
+  const [indicators, setIndicators] = useState<Array<{ id: number; name: string; short_name?: string; code?: string }>>([]);
   const [newIndicator, setNewIndicator] = useState<string>("");
+  const [indicatorPickerOpen, setIndicatorPickerOpen] = useState(false);
+  const [indicatorSearch, setIndicatorSearch] = useState("");
   const [newRole, setNewRole] = useState<string>("achieved");
   const [preview, setPreview] = useState<GeneratedFigure | null>(null);
   const [saving, setSaving] = useState(false);
@@ -67,10 +75,20 @@ export function FigureEditor(props: Props) {
   useEffect(() => {
     if (!open) return;
     indicatorsService.listAll().then((rows) =>
-      setIndicators(rows.map((r) => ({ id: Number(r.id), name: r.name, code: r.code })))).catch(() => {});
+      setIndicators(rows.map((r) => ({ id: Number(r.id), name: r.name, short_name: r.short_name, code: r.code })))).catch(() => {});
   }, [open]);
 
   const set = (k: keyof ReportFigure, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Search matches name / short name / code, but the UI only ever shows the name.
+  const filteredIndicators = useMemo(() => {
+    const term = indicatorSearch.trim().toLowerCase();
+    if (!term) return indicators;
+    return indicators.filter((i) =>
+      i.name.toLowerCase().includes(term)
+      || (i.short_name?.toLowerCase().includes(term) ?? false)
+      || (i.code?.toLowerCase().includes(term) ?? false));
+  }, [indicators, indicatorSearch]);
 
   const status = useMemo(() => {
     if (mappings.length === 0 && form.grouping_dimension !== "none") return { label: "Needs indicator mapping", variant: "destructive" as const };
@@ -196,12 +214,39 @@ export function FigureEditor(props: Props) {
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <Label>Add indicator</Label>
-                  <Select value={newIndicator} onValueChange={setNewIndicator}>
-                    <SelectTrigger><SelectValue placeholder="Select indicator" /></SelectTrigger>
-                    <SelectContent className="max-h-72">
-                      {indicators.map((i) => <SelectItem key={i.id} value={String(i.id)}>{i.code ? `${i.code} · ` : ""}{i.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={indicatorPickerOpen} onOpenChange={setIndicatorPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                        <span className="truncate text-left">
+                          {newIndicator
+                            ? getIndicatorDisplayName(indicators.find((i) => i.id === Number(newIndicator)), "Select indicator")
+                            : "Select indicator"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[calc(100vw-2rem)] p-0 sm:w-[420px]">
+                      <Command shouldFilter={false}>
+                        <CommandInput placeholder="Search indicators…" value={indicatorSearch} onValueChange={setIndicatorSearch} />
+                        <CommandList>
+                          <CommandEmpty>No indicators found.</CommandEmpty>
+                          <CommandGroup>
+                            {filteredIndicators.map((i) => (
+                              <CommandItem
+                                key={i.id}
+                                value={String(i.id)}
+                                onSelect={() => { setNewIndicator(String(i.id)); setIndicatorPickerOpen(false); setIndicatorSearch(""); }}
+                                className="flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate">{getIndicatorDisplayName(i, `Indicator ${i.id}`)}</span>
+                                <Check className={cn("h-4 w-4 shrink-0", newIndicator === String(i.id) ? "opacity-100" : "opacity-0")} />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="w-40">
                   <Label>Role</Label>

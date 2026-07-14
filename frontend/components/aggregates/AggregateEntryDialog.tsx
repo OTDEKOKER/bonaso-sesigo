@@ -336,11 +336,6 @@ export function AggregateEntryDialog(props: AggregateEntryDialogProps) {
                             >
                               <div className="min-w-0">
                                 <div className="truncate">{indicator.name}</div>
-                                {indicator.code ? (
-                                  <div className="text-xs text-muted-foreground">
-                                    {indicator.code}
-                                  </div>
-                                ) : null}
                               </div>
                               <Check
                                 className={cn("h-4 w-4 shrink-0", checked ? "opacity-100" : "opacity-0")}
@@ -519,9 +514,6 @@ export function AggregateEntryDialog(props: AggregateEntryDialogProps) {
                     <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <h3 className="text-base font-semibold">{indicator.name}</h3>
-                        {indicator.code ? (
-                          <p className="text-sm text-muted-foreground">{indicator.code}</p>
-                        ) : null}
                       </div>
                       <div className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                         {config.hasDisaggregates ? "Disaggregated entry" : "Total only"}

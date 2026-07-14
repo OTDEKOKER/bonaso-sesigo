@@ -126,7 +126,7 @@ export default function DisaggregationConfigEditor({
                 .filter((o) => o.id !== selfId)
                 .map((o) => (
                   <SelectItem key={o.id} value={String(o.id)}>
-                    {o.name}{o.code ? ` (${o.code})` : ""}
+                    {o.name}
                   </SelectItem>
                 ))}
             </SelectContent>

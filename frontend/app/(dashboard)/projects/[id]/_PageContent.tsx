@@ -2128,13 +2128,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     const indicatorId = coerceId(indicatorRow.indicator)
                     const fallbackName = String(indicatorRow.indicator_name || `Indicator ${indicatorId}`)
                     const indicatorName = indicatorLookup.get(indicatorId)?.name || fallbackName
-                    const indicatorCode =
-                      indicatorLookup.get(indicatorId)?.code || String(indicatorRow.indicator_code || "—")
                     return (
                       <div key={`project-indicator-setup-${indicatorRow.id}`} className="rounded-lg border border-border p-4">
                         <div className="mb-3">
                           <p className="text-sm font-medium">{indicatorName}</p>
-                          <p className="text-xs text-muted-foreground">{indicatorCode}</p>
                         </div>
                         <div className="space-y-3">
                           <div className="space-y-2">

@@ -162,7 +162,7 @@ export function AggregateAutoCalcDialog(props: AggregateAutoCalcDialogProps) {
                   .filter((indicator) => indicator.type === "number" || indicator.type === "percentage")
                   .map((indicator) => (
                     <SelectItem key={indicator.id} value={String(indicator.id)}>
-                      {indicator.name} ({indicator.code})
+                      {indicator.name}
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -178,7 +178,7 @@ export function AggregateAutoCalcDialog(props: AggregateAutoCalcDialogProps) {
               <SelectContent>
                 {indicators.map((indicator) => (
                   <SelectItem key={indicator.id} value={String(indicator.id)}>
-                    {indicator.name} ({indicator.code})
+                    {indicator.name}
                   </SelectItem>
                 ))}
               </SelectContent>

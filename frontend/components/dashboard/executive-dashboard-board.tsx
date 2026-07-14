@@ -444,7 +444,6 @@ function ServicePathwayCardsPanel({
                             <p className="mt-1 text-sm font-medium text-foreground">
                               {indicator.name}
                             </p>
-                            <p className="mt-1 text-xs text-muted-foreground">{indicator.code || "No code"}</p>
                           </div>
                           <div className="text-right text-sm text-muted-foreground">
                             {formatWholeNumber(indicator.value)}

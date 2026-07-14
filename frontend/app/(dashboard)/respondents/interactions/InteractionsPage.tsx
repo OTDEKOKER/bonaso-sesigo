@@ -997,7 +997,6 @@ export default function InteractionsPage() {
                       const type = normalizeIndicatorType(rawType as RawIndicatorType)
                       const isBooleanType = rawType.toLowerCase() === "boolean"
                       const labelText = getAssessmentQuestionText(item, indicator)
-                      const codeText = indicator?.code || item.indicator_detail?.code || ""
                       const options = optionsByIndicatorId[indicatorId] || []
                       const subLabels = getAssessmentQuestionSubLabels(item, indicator)
                       const currentValue = answersByIndicatorId[indicatorId]
@@ -1010,9 +1009,6 @@ export default function InteractionsPage() {
                                 {labelText}
                                 {item.is_required ? " *" : ""}
                               </Label>
-                              {codeText ? (
-                                <p className="text-xs text-muted-foreground">{codeText}</p>
-                              ) : null}
                               {item.help_text ? (
                                 <p className="text-xs text-muted-foreground">{item.help_text}</p>
                               ) : null}

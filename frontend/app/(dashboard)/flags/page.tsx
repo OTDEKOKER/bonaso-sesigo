@@ -134,7 +134,7 @@ export default function FlagsPage() {
     () =>
       (indicatorData ?? []).map((ind) => ({
         id: ind.id,
-        name: ind.code ? `${ind.code} — ${ind.name}` : ind.name,
+        name: ind.name,
       })),
     [indicatorData],
   );
