@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search, Filter, CheckCircle2, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -75,28 +75,32 @@ export default function SocialPage() {
 
   const { data: organizationsData } = useAllOrganizations();
   const { data: indicatorsData } = useIndicators();
+  // Filter server-side so search/platform apply across ALL posts, not just the
+  // first loaded page (the list is paginated).
+  const [debouncedPostSearch, setDebouncedPostSearch] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedPostSearch(postSearch.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [postSearch]);
+  const postFilters = useMemo(() => {
+    const f: Record<string, string> = { page_size: "500" };
+    if (debouncedPostSearch) f.search = debouncedPostSearch;
+    if (postPlatformFilter !== "all") f.platform = postPlatformFilter;
+    return f;
+  }, [debouncedPostSearch, postPlatformFilter]);
   const {
     data: postsData,
     isLoading: postsLoading,
     error: postsError,
     mutate: mutatePosts,
-  } = useSocialPosts();
+  } = useSocialPosts(postFilters);
 
   const organizations = organizationsData?.results || [];
   const indicators = indicatorsData?.results || [];
   const posts = useMemo(() => postsData?.results ?? [], [postsData?.results]);
 
-  const filteredPosts = useMemo(() => {
-    const query = postSearch.toLowerCase();
-    return posts.filter((post) => {
-      const matchesSearch =
-        post.title.toLowerCase().includes(query) ||
-        post.url.toLowerCase().includes(query);
-      const matchesPlatform =
-        postPlatformFilter === "all" || post.platform === postPlatformFilter;
-      return matchesSearch && matchesPlatform;
-    });
-  }, [posts, postSearch, postPlatformFilter]);
+  // Search + platform applied server-side (see postFilters); render as-is.
+  const filteredPosts = posts;
 
   const postStats = useMemo(() => {
     const totalViews = posts.reduce((sum, post) => sum + (post.views || 0), 0);

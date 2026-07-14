@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { Megaphone, Plus, Search, Loader2, Edit, Trash2, Globe, Building2, FolderKanban, Save } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -65,7 +65,20 @@ export default function AnnouncementsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null)
 
-  const { data: announcementsData, isLoading, mutate } = useAnnouncements()
+  // Filter server-side so search/scope apply across ALL announcements, not just
+  // the first loaded page (the list is paginated).
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(handle)
+  }, [search])
+  const announcementFilters = useMemo(() => {
+    const f: Record<string, string> = { page_size: "500" }
+    if (debouncedSearch) f.search = debouncedSearch
+    if (scopeFilter !== "all") f.scope = scopeFilter
+    return f
+  }, [debouncedSearch, scopeFilter])
+  const { data: announcementsData, isLoading, mutate } = useAnnouncements(announcementFilters)
   const { data: orgsData } = useAllOrganizations()
   const { data: projectsData } = useProjects()
 
@@ -73,17 +86,8 @@ export default function AnnouncementsPage() {
   const organizations = orgsData?.results || []
   const projects = projectsData?.results || []
 
-  const filtered = useMemo(() => {
-    let list = announcements
-    if (scopeFilter !== "all") list = list.filter((a) => a.scope === scopeFilter)
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(
-        (a) => a.title.toLowerCase().includes(q) || a.content.toLowerCase().includes(q),
-      )
-    }
-    return list
-  }, [announcements, scopeFilter, search])
+  // Scope + search applied server-side (see announcementFilters); render as-is.
+  const filtered = announcements
 
   const openCreate = () => {
     setEditingId(null)

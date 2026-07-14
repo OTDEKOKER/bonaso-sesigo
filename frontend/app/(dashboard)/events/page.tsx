@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Calendar,
   MapPin,
@@ -73,11 +73,24 @@ export default function EventsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedIndicatorIds, setSelectedIndicatorIds] = useState<string[]>([]);
   const { data: indicatorsData } = useIndicators();
-  const { data: eventsData, mutate: mutateEvents } = useEvents();
+  // Filter server-side so search/status apply across ALL events, not just the
+  // first loaded page (the list is paginated).
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+  const eventFilters = useMemo(() => {
+    const f: Record<string, string> = { page_size: "500" };
+    if (debouncedSearch) f.search = debouncedSearch;
+    if (statusFilter !== "all") f.status = statusFilter;
+    return f;
+  }, [debouncedSearch, statusFilter]);
+  const { data: eventsData, mutate: mutateEvents } = useEvents(eventFilters);
   const { data: organizationsData } = useAllOrganizations();
 
   const [eventTitle, setEventTitle] = useState("");
@@ -308,16 +321,8 @@ export default function EventsPage() {
     link.click();
   };
 
-  const filteredEvents = events.filter((event) => {
-    const title = String(event.title || "").toLowerCase();
-    const location = String(event.location || "").toLowerCase();
-    const query = searchQuery.toLowerCase();
-    const matchesSearch =
-      query.length === 0 || title.includes(query) || location.includes(query);
-    const matchesStatus =
-      statusFilter === "all" || event.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Search + status are applied server-side (see eventFilters); render as-is.
+  const filteredEvents = events;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
