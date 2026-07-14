@@ -4,6 +4,12 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar, Clock3, Download, Filter, Loader2, RefreshCcw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -1203,7 +1209,7 @@ function AggregatesPageContent() {
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   };
 
-  const handleExport = async () => {
+  const handleExport = async (layout: "organization" | "single" = "organization") => {
     try {
       const exportOrganizationIds = Array.from(
         new Set(dedupedFilteredAggregates.map((aggregate) => String(aggregate.organization))),
@@ -1218,7 +1224,7 @@ function AggregatesPageContent() {
       }
       const exportRequest = {
         format: "excel",
-        sheet_layout: "organization",
+        sheet_layout: layout,
         search: searchQuery.trim() || undefined,
         project: projectFilter !== "all" ? projectFilter : undefined,
         organization: exportOrganizationIds.join(","),
@@ -1604,9 +1610,21 @@ function AggregatesPageContent() {
               />
             ) : null}
             {can("aggregates", "export") ? (
-              <Button variant="outline" onClick={handleExport}>
-                <Download className="mr-2 h-4 w-4" /> Export
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Download className="mr-2 h-4 w-4" /> Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleExport("single")}>
+                    Consolidated (one sheet)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport("organization")}>
+                    By organisation (sheet per org)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
 
             {autoCalcAvailable ? (
