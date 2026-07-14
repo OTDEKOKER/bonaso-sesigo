@@ -2225,8 +2225,10 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             generated_by=getattr(request.user, 'username', '') or '',
             period_start=period_start, period_end=period_end, period_label=period_label,
         )
+        # Strip path separators (a project code like "NSC2026/27" would otherwise
+        # turn the download filename into a non-existent subdirectory in the worker).
         period_slug = period_label.replace(' ', '_').replace('/', '-')
-        proj_code = (project.code or str(project.id)).replace(' ', '_')
+        proj_code = (project.code or str(project.id)).replace(' ', '_').replace('/', '-').replace('\\', '-')
         filename = f"programme_workbook_{proj_code}_{period_slug}.xlsx"
         response = HttpResponse(
             buf.read(),

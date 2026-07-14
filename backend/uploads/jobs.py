@@ -224,6 +224,9 @@ def _run_aggregate_view_export(job, *, view_action, request_path, fallback_name)
 
     content_type = response.get("Content-Type", "application/octet-stream")
     file_name = _content_disposition_filename(response.get("Content-Disposition", ""), fallback_name)
+    # Never let a separator in the filename escape the export-jobs dir (a project
+    # code like "NSC2026/27" would otherwise point write_bytes at a missing subdir).
+    file_name = file_name.replace("/", "-").replace("\\", "-").lstrip(".") or fallback_name
     output_dir = Path(settings.BASE_DIR) / "reports" / "export-jobs"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"export-job-{job.id}-{file_name}"
