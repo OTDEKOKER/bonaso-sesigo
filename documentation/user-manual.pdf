@@ -1,0 +1,944 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Type /Pages /Count 9 /Kids [5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R 21 0 R] >>
+endobj
+4 0 obj
+<< /Length 2054 >>
+stream
+BT
+/F2 20 Tf
+1 0 0 1 50 790 Tm
+(BONASO Data Portal User Manual) Tj
+/F2 15 Tf
+1 0 0 1 50 738 Tm
+(1. Purpose) Tj
+/F1 10.5 Tf
+1 0 0 1 50 710 Tm
+(This manual explains how to use the BONASO Data Portal to manage organizations, projects,) Tj
+/F1 10.5 Tf
+1 0 0 1 50 697 Tm
+(indicators, respondents, aggregates, reports, dashboards, and flags.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 670 Tm
+(The portal supports:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 651 Tm
+(? Data collection and tracking) Tj
+/F1 10.5 Tf
+1 0 0 1 50 632 Tm
+(? Project and indicator management) Tj
+/F1 10.5 Tf
+1 0 0 1 50 613 Tm
+(? Organization-based target setting) Tj
+/F1 10.5 Tf
+1 0 0 1 50 594 Tm
+(? Respondent and interaction management) Tj
+/F1 10.5 Tf
+1 0 0 1 50 575 Tm
+(? Analysis, reports, and dashboards) Tj
+/F1 10.5 Tf
+1 0 0 1 50 556 Tm
+(? Offline-first usage for supported workflows) Tj
+/F2 15 Tf
+1 0 0 1 50 521 Tm
+(2. Getting Started) Tj
+/F2 12 Tf
+1 0 0 1 50 479 Tm
+(Login) Tj
+/F1 10.5 Tf
+1 0 0 1 50 456 Tm
+(1. Open the portal in your browser.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 437 Tm
+(2. Enter your username or email and password.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 418 Tm
+(3. Select Sign In.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 391 Tm
+(If login fails:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 372 Tm
+(? Check your username and password.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 353 Tm
+(? Confirm the backend server is running.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 334 Tm
+(? Ask an administrator to verify your account permissions.) Tj
+/F2 12 Tf
+1 0 0 1 50 301 Tm
+(Main Navigation) Tj
+/F1 10.5 Tf
+1 0 0 1 50 278 Tm
+(The left sidebar gives access to:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 259 Tm
+(? Dashboard) Tj
+/F1 10.5 Tf
+1 0 0 1 50 240 Tm
+(? Organizations) Tj
+/F1 10.5 Tf
+1 0 0 1 50 221 Tm
+(? Users) Tj
+/F1 10.5 Tf
+1 0 0 1 50 202 Tm
+(? Projects) Tj
+/F1 10.5 Tf
+1 0 0 1 50 183 Tm
+(? Indicators) Tj
+/F1 10.5 Tf
+1 0 0 1 50 164 Tm
+(? Respondents) Tj
+/F1 10.5 Tf
+1 0 0 1 50 145 Tm
+(? Aggregates) Tj
+/F1 10.5 Tf
+1 0 0 1 50 126 Tm
+(? Events) Tj
+/F1 10.5 Tf
+1 0 0 1 50 107 Tm
+(? Social Media) Tj
+/F1 10.5 Tf
+1 0 0 1 50 88 Tm
+(? Uploads) Tj
+/F1 10.5 Tf
+1 0 0 1 50 69 Tm
+(? Analysis) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 2044 >>
+stream
+BT
+/F1 10.5 Tf
+1 0 0 1 50 790 Tm
+(? Flags) Tj
+/F1 10.5 Tf
+1 0 0 1 50 771 Tm
+(? Settings) Tj
+/F2 15 Tf
+1 0 0 1 50 736 Tm
+(3. Dashboard) Tj
+/F1 10.5 Tf
+1 0 0 1 50 708 Tm
+(Use the dashboard to see a quick summary of activity across the system.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 681 Tm
+(Typical dashboard information includes:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 662 Tm
+(? Active projects) Tj
+/F1 10.5 Tf
+1 0 0 1 50 643 Tm
+(? Recent activity) Tj
+/F1 10.5 Tf
+1 0 0 1 50 624 Tm
+(? Indicator and respondent summaries) Tj
+/F1 10.5 Tf
+1 0 0 1 50 605 Tm
+(? Alerts and data quality issues) Tj
+/F2 15 Tf
+1 0 0 1 50 570 Tm
+(4. Organizations) Tj
+/F1 10.5 Tf
+1 0 0 1 50 542 Tm
+(Use Organizations to view and manage implementing organizations.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 515 Tm
+(You can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 496 Tm
+(? Open an organization record) Tj
+/F1 10.5 Tf
+1 0 0 1 50 477 Tm
+(? View related users and linked work) Tj
+/F1 10.5 Tf
+1 0 0 1 50 458 Tm
+(? Understand parent-child organization structure) Tj
+/F1 10.5 Tf
+1 0 0 1 50 431 Tm
+(Organization records are important because targets and some data access are scoped by) Tj
+/F1 10.5 Tf
+1 0 0 1 50 418 Tm
+(organization.) Tj
+/F2 15 Tf
+1 0 0 1 50 383 Tm
+(5. Projects) Tj
+/F1 10.5 Tf
+1 0 0 1 50 355 Tm
+(Use Projects to manage implementation work, timelines, and participating organizations.) Tj
+/F2 12 Tf
+1 0 0 1 50 322 Tm
+(Project List) Tj
+/F1 10.5 Tf
+1 0 0 1 50 299 Tm
+(From the project list, you can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 280 Tm
+(? View all projects) Tj
+/F1 10.5 Tf
+1 0 0 1 50 261 Tm
+(? Search and filter projects) Tj
+/F1 10.5 Tf
+1 0 0 1 50 242 Tm
+(? Open a project detail page) Tj
+/F1 10.5 Tf
+1 0 0 1 50 223 Tm
+(? Create or edit a project) Tj
+/F2 12 Tf
+1 0 0 1 50 190 Tm
+(Project Detail) Tj
+/F1 10.5 Tf
+1 0 0 1 50 167 Tm
+(The project detail page shows:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 148 Tm
+(? Project status) Tj
+/F1 10.5 Tf
+1 0 0 1 50 129 Tm
+(? Timeline) Tj
+/F1 10.5 Tf
+1 0 0 1 50 110 Tm
+(? Linked organizations) Tj
+/F1 10.5 Tf
+1 0 0 1 50 91 Tm
+(? Project progress) Tj
+/F1 10.5 Tf
+1 0 0 1 50 72 Tm
+(? Tasks) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 1896 >>
+stream
+BT
+/F1 10.5 Tf
+1 0 0 1 50 790 Tm
+(? Deadlines) Tj
+/F1 10.5 Tf
+1 0 0 1 50 771 Tm
+(? Organization targets) Tj
+/F2 12 Tf
+1 0 0 1 50 738 Tm
+(Organization Targets in Projects) Tj
+/F1 10.5 Tf
+1 0 0 1 50 715 Tm
+(Projects now show a Targets tab.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 688 Tm
+(This tab groups targets by organization and shows:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 669 Tm
+(? Indicator) Tj
+/F1 10.5 Tf
+1 0 0 1 50 650 Tm
+(? Q1 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 631 Tm
+(? Q2 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 612 Tm
+(? Q3 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 593 Tm
+(? Q4 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 574 Tm
+(? Annual total) Tj
+/F1 10.5 Tf
+1 0 0 1 50 555 Tm
+(? Progress) Tj
+/F1 10.5 Tf
+1 0 0 1 50 528 Tm
+(This is useful when:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 509 Tm
+(? the same indicator is shared by more than one organization) Tj
+/F1 10.5 Tf
+1 0 0 1 50 490 Tm
+(? each organization has its own expected target) Tj
+/F2 15 Tf
+1 0 0 1 50 455 Tm
+(6. Indicators) Tj
+/F1 10.5 Tf
+1 0 0 1 50 427 Tm
+(Use Indicators to define what the system tracks.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 400 Tm
+(Each indicator includes:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 381 Tm
+(? Name) Tj
+/F1 10.5 Tf
+1 0 0 1 50 362 Tm
+(? Code) Tj
+/F1 10.5 Tf
+1 0 0 1 50 343 Tm
+(? Description) Tj
+/F1 10.5 Tf
+1 0 0 1 50 324 Tm
+(? Category) Tj
+/F1 10.5 Tf
+1 0 0 1 50 305 Tm
+(? Type) Tj
+/F1 10.5 Tf
+1 0 0 1 50 286 Tm
+(? Unit) Tj
+/F1 10.5 Tf
+1 0 0 1 50 267 Tm
+(? Disaggregation setup) Tj
+/F1 10.5 Tf
+1 0 0 1 50 248 Tm
+(? Active/inactive state) Tj
+/F2 12 Tf
+1 0 0 1 50 215 Tm
+(Indicator Detail) Tj
+/F1 10.5 Tf
+1 0 0 1 50 192 Tm
+(The indicator detail page shows:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 173 Tm
+(? Indicator metadata) Tj
+/F1 10.5 Tf
+1 0 0 1 50 154 Tm
+(? Quarterly target records) Tj
+/F2 12 Tf
+1 0 0 1 50 121 Tm
+(Organization-Specific Targets) Tj
+/F1 10.5 Tf
+1 0 0 1 50 98 Tm
+(Targets are now managed on the indicator pages per:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 79 Tm
+(? Project) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Length 2129 >>
+stream
+BT
+/F1 10.5 Tf
+1 0 0 1 50 790 Tm
+(? Organization) Tj
+/F1 10.5 Tf
+1 0 0 1 50 771 Tm
+(? Indicator) Tj
+/F1 10.5 Tf
+1 0 0 1 50 744 Tm
+(This means one indicator can be used by multiple organizations, while each organization) Tj
+/F1 10.5 Tf
+1 0 0 1 50 731 Tm
+(keeps its own target values.) Tj
+/F2 12 Tf
+1 0 0 1 50 698 Tm
+(Adding or Editing Targets) Tj
+/F1 10.5 Tf
+1 0 0 1 50 675 Tm
+(Open an indicator, then use the Organization Quarterly Targets section.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 648 Tm
+(For each target record you must choose:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 629 Tm
+(? Project) Tj
+/F1 10.5 Tf
+1 0 0 1 50 610 Tm
+(? Organization) Tj
+/F1 10.5 Tf
+1 0 0 1 50 591 Tm
+(? Q1 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 572 Tm
+(? Q2 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 553 Tm
+(? Q3 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 534 Tm
+(? Q4 target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 515 Tm
+(? Optional baseline value) Tj
+/F2 12 Tf
+1 0 0 1 50 482 Tm
+(Financial Year) Tj
+/F1 10.5 Tf
+1 0 0 1 50 459 Tm
+(Quarter targets follow the BONASO financial year:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 440 Tm
+(? Q1: 1 April ? 30 June) Tj
+/F1 10.5 Tf
+1 0 0 1 50 421 Tm
+(? Q2: 1 July ? 30 September) Tj
+/F1 10.5 Tf
+1 0 0 1 50 402 Tm
+(? Q3: 1 October ? 31 December) Tj
+/F1 10.5 Tf
+1 0 0 1 50 383 Tm
+(? Q4: 1 January ? 31 March of the following year) Tj
+/F2 15 Tf
+1 0 0 1 50 348 Tm
+(7. Respondents) Tj
+/F1 10.5 Tf
+1 0 0 1 50 320 Tm
+(Use Respondents to manage individual beneficiary or client records.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 293 Tm
+(You can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 274 Tm
+(? View respondent details) Tj
+/F1 10.5 Tf
+1 0 0 1 50 255 Tm
+(? Edit respondent records) Tj
+/F1 10.5 Tf
+1 0 0 1 50 236 Tm
+(? Review demographics) Tj
+/F1 10.5 Tf
+1 0 0 1 50 217 Tm
+(? Create interactions) Tj
+/F1 10.5 Tf
+1 0 0 1 50 198 Tm
+(? Flag records for follow-up or quality review) Tj
+/F2 12 Tf
+1 0 0 1 50 165 Tm
+(Respondent Detail Page) Tj
+/F1 10.5 Tf
+1 0 0 1 50 142 Tm
+(The respondent view is structured to match the older BONASO workflow more closely.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 115 Tm
+(You can review:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 96 Tm
+(? Respondent details) Tj
+/F1 10.5 Tf
+1 0 0 1 50 77 Tm
+(? Key population status) Tj
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 10 0 R >>
+endobj
+12 0 obj
+<< /Length 2017 >>
+stream
+BT
+/F1 10.5 Tf
+1 0 0 1 50 790 Tm
+(? Disability status) Tj
+/F1 10.5 Tf
+1 0 0 1 50 771 Tm
+(? HIV status) Tj
+/F1 10.5 Tf
+1 0 0 1 50 752 Tm
+(? Pregnancy information) Tj
+/F1 10.5 Tf
+1 0 0 1 50 733 Tm
+(? Flags) Tj
+/F1 10.5 Tf
+1 0 0 1 50 714 Tm
+(? Additional information) Tj
+/F2 15 Tf
+1 0 0 1 50 679 Tm
+(8. Interactions) Tj
+/F1 10.5 Tf
+1 0 0 1 50 651 Tm
+(Use Respondents > Interactions to track services, follow-ups, or other engagements linked to) Tj
+/F1 10.5 Tf
+1 0 0 1 50 638 Tm
+(a respondent.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 611 Tm
+(You can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 592 Tm
+(? Create a new interaction) Tj
+/F1 10.5 Tf
+1 0 0 1 50 573 Tm
+(? Link an interaction to an assessment, project, or event) Tj
+/F1 10.5 Tf
+1 0 0 1 50 554 Tm
+(? Review historical interactions) Tj
+/F2 15 Tf
+1 0 0 1 50 519 Tm
+(9. Aggregates) Tj
+/F1 10.5 Tf
+1 0 0 1 50 491 Tm
+(Use Aggregates when data is captured as totals instead of individual respondents.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 464 Tm
+(This section supports:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 445 Tm
+(? Aggregate data entry) Tj
+/F1 10.5 Tf
+1 0 0 1 50 426 Tm
+(? Disaggregated matrix views) Tj
+/F1 10.5 Tf
+1 0 0 1 50 407 Tm
+(? Review by organization) Tj
+/F1 10.5 Tf
+1 0 0 1 50 388 Tm
+(? Import/export workflows) Tj
+/F2 15 Tf
+1 0 0 1 50 353 Tm
+(10. Events) Tj
+/F1 10.5 Tf
+1 0 0 1 50 325 Tm
+(Use Events to manage activities such as trainings, outreach sessions, and community) Tj
+/F1 10.5 Tf
+1 0 0 1 50 312 Tm
+(engagements.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 285 Tm
+(You can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 266 Tm
+(? Create events) Tj
+/F1 10.5 Tf
+1 0 0 1 50 247 Tm
+(? Track event phases) Tj
+/F1 10.5 Tf
+1 0 0 1 50 228 Tm
+(? Add participants) Tj
+/F1 10.5 Tf
+1 0 0 1 50 209 Tm
+(? Link indicators where needed) Tj
+/F2 15 Tf
+1 0 0 1 50 174 Tm
+(11. Social Media) Tj
+/F1 10.5 Tf
+1 0 0 1 50 146 Tm
+(Use Social Media to manage tracked social posts and related activity where configured.) Tj
+/F2 15 Tf
+1 0 0 1 50 111 Tm
+(12. Uploads) Tj
+/F1 10.5 Tf
+1 0 0 1 50 83 Tm
+(Use Uploads to submit files for import into the system.) Tj
+ET
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 12 0 R >>
+endobj
+14 0 obj
+<< /Length 2025 >>
+stream
+BT
+/F1 10.5 Tf
+1 0 0 1 50 790 Tm
+(You can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 771 Tm
+(? Upload files) Tj
+/F1 10.5 Tf
+1 0 0 1 50 752 Tm
+(? Review import jobs) Tj
+/F1 10.5 Tf
+1 0 0 1 50 733 Tm
+(? Check status of processing) Tj
+/F2 15 Tf
+1 0 0 1 50 698 Tm
+(13. Analysis) Tj
+/F1 10.5 Tf
+1 0 0 1 50 670 Tm
+(Use Analysis for saved dashboards, chart review, and reporting workflows.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 643 Tm
+(The current analysis workspace behaves more like the older BONASO analytics flow.) Tj
+/F2 12 Tf
+1 0 0 1 50 610 Tm
+(Dashboards) Tj
+/F1 10.5 Tf
+1 0 0 1 50 587 Tm
+(In Analysis > Dashboards you can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 568 Tm
+(? Create a new dashboard) Tj
+/F1 10.5 Tf
+1 0 0 1 50 549 Tm
+(? Load an existing dashboard from the sidebar) Tj
+/F1 10.5 Tf
+1 0 0 1 50 530 Tm
+(? Select indicators) Tj
+/F1 10.5 Tf
+1 0 0 1 50 511 Tm
+(? Filter by organization) Tj
+/F1 10.5 Tf
+1 0 0 1 50 492 Tm
+(? Filter by project) Tj
+/F1 10.5 Tf
+1 0 0 1 50 473 Tm
+(? Switch chart types) Tj
+/F1 10.5 Tf
+1 0 0 1 50 454 Tm
+(? Filter by fiscal quarter or custom dates) Tj
+/F1 10.5 Tf
+1 0 0 1 50 435 Tm
+(? Save, update, or delete dashboards) Tj
+/F1 10.5 Tf
+1 0 0 1 50 416 Tm
+(? Download charts as SVG or CSV) Tj
+/F2 12 Tf
+1 0 0 1 50 383 Tm
+(Reports) Tj
+/F1 10.5 Tf
+1 0 0 1 50 360 Tm
+(In Analysis > Reports you can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 341 Tm
+(? Create reports) Tj
+/F1 10.5 Tf
+1 0 0 1 50 322 Tm
+(? Filter reports) Tj
+/F1 10.5 Tf
+1 0 0 1 50 303 Tm
+(? View generated reports) Tj
+/F1 10.5 Tf
+1 0 0 1 50 284 Tm
+(? Download output files) Tj
+/F2 15 Tf
+1 0 0 1 50 249 Tm
+(14. Flags) Tj
+/F1 10.5 Tf
+1 0 0 1 50 221 Tm
+(Use Flags to manage data quality and follow-up issues.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 194 Tm
+(Flags help identify:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 175 Tm
+(? Data quality problems) Tj
+/F1 10.5 Tf
+1 0 0 1 50 156 Tm
+(? Records requiring review) Tj
+/F1 10.5 Tf
+1 0 0 1 50 137 Tm
+(? Follow-up needs) Tj
+/F1 10.5 Tf
+1 0 0 1 50 118 Tm
+(? Urgent items) Tj
+/F1 10.5 Tf
+1 0 0 1 50 91 Tm
+(You can:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 72 Tm
+(? View all flags) Tj
+ET
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 14 0 R >>
+endobj
+16 0 obj
+<< /Length 2011 >>
+stream
+BT
+/F1 10.5 Tf
+1 0 0 1 50 790 Tm
+(? Filter by status or priority) Tj
+/F1 10.5 Tf
+1 0 0 1 50 771 Tm
+(? Review affected records) Tj
+/F1 10.5 Tf
+1 0 0 1 50 752 Tm
+(? Mark a flag as resolved) Tj
+/F2 15 Tf
+1 0 0 1 50 717 Tm
+(15. Offline Use) Tj
+/F1 10.5 Tf
+1 0 0 1 50 689 Tm
+(The portal supports offline-first behavior for some workflows.) Tj
+/F2 12 Tf
+1 0 0 1 50 656 Tm
+(What Works Offline) Tj
+/F1 10.5 Tf
+1 0 0 1 50 633 Tm
+(? Previously visited pages) Tj
+/F1 10.5 Tf
+1 0 0 1 50 614 Tm
+(? Cached static assets) Tj
+/F1 10.5 Tf
+1 0 0 1 50 595 Tm
+(? Cached API GET responses) Tj
+/F1 10.5 Tf
+1 0 0 1 50 576 Tm
+(? Queued create/update/delete actions for later sync) Tj
+/F2 12 Tf
+1 0 0 1 50 543 Tm
+(What Does Not Work Offline) Tj
+/F1 10.5 Tf
+1 0 0 1 50 520 Tm
+(? First-time data loads not already cached) Tj
+/F1 10.5 Tf
+1 0 0 1 50 501 Tm
+(? Login and token refresh) Tj
+/F1 10.5 Tf
+1 0 0 1 50 482 Tm
+(? Some server-dependent actions) Tj
+/F2 12 Tf
+1 0 0 1 50 449 Tm
+(Recommended Offline Workflow) Tj
+/F1 10.5 Tf
+1 0 0 1 50 426 Tm
+(1. Open the portal while online.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 407 Tm
+(2. Visit the pages you expect to use.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 388 Tm
+(3. Continue working if connection drops.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 369 Tm
+(4. Reconnect to allow queued changes to sync.) Tj
+/F2 15 Tf
+1 0 0 1 50 334 Tm
+(16. Common Workflows) Tj
+/F2 12 Tf
+1 0 0 1 50 292 Tm
+(Create an Organization Target) Tj
+/F1 10.5 Tf
+1 0 0 1 50 269 Tm
+(1. Open Indicators.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 250 Tm
+(2. Select an indicator.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 231 Tm
+(3. Open the target section.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 212 Tm
+(4. Click Add Organization Target.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 193 Tm
+(5. Select the project.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 174 Tm
+(6. Select the organization within that project.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 155 Tm
+(7. Enter Q1 to Q4 values.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 136 Tm
+(8. Save.) Tj
+/F2 12 Tf
+1 0 0 1 50 103 Tm
+(Review Targets for a Project) Tj
+/F1 10.5 Tf
+1 0 0 1 50 80 Tm
+(1. Open Projects.) Tj
+ET
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 16 0 R >>
+endobj
+18 0 obj
+<< /Length 2154 >>
+stream
+BT
+/F1 10.5 Tf
+1 0 0 1 50 790 Tm
+(2. Select a project.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 771 Tm
+(3. Open the Targets tab.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 752 Tm
+(4. Review grouped organization target tables.) Tj
+/F2 12 Tf
+1 0 0 1 50 719 Tm
+(Add a Respondent Interaction) Tj
+/F1 10.5 Tf
+1 0 0 1 50 696 Tm
+(1. Open Respondents.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 677 Tm
+(2. Open a respondent record.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 658 Tm
+(3. Select New Interaction.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 639 Tm
+(4. Enter the interaction details.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 620 Tm
+(5. Save.) Tj
+/F2 12 Tf
+1 0 0 1 50 587 Tm
+(Create a Dashboard) Tj
+/F1 10.5 Tf
+1 0 0 1 50 564 Tm
+(1. Open Analysis.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 545 Tm
+(2. Select New Dashboard.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 526 Tm
+(3. Enter a dashboard name.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 507 Tm
+(4. Choose indicators.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 488 Tm
+(5. Choose organization or project filters if needed.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 469 Tm
+(6. Select a fiscal quarter or custom dates.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 450 Tm
+(7. Save the dashboard.) Tj
+/F2 15 Tf
+1 0 0 1 50 415 Tm
+(17. Troubleshooting) Tj
+/F2 12 Tf
+1 0 0 1 50 373 Tm
+(I cannot see some records) Tj
+/F1 10.5 Tf
+1 0 0 1 50 350 Tm
+(Possible reasons:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 331 Tm
+(? your role does not have permission) Tj
+/F1 10.5 Tf
+1 0 0 1 50 312 Tm
+(? the records belong to another organization) Tj
+/F1 10.5 Tf
+1 0 0 1 50 293 Tm
+(? filters are hiding the data) Tj
+/F2 12 Tf
+1 0 0 1 50 260 Tm
+(I cannot save targets) Tj
+/F1 10.5 Tf
+1 0 0 1 50 237 Tm
+(Check that:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 218 Tm
+(? a project is selected) Tj
+/F1 10.5 Tf
+1 0 0 1 50 199 Tm
+(? an organization is selected) Tj
+/F1 10.5 Tf
+1 0 0 1 50 180 Tm
+(? all four quarters have values) Tj
+/F1 10.5 Tf
+1 0 0 1 50 161 Tm
+(? the organization belongs to that project) Tj
+/F2 12 Tf
+1 0 0 1 50 128 Tm
+(Progress looks different from one organization to another) Tj
+/F1 10.5 Tf
+1 0 0 1 50 105 Tm
+(That is expected if:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 86 Tm
+(? the organizations have different target values) Tj
+/F1 10.5 Tf
+1 0 0 1 50 67 Tm
+(? the indicator is shared but each organization has separate targets) Tj
+ET
+endstream
+endobj
+19 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 18 0 R >>
+endobj
+20 0 obj
+<< /Length 777 >>
+stream
+BT
+/F2 12 Tf
+1 0 0 1 50 784 Tm
+(A page is not loading) Tj
+/F1 10.5 Tf
+1 0 0 1 50 761 Tm
+(Check:) Tj
+/F1 10.5 Tf
+1 0 0 1 50 742 Tm
+(? internet connection) Tj
+/F1 10.5 Tf
+1 0 0 1 50 723 Tm
+(? backend server availability) Tj
+/F1 10.5 Tf
+1 0 0 1 50 704 Tm
+(? session expiration) Tj
+/F2 15 Tf
+1 0 0 1 50 669 Tm
+(18. Good Practice) Tj
+/F1 10.5 Tf
+1 0 0 1 50 641 Tm
+(? Use clear project and indicator codes.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 622 Tm
+(? Set targets at the organization level where indicators are shared.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 603 Tm
+(? Review flags regularly.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 584 Tm
+(? Confirm fiscal quarter before entering targets.) Tj
+/F1 10.5 Tf
+1 0 0 1 50 565 Tm
+(? Use project and analysis pages to review target distribution across organizations.) Tj
+ET
+endstream
+endobj
+21 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 20 0 R >>
+endobj
+22 0 obj
+<< /Type /Catalog /Pages 3 0 R >>
+endobj
+xref
+0 23
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000000271 00000 n 
+0000002377 00000 n 
+0000002513 00000 n 
+0000004609 00000 n 
+0000004745 00000 n 
+0000006693 00000 n 
+0000006829 00000 n 
+0000009011 00000 n 
+0000009149 00000 n 
+0000011219 00000 n 
+0000011357 00000 n 
+0000013435 00000 n 
+0000013573 00000 n 
+0000015637 00000 n 
+0000015775 00000 n 
+0000017982 00000 n 
+0000018120 00000 n 
+0000018949 00000 n 
+0000019087 00000 n 
+trailer
+<< /Size 23 /Root 22 0 R >>
+startxref
+19137
+%%EOF
