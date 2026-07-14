@@ -2116,6 +2116,120 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         response['Cache-Control'] = 'no-store'
         return response
 
+    @action(detail=False, methods=['get'], url_path='bonaso-workbook')
+    def bonaso_workbook(self, request):
+        """Whole-programme workbook (BONASO / NAHPA level): every coordinator's
+        sub-organisation sheets AND its TOTAL sheet, then a final GRAND TOTAL that
+        consolidates the shared indicators across all coordinators.
+
+        Scoping (no cross-org leak): the coordinators included are exactly those
+        the caller may act on — an org admin gets all of the project's
+        coordinators, a coordinator M&E officer gets only their own (so this
+        collapses to their coordinator workbook), and anyone with no coordinator
+        in scope is refused. Heavy for large programmes, so the frontend runs it
+        through the async ExportJob worker; it is safe to call synchronously too.
+        """
+        project_id = request.query_params.get('project')
+        if not project_id:
+            return Response({'detail': 'project query param is required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        project = Project.objects.filter(id=project_id).first()
+        if not project:
+            return Response({'detail': 'Project not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        resolved = self._resolve_period(request)
+        if not resolved:
+            return Response({'detail': 'A valid period is required (period_type=quarter|year|month with quarter/month + fiscal_year).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        quarter, fiscal_start_year, period_start, period_end, period_label, period_type = resolved
+        with_data = _is_truthy(request.query_params.get("with_data"))
+
+        # Coordinators defined for this project, restricted to what the caller may
+        # access. ``_allowed_org_ids_for_user`` returns None for org admins (all).
+        from projects.models import ProjectOrganization
+        allowed = self._allowed_org_ids_for_user(project=project)
+        coordinators = []
+        seen_coord = set()
+        for po in ProjectOrganization.objects.filter(
+            project=project, is_coordinator=True, is_active=True,
+        ).select_related('organization'):
+            org = po.organization
+            if org is None or org.id in seen_coord:
+                continue
+            if allowed is not None and org.id not in allowed:
+                continue
+            seen_coord.add(org.id)
+            coordinators.append(org)
+        if not coordinators:
+            return Response(
+                {'detail': 'No coordinators are in scope for you on this project.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from organizations.access import request_mode_value
+        from projects.workbook_layout import get_active_layout, order_plans_by_layout
+        mode = request_mode_value(request)
+
+        coordinator_groups = []
+        union = {}
+        for coordinator in sorted(coordinators, key=lambda o: (o.name or '')):
+            sub_specs = []
+            seen = {}
+            for org in self._coordinator_sub_orgs(project, coordinator):
+                plans = self._build_indicator_plans(
+                    project=project, organization=org, quarter=quarter,
+                    period_start=period_start, period_end=period_end,
+                    with_data=with_data, period_type=period_type,
+                )
+                if plans:
+                    sub_specs.append((org, plans))
+                    for p in plans:
+                        seen.setdefault(p.indicator.id, p.indicator)
+                        union.setdefault(p.indicator.id, p.indicator)
+            if not sub_specs:
+                continue
+            coordinator_plans = [
+                rw.IndicatorPlan(indicator=ind, config=rw.resolve_matrix_config(ind), target=None, existing_cells={})
+                for ind in sorted(seen.values(), key=lambda i: (i.name or ''))
+            ]
+            layout = get_active_layout(coordinator.id, mode=mode)
+            if layout is not None:
+                sub_specs = [(org, order_plans_by_layout(plans, layout)) for org, plans in sub_specs]
+                coordinator_plans = order_plans_by_layout(coordinator_plans, layout)
+            coordinator_groups.append((coordinator, sub_specs, coordinator_plans))
+
+        if not coordinator_groups:
+            return Response(
+                {'detail': 'No organisations have indicator assignments for this project.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        grand_plans = [
+            rw.IndicatorPlan(indicator=ind, config=rw.resolve_matrix_config(ind), target=None, existing_cells={})
+            for ind in sorted(union.values(), key=lambda i: (i.name or ''))
+        ]
+
+        # NAHPA (funder) is the natural top of the programme tree; label the roll-up
+        # for whoever the caller represents when it is a single coordinator.
+        org_label = 'BONASO' if len(coordinator_groups) > 1 else (coordinator_groups[0][0].name or 'BONASO')
+        buf = rw.generate_bonaso_workbook(
+            project=project, org_label=org_label, coordinator_groups=coordinator_groups,
+            grand_plans=grand_plans, quarter=quarter, fiscal_start_year=fiscal_start_year,
+            generated_by=getattr(request.user, 'username', '') or '',
+            period_start=period_start, period_end=period_end, period_label=period_label,
+            with_data=with_data,
+        )
+        period_slug = period_label.replace(' ', '_').replace('/', '-')
+        proj_code = (project.code or str(project.id)).replace(' ', '_')
+        filename = f"programme_workbook_{proj_code}_{period_slug}.xlsx"
+        response = HttpResponse(
+            buf.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Cache-Control'] = 'no-store'
+        return response
+
     @action(detail=False, methods=['post'], url_path='import-reporting-workbook')
     def import_reporting_workbook(self, request):
         """Upload a completed reporting workbook. Reads project/org/quarter from the

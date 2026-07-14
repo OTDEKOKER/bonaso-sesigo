@@ -656,7 +656,7 @@ class ExportJobViewSet(viewsets.ModelViewSet):
             return ExportJob.objects.all()
         return ExportJob.objects.filter(created_by=user)
 
-    SUPPORTED_EXPORT_JOB_TYPES = {"aggregate_export", "coordinator_workbook"}
+    SUPPORTED_EXPORT_JOB_TYPES = {"aggregate_export", "coordinator_workbook", "bonaso_workbook"}
 
     def create(self, request, *args, **kwargs):
         job_type = str(request.data.get("job_type") or "aggregate_export")

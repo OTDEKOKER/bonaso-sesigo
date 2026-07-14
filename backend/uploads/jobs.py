@@ -290,3 +290,25 @@ def run_coordinator_workbook_job(job_id):
         request_path="/api/aggregates/coordinator-workbook/",
         fallback_name="coordinator_workbook.xlsx",
     )
+
+
+def run_bonaso_workbook_job(job_id):
+    """Build a whole-programme (BONASO / NAHPA) workbook in the background.
+
+    This fans out one reporting-form sheet per sub-organisation across EVERY
+    coordinator in scope, a TOTAL sheet per coordinator and a final GRAND TOTAL —
+    far heavier than a single coordinator's workbook, so it always runs off the
+    request path to avoid the gateway timeout.
+    """
+    job = ExportJob.objects.select_related("created_by").get(id=job_id)
+    job.status = "processing"
+    job.started_at = job.started_at or timezone.now()
+    job.errors = []
+    job.save(update_fields=["status", "started_at", "errors"])
+
+    return _run_aggregate_view_export(
+        job,
+        view_action="bonaso_workbook",
+        request_path="/api/aggregates/bonaso-workbook/",
+        fallback_name="programme_workbook.xlsx",
+    )

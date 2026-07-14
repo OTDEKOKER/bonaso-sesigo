@@ -283,7 +283,7 @@ export function ReportingWorkbookDialog({
     }
   }, [organization, scopedOrganizations]);
 
-  const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "upload" | "confirm">(null);
+  const [busy, setBusy] = useState<null | "blank" | "data" | "coordinator" | "coordinatorData" | "programme" | "upload" | "confirm">(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ReportingWorkbookImportResult | null>(null);
   // Success acknowledgement: after a real import, show a confirmation the user
@@ -349,42 +349,32 @@ export function ReportingWorkbookDialog({
     }
   };
 
-  const handleCoordinatorDownload = async () => {
-    if (!coordinatorReady) {
-      toast({ title: "Select project, coordinator and period first.", variant: "destructive" });
-      return;
-    }
-    setBusy("coordinator");
+  // Shared runner for the heavy multi-sheet workbook exports (coordinator and
+  // whole-programme). Both fan out one reporting-form sheet per sub-organisation
+  // plus cross-sheet TOTAL rollups; for large scopes they exceed the gateway
+  // timeout and 502 if generated inline, so they run in a background ExportJob
+  // that we poll and then download. ~2.5s × 240 = up to 10 minutes.
+  const runWorkbookJob = async (
+    jobType: "coordinator_workbook" | "bonaso_workbook",
+    parameters: Record<string, string>,
+    busyKey: "coordinator" | "coordinatorData" | "programme",
+    fallbackName: string,
+    friendly: string,
+    maxAttempts = 240, // ×2.5s poll interval → default 10 min ceiling
+  ) => {
+    setBusy(busyKey);
     try {
-      // A coordinator workbook fans out one sheet per sub-organisation plus a
-      // cross-sheet TOTAL; for large coordinators it exceeds the gateway timeout
-      // and 502s if generated inline. Build it in a background export job and
-      // poll for the result instead.
-      const job = await uploadsService.createExportJob({
-        job_type: "coordinator_workbook",
-        parameters: {
-          project,
-          coordinator,
-          quarter,
-          fiscal_year: fiscalYear,
-          period_type: periodType,
-          ...(periodType === "month" ? { month } : {}),
-        },
-      });
+      const job = await uploadsService.createExportJob({ job_type: jobType, parameters });
       toast({
-        title: "Preparing coordinator workbook…",
-        description: "This can take a couple of minutes for large coordinators. The download will start automatically.",
+        title: jobType === "bonaso_workbook" ? "Preparing programme workbook…" : "Preparing coordinator workbook…",
+        description: "This can take a couple of minutes for large scopes. The download will start automatically.",
       });
-
-      // Poll until the worker finishes. ~2.5s × 240 = up to 10 minutes, well
-      // beyond the synchronous endpoint's ceiling.
       const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
       let current = job;
-      for (let attempt = 0; attempt < 240 && (current.status === "pending" || current.status === "processing"); attempt += 1) {
+      for (let attempt = 0; attempt < maxAttempts && (current.status === "pending" || current.status === "processing"); attempt += 1) {
         await sleep(2500);
         current = await uploadsService.getExportJob(job.id);
       }
-
       if (current.status !== "completed") {
         const detail = Array.isArray(current.errors) && current.errors.length
           ? (current.errors[0] as { detail?: string; error?: string })?.detail
@@ -392,25 +382,72 @@ export function ReportingWorkbookDialog({
           : undefined;
         throw new Error(
           current.status === "failed"
-            ? detail || "Coordinator workbook generation failed."
-            : "Coordinator workbook is taking longer than expected. Check back shortly.",
+            ? detail || `${friendly} generation failed.`
+            : `${friendly} is taking longer than expected. Check back shortly.`,
         );
       }
-
       const blob = await uploadsService.downloadExportJob(job.id);
-      const selectedCoord = coordinatorOptions.find((o) => String(o.id) === coordinator);
-      const orgName = selectedCoord?.code || selectedCoord?.name || "coordinator";
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = current.file_name || `coordinator_workbook_${orgName}_${quarter}_${fiscalYear}.xlsx`;
+      link.download = current.file_name || fallbackName;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      triggerFriendlyError(err, "Failed to download coordinator workbook");
+      triggerFriendlyError(err, `Failed to download ${friendly.toLowerCase()}`);
     } finally {
       setBusy(null);
     }
+  };
+
+  // Tier 2 — one coordinator: a sheet per sub-grantee + that coordinator's TOTAL.
+  // `withData` fills the current submissions; blank is the distribute-to-fill copy.
+  const handleCoordinatorDownload = (withData: boolean) => {
+    if (!coordinatorReady) {
+      toast({ title: "Select project, coordinator and period first.", variant: "destructive" });
+      return;
+    }
+    const selectedCoord = coordinatorOptions.find((o) => String(o.id) === coordinator);
+    const orgName = selectedCoord?.code || selectedCoord?.name || "coordinator";
+    void runWorkbookJob(
+      "coordinator_workbook",
+      {
+        project,
+        coordinator,
+        quarter,
+        fiscal_year: fiscalYear,
+        period_type: periodType,
+        ...(periodType === "month" ? { month } : {}),
+        ...(withData ? { with_data: "true" } : {}),
+      },
+      withData ? "coordinatorData" : "coordinator",
+      `coordinator_workbook_${orgName}_${quarter}_${fiscalYear}_${withData ? "data" : "blank"}.xlsx`,
+      "Coordinator workbook",
+    );
+  };
+
+  // Tier 1 — whole programme (BONASO / NAHPA): every coordinator's sub sheets +
+  // per-coordinator TOTAL + a consolidated GRAND TOTAL. Always with data.
+  const handleProgrammeDownload = () => {
+    if (!periodReady) {
+      toast({ title: "Select project and period first.", variant: "destructive" });
+      return;
+    }
+    void runWorkbookJob(
+      "bonaso_workbook",
+      {
+        project,
+        quarter,
+        fiscal_year: fiscalYear,
+        period_type: periodType,
+        ...(periodType === "month" ? { month } : {}),
+        with_data: "true",
+      },
+      "programme",
+      `programme_workbook_${quarter}_${fiscalYear}.xlsx`,
+      "Programme workbook",
+      480, // whole-programme consolidates every coordinator — allow up to 20 min
+    );
   };
 
   const handleFileSelected = async (file: File) => {
@@ -625,17 +662,43 @@ export function ReportingWorkbookDialog({
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">Coordinator (a sheet per sub-grantee + a TOTAL rollup)</p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" disabled={!coordinatorReady || busy !== null} onClick={handleCoordinatorDownload}>
+              <Button variant="outline" disabled={!coordinatorReady || busy !== null} onClick={() => handleCoordinatorDownload(false)}>
                 {busy === "coordinator" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                Download Coordinator Workbook
+                Download Blank
+              </Button>
+              <Button variant="outline" disabled={!coordinatorReady || busy !== null} onClick={() => handleCoordinatorDownload(true)}>
+                {busy === "coordinatorData" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Download With Data
               </Button>
             </div>
-            {busy === "coordinator" ? (
+            {busy === "coordinator" || busy === "coordinatorData" ? (
               <p className="text-xs text-muted-foreground">
                 Generating… coordinators with many sub-grantees can take up to a minute. Please keep this open.
               </p>
             ) : null}
           </div>
+
+          {/* Tier 1 — whole programme. Shown only when the caller can see more than
+              one coordinator (BONASO / NAHPA level); a single coordinator uses the
+              coordinator download above. Needs only a project + period. */}
+          {coordinatorOptions.length > 1 ? (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                Whole programme (every coordinator&apos;s sheets + per-coordinator TOTAL + a consolidated GRAND TOTAL)
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" disabled={!periodReady || busy !== null} onClick={handleProgrammeDownload}>
+                  {busy === "programme" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                  Download Programme Workbook
+                </Button>
+              </div>
+              {busy === "programme" ? (
+                <p className="text-xs text-muted-foreground">
+                  Consolidating every coordinator — this can take a couple of minutes. Please keep this open.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy !== null} onClick={() => fileInputRef.current?.click()}>
               {busy === "upload" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}

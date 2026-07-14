@@ -1,12 +1,17 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from uploads.jobs import run_aggregate_export_job, run_coordinator_workbook_job
+from uploads.jobs import (
+    run_aggregate_export_job,
+    run_coordinator_workbook_job,
+    run_bonaso_workbook_job,
+)
 from uploads.models import ExportJob
 
 
 JOB_RUNNERS = {
     "aggregate_export": run_aggregate_export_job,
     "coordinator_workbook": run_coordinator_workbook_job,
+    "bonaso_workbook": run_bonaso_workbook_job,
 }
 
 

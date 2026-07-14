@@ -865,6 +865,107 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
     return buf
 
 
+def generate_bonaso_workbook(*, project, org_label, coordinator_groups, grand_plans,
+                             quarter: int, fiscal_start_year: int, generated_by: str = "",
+                             period_start=None, period_end=None, period_label=None,
+                             with_data: bool = False) -> BytesIO:
+    """Whole-programme (BONASO / NAHPA) workbook: for every coordinator, its data
+    sheets AS-IS plus that coordinator's TOTAL sheet, then a final GRAND TOTAL
+    sheet that consolidates the shared indicators across ALL coordinators.
+
+    coordinator_groups: list of (coordinator, sub_specs, coordinator_plans) — each
+    exactly what generate_coordinator_workbook consumes for one coordinator.
+    grand_plans: plans (union of shared indicators) for the GRAND TOTAL sheet.
+    Every TOTAL sums its sub cells live via cross-sheet formulas.
+    """
+    from collections import defaultdict
+
+    if period_start is None or period_end is None:
+        period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    period_title = period_label or quarter_label(quarter, fiscal_start_year)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    cellmap_rows = [["indicator_id", "indicator_code", "kind", "primary", "secondary", "band", "coordinate"]]
+    used_titles: set = set()
+    global_ref: dict = defaultdict(list)  # every sub cell → GRAND TOTAL
+    total_subs = 0
+
+    def _provider_for(ref_index):
+        def factory(ind):
+            def provider(kind, primary, secondary, band):
+                refs = ref_index.get((ind.id, kind, str(primary), str(secondary), str(band)))
+                return ("=SUM(" + ",".join(refs) + ")") if refs else 0
+            return provider
+        return factory
+
+    for coordinator, sub_specs, coord_plans in coordinator_groups:
+        coord_ref: dict = defaultdict(list)  # this coordinator's subs → its TOTAL
+        for org, plans in sub_specs:
+            title = _safe_sheet_title(org.name, used_titles)
+            start = len(cellmap_rows)
+            _write_form_sheet(wb, title, org_name=org.name, project=project, quarter=quarter,
+                              fiscal_start_year=fiscal_start_year, plans=plans, cellmap_rows=cellmap_rows,
+                              period_start=period_start, period_end=period_end, period_label=period_title,
+                              with_data=with_data)
+            total_subs += 1
+            for r in cellmap_rows[start:]:
+                ind_id, _code, kind, primary, secondary, band, coord = r
+                if kind in ("cell", "total"):
+                    sheet, cell = coord.split("!", 1)
+                    ref = f"'{sheet}'!{cell}"
+                    key = (ind_id, kind, str(primary), str(secondary), str(band))
+                    coord_ref[key].append(ref)
+                    global_ref[key].append(ref)
+        ctitle = _safe_sheet_title(f"{coordinator.name} TOTAL", used_titles)
+        _write_form_sheet(wb, ctitle, org_name=f"{coordinator.name} (coordinator total)",
+                          project=project, quarter=quarter, fiscal_start_year=fiscal_start_year,
+                          plans=coord_plans, cellmap_rows=cellmap_rows,
+                          provider_factory=_provider_for(coord_ref),
+                          period_start=period_start, period_end=period_end, period_label=period_title)
+
+    gtitle = _safe_sheet_title("GRAND TOTAL", used_titles)
+    _write_form_sheet(wb, gtitle, org_name=f"{org_label} — GRAND TOTAL (all coordinators)",
+                      project=project, quarter=quarter, fiscal_start_year=fiscal_start_year,
+                      plans=grand_plans, cellmap_rows=cellmap_rows,
+                      provider_factory=_provider_for(global_ref),
+                      period_start=period_start, period_end=period_end, period_label=period_title)
+
+    meta = wb.create_sheet(SHEET_META)
+    meta_pairs = [
+        ("workbook_version", WORKBOOK_VERSION), ("workbook_kind", "bonaso_rollup"),
+        ("project_id", project.id), ("project_name", project.name),
+        ("coordinator_count", len(coordinator_groups)), ("sub_count", total_subs),
+        ("quarter", quarter), ("fiscal_start_year", fiscal_start_year),
+        ("quarter_label", period_title), ("period_label", period_title),
+        ("period_start", period_start.isoformat()), ("period_end", period_end.isoformat()),
+        ("is_training", "true" if getattr(project, "is_training", False) else "false"),
+        ("generated_at", datetime.utcnow().isoformat() + "Z"), ("generated_by", generated_by or ""),
+    ]
+    meta.cell(row=1, column=1, value="key").font = _BOLD
+    meta.cell(row=1, column=2, value="value").font = _BOLD
+    for i, (k, v) in enumerate(meta_pairs, start=2):
+        meta.cell(row=i, column=1, value=k)
+        meta.cell(row=i, column=2, value=v)
+    meta.column_dimensions["A"].width = 22
+    meta.column_dimensions["B"].width = 60
+    meta.sheet_state = "hidden"
+
+    cellmap = wb.create_sheet(SHEET_CELLMAP)
+    for r, values in enumerate(cellmap_rows, start=1):
+        for c, val in enumerate(values, start=1):
+            cellmap.cell(row=r, column=c, value=val)
+    cellmap.sheet_state = "veryHidden"
+
+    wb.active = 0
+    wb.security = WorkbookProtection(workbookPassword=PROTECTION_PASSWORD, lockStructure=True)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    buf = _inject_formula_cache(buf)
+    return buf
+
+
 _AYP_RANGE_RE = re.compile(r"^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*$")
 _AYP_SINGLE_RE = re.compile(r"^\s*(\d{1,2})\s*$")
 
