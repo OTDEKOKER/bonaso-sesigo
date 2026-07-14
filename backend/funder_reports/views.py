@@ -230,6 +230,37 @@ class ReportTemplateViewSet(viewsets.ModelViewSet):
         resp['Content-Disposition'] = f'attachment; filename="{safe or "report"}_{ps}_{pe}.docx"'
         return resp
 
+    @action(detail=True, methods=['post'], url_path='export-excel')
+    def export_excel(self, request, pk=None):
+        """Export the WHOLE report as a single Excel (.xlsx) workbook — a summary
+        sheet plus one sheet per active figure — using the SAME scope-safe filters
+        and permissions as the on-screen dashboard (mirrors export-word)."""
+        from .export import report_to_xlsx
+        template = self.get_object()
+        project, ps, pe, label = _resolve_period(request)
+        org_ids, filters, include_unapproved, _mode = resolve_generation_context(request, project)
+
+        sections_out = []
+        for section in template.sections.prefetch_related('figures__mappings', 'figures__filters').all():
+            figures_out = [
+                generate_figure(fig, project=project, period_start=ps, period_end=pe,
+                                org_ids=org_ids, include_unapproved=include_unapproved, filters=filters)
+                for fig in section.figures.all() if fig.is_active
+            ]
+            sections_out.append({'title': section.title, 'objective_label': section.objective_label,
+                                 'figures': figures_out})
+        _audit(request, 'export', 'report_template', template.id, project,
+               f'Exported full Excel report for {label}.', {'format': 'xlsx', 'filters': filters})
+        content = report_to_xlsx(template_name=template.name, period_label=label,
+                                 sections=sections_out, user=request.user)
+        resp = HttpResponse(
+            content,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        safe = ''.join(c for c in template.name if c.isalnum() or c in ' -_').strip().replace(' ', '_')
+        resp['Content-Disposition'] = f'attachment; filename="{safe or "report"}_{ps}_{pe}.xlsx"'
+        return resp
+
 
 class ReportSectionViewSet(viewsets.ModelViewSet):
     queryset = ReportSection.objects.select_related('report_template__project').all()

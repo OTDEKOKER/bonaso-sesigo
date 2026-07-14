@@ -199,6 +199,10 @@ export const funderReportsService = {
   async exportReportWord(templateId: number, query: PeriodQuery): Promise<Blob> {
     return postBlob(`${B}/templates/${templateId}/export-word/`, query);
   },
+  /** Export the WHOLE report to a single Excel .xlsx workbook (same filters/scope). */
+  async exportReportExcel(templateId: number, query: PeriodQuery): Promise<Blob> {
+    return postBlob(`${B}/templates/${templateId}/export-excel/`, query);
+  },
   /** Update visibility / sharing on a template the user owns. */
   async updateTemplate(id: number, payload: Partial<ReportTemplate> & { shared_with_users?: number[] }): Promise<ReportTemplate> {
     const { data } = await api.patch<ReportTemplate>(`${B}/templates/${id}/`, payload);

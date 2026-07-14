@@ -82,6 +82,16 @@ export default function FunderReportsPage() {
     }
   }, [templateId, buildQuery, fy, quarter, toast]);
 
+  const exportExcel = useCallback(async () => {
+    if (!templateId) return;
+    try {
+      const blob = await funderReportsService.exportReportExcel(Number(templateId), buildQuery());
+      downloadBlob(blob, `funder_report_${fy}_Q${quarter}.xlsx`);
+    } catch (e) {
+      toast({ title: "Excel export failed", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    }
+  }, [templateId, buildQuery, fy, quarter, toast]);
+
   const exportFigure = useCallback(async (figureId: number, label: string) => {
     try {
       const blob = await funderReportsService.exportFigureXlsx(figureId, buildQuery());
@@ -194,6 +204,7 @@ export default function FunderReportsPage() {
               {activeFilters && <p className="text-sm text-muted-foreground">Filters: {activeFilters}</p>}
             </div>
             <Button variant="outline" onClick={exportWord}>Export report (Word)</Button>
+            <Button variant="outline" onClick={exportExcel}>Export report (Excel)</Button>
           </div>
           {dashboard.sections.map((section) => (
             <section key={section.id} className="space-y-4">
