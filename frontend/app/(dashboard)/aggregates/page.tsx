@@ -1218,7 +1218,7 @@ function AggregatesPageContent() {
       }
       const exportRequest = {
         format: "excel",
-        sheet_layout: "organization_template",
+        sheet_layout: "organization",
         search: searchQuery.trim() || undefined,
         project: projectFilter !== "all" ? projectFilter : undefined,
         organization: exportOrganizationIds.join(","),
