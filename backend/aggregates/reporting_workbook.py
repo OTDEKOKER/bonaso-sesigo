@@ -966,6 +966,84 @@ def generate_bonaso_workbook(*, project, org_label, coordinator_groups, grand_pl
     return buf
 
 
+def generate_consolidated_workbook(*, project, org_label, coordinator_specs, grand_plans,
+                                   quarter: int, fiscal_start_year: int, generated_by: str = "",
+                                   period_start=None, period_end=None, period_label=None) -> BytesIO:
+    """Consolidated (BONASO / NAHPA) workbook: one sheet per coordinator showing
+    that coordinator's summed indicator matrix, then a GRAND TOTAL sheet that
+    consolidates every coordinator.
+
+    Unlike :func:`generate_bonaso_workbook`, the per-coordinator and grand cells
+    are pre-summed server-side and written as STATIC values (no per-sub sheets, no
+    cross-sheet formulas), so the file stays small and generates in seconds even
+    for large programmes — safe to build on the request path.
+
+    coordinator_specs: list of (coordinator, plans) where each plan's
+    ``existing_cells`` already holds that coordinator's summed values.
+    grand_plans: plans whose ``existing_cells`` hold the programme-wide sums.
+    """
+    if period_start is None or period_end is None:
+        period_start, period_end = quarter_period_range(quarter, fiscal_start_year)
+    period_title = period_label or quarter_label(quarter, fiscal_start_year)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    cellmap_rows = [["indicator_id", "indicator_code", "kind", "primary", "secondary", "band", "coordinate"]]
+    used_titles: set = set()
+    coord_titles = []
+
+    for coordinator, plans in coordinator_specs:
+        title = _safe_sheet_title(f"{coordinator.name} TOTAL", used_titles)
+        coord_titles.append(title)
+        _write_form_sheet(wb, title, org_name=f"{coordinator.name} (all sub-grantees)",
+                          project=project, quarter=quarter, fiscal_start_year=fiscal_start_year,
+                          plans=plans, cellmap_rows=cellmap_rows,
+                          period_start=period_start, period_end=period_end, period_label=period_title,
+                          with_data=True)
+
+    gtitle = _safe_sheet_title("GRAND TOTAL", used_titles)
+    _write_form_sheet(wb, gtitle, org_name=f"{org_label} — GRAND TOTAL (all coordinators)",
+                      project=project, quarter=quarter, fiscal_start_year=fiscal_start_year,
+                      plans=grand_plans, cellmap_rows=cellmap_rows,
+                      period_start=period_start, period_end=period_end, period_label=period_title,
+                      with_data=True)
+
+    meta = wb.create_sheet(SHEET_META)
+    meta_pairs = [
+        ("workbook_version", WORKBOOK_VERSION), ("workbook_kind", "consolidated_rollup"),
+        ("project_id", project.id), ("project_name", project.name),
+        ("coordinator_count", len(coordinator_specs)),
+        ("coordinator_sheets", "; ".join(coord_titles)),
+        ("quarter", quarter), ("fiscal_start_year", fiscal_start_year),
+        ("quarter_label", period_title), ("period_label", period_title),
+        ("period_start", period_start.isoformat()), ("period_end", period_end.isoformat()),
+        ("is_training", "true" if getattr(project, "is_training", False) else "false"),
+        ("generated_at", datetime.utcnow().isoformat() + "Z"), ("generated_by", generated_by or ""),
+    ]
+    meta.cell(row=1, column=1, value="key").font = _BOLD
+    meta.cell(row=1, column=2, value="value").font = _BOLD
+    for i, (k, v) in enumerate(meta_pairs, start=2):
+        meta.cell(row=i, column=1, value=k)
+        meta.cell(row=i, column=2, value=v)
+    meta.column_dimensions["A"].width = 22
+    meta.column_dimensions["B"].width = 60
+    meta.sheet_state = "hidden"
+
+    cellmap = wb.create_sheet(SHEET_CELLMAP)
+    for r, values in enumerate(cellmap_rows, start=1):
+        for c, val in enumerate(values, start=1):
+            cellmap.cell(row=r, column=c, value=val)
+    cellmap.sheet_state = "veryHidden"
+
+    wb.active = 0
+    wb.security = WorkbookProtection(workbookPassword=PROTECTION_PASSWORD, lockStructure=True)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    # Static values only — no cross-sheet formulas, so no formula-cache injection needed.
+    return buf
+
+
 _AYP_RANGE_RE = re.compile(r"^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*$")
 _AYP_SINGLE_RE = re.compile(r"^\s*(\d{1,2})\s*$")
 

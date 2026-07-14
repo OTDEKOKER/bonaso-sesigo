@@ -2166,58 +2166,64 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        from collections import defaultdict
         from organizations.access import request_mode_value
         from projects.workbook_layout import get_active_layout, order_plans_by_layout
         mode = request_mode_value(request)
 
-        coordinator_groups = []
-        union = {}
+        # Consolidated design (demo-safe): sum each coordinator's sub-grantee cells
+        # server-side into ONE summed sheet per coordinator, then a GRAND TOTAL
+        # across all coordinators. Static values — no 88 sub sheets, no cross-sheet
+        # formulas — so it generates in seconds instead of ~15 min. The individual
+        # sub-org sheets remain available via the per-coordinator download.
+        coordinator_specs = []
+        grand_acc = {}  # indicator_id -> {'ind','cfg','cells': defaultdict(float)}
         for coordinator in sorted(coordinators, key=lambda o: (o.name or '')):
-            sub_specs = []
-            seen = {}
+            coord_acc = {}  # indicator_id -> {'ind','cfg','cells': defaultdict(float)}
             for org in self._coordinator_sub_orgs(project, coordinator):
+                # Force with_data: a consolidated total is meaningless without values.
                 plans = self._build_indicator_plans(
                     project=project, organization=org, quarter=quarter,
                     period_start=period_start, period_end=period_end,
-                    with_data=with_data, period_type=period_type,
+                    with_data=True, period_type=period_type,
                 )
-                if plans:
-                    sub_specs.append((org, plans))
-                    for p in plans:
-                        seen.setdefault(p.indicator.id, p.indicator)
-                        union.setdefault(p.indicator.id, p.indicator)
-            if not sub_specs:
+                for p in plans:
+                    ca = coord_acc.setdefault(p.indicator.id, {'ind': p.indicator, 'cfg': p.config, 'cells': defaultdict(float)})
+                    ga = grand_acc.setdefault(p.indicator.id, {'ind': p.indicator, 'cfg': p.config, 'cells': defaultdict(float)})
+                    for key, val in (p.existing_cells or {}).items():
+                        if isinstance(val, (int, float)) and not isinstance(val, bool):
+                            ca['cells'][key] += val
+                            ga['cells'][key] += val
+            if not coord_acc:
                 continue
-            coordinator_plans = [
-                rw.IndicatorPlan(indicator=ind, config=rw.resolve_matrix_config(ind), target=None, existing_cells={})
-                for ind in sorted(seen.values(), key=lambda i: (i.name or ''))
+            plans = [
+                rw.IndicatorPlan(indicator=a['ind'], config=a['cfg'], target=None, existing_cells=dict(a['cells']))
+                for a in sorted(coord_acc.values(), key=lambda a: (a['ind'].name or ''))
             ]
             layout = get_active_layout(coordinator.id, mode=mode)
             if layout is not None:
-                sub_specs = [(org, order_plans_by_layout(plans, layout)) for org, plans in sub_specs]
-                coordinator_plans = order_plans_by_layout(coordinator_plans, layout)
-            coordinator_groups.append((coordinator, sub_specs, coordinator_plans))
+                plans = order_plans_by_layout(plans, layout)
+            coordinator_specs.append((coordinator, plans))
 
-        if not coordinator_groups:
+        if not coordinator_specs:
             return Response(
                 {'detail': 'No organisations have indicator assignments for this project.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         grand_plans = [
-            rw.IndicatorPlan(indicator=ind, config=rw.resolve_matrix_config(ind), target=None, existing_cells={})
-            for ind in sorted(union.values(), key=lambda i: (i.name or ''))
+            rw.IndicatorPlan(indicator=a['ind'], config=a['cfg'], target=None, existing_cells=dict(a['cells']))
+            for a in sorted(grand_acc.values(), key=lambda a: (a['ind'].name or ''))
         ]
 
         # NAHPA (funder) is the natural top of the programme tree; label the roll-up
         # for whoever the caller represents when it is a single coordinator.
-        org_label = 'BONASO' if len(coordinator_groups) > 1 else (coordinator_groups[0][0].name or 'BONASO')
-        buf = rw.generate_bonaso_workbook(
-            project=project, org_label=org_label, coordinator_groups=coordinator_groups,
+        org_label = 'BONASO' if len(coordinator_specs) > 1 else (coordinator_specs[0][0].name or 'BONASO')
+        buf = rw.generate_consolidated_workbook(
+            project=project, org_label=org_label, coordinator_specs=coordinator_specs,
             grand_plans=grand_plans, quarter=quarter, fiscal_start_year=fiscal_start_year,
             generated_by=getattr(request.user, 'username', '') or '',
             period_start=period_start, period_end=period_end, period_label=period_label,
-            with_data=with_data,
         )
         period_slug = period_label.replace(' ', '_').replace('/', '-')
         proj_code = (project.code or str(project.id)).replace(' ', '_')
