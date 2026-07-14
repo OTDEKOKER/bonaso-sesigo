@@ -30,8 +30,21 @@ from organizations.models import Organization
 PROJECT_ID = 2
 DEFAULT_ORG_ID = 174  # BONASO (prime; parent of every coordinator)
 
-# Stage palette (cascade shading, light -> dark).
-COLORS = ["#cfe8f3", "#9ecfe6", "#6cb2d6", "#3f93c4", "#1f6a8a", "#134a63"]
+# Standard stage colours — keyed by stage IDENTITY so the same stage is the same
+# colour on every card (Screened green, Eligible blue, Referred amber, Linked
+# purple, ...), regardless of how many stages a given cascade has. Mirrors the
+# frontend fallback SSoT PATHWAY_STAGE_FALLBACK_COLORS in
+# lib/dashboard/screening-insights.ts.
+STAGE_COLORS = {
+    "screened": "#22C55E",
+    "eligible": "#0EA5E9",
+    "referred": "#F59E0B",
+    "linked-to-care": "#A855F7",
+    "distributed": "#22C55E",
+    "repeat-collection": "#0EA5E9",
+}
+# Positional fallback for any stage label not in the standard map above.
+FALLBACK_COLORS = ["#22C55E", "#0EA5E9", "#F59E0B", "#A855F7", "#EF4444", "#14B8A6"]
 
 # (pathway label, [(stage label, [keyword-groups]) ...], exclude)
 # Each keyword-group (all words must match) resolves to one indicator; a stage
@@ -149,7 +162,7 @@ class Command(BaseCommand):
                     stage_dicts.append({
                         "id": f"{_slug(label)}--{_slug(stage_label)}",
                         "label": stage_label,
-                        "color": COLORS[si % len(COLORS)],
+                        "color": STAGE_COLORS.get(_slug(stage_label), FALLBACK_COLORS[si % len(FALLBACK_COLORS)]),
                         "indicatorIds": ids,
                     })
             if stage_dicts:

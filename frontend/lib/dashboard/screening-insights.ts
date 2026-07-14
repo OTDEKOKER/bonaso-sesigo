@@ -106,6 +106,27 @@ const hivPreventionMessageTypePalette = [
   "#255E91",
   "#9E480E",
 ] as const;
+
+// Standard, selectable pathway stages — the single source of truth for the
+// Configure dialog's stage dropdown and their FIXED per-stage colours (the same
+// stage is the same colour on every card, regardless of cascade length). Kept in
+// sync with the backend STAGE_COLORS in
+// organizations/management/commands/seed_service_pathways.py.
+export const STANDARD_PATHWAY_STAGES = [
+  { id: "screened", label: "Screened", color: "#22C55E" },
+  { id: "eligible", label: "Eligible", color: "#0EA5E9" },
+  { id: "referred", label: "Referred", color: "#F59E0B" },
+  { id: "linked-to-care", label: "Linked to care", color: "#A855F7" },
+  { id: "distributed", label: "Distributed", color: "#22C55E" },
+  { id: "repeat-collection", label: "Repeat collection", color: "#0EA5E9" },
+] as const;
+
+// Resolve a stage label to its standard colour (case-insensitive), if any.
+export function standardStageColor(label: string): string | undefined {
+  const norm = label.trim().toLowerCase();
+  return STANDARD_PATHWAY_STAGES.find((stage) => stage.label.toLowerCase() === norm)?.color;
+}
+
 // Fallback stage colors for configured pathway stages that don't specify one.
 const PATHWAY_STAGE_FALLBACK_COLORS = [
   "#22C55E",

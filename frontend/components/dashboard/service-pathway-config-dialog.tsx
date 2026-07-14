@@ -23,7 +23,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ConfiguredPathway } from "@/lib/dashboard/screening-insights";
+import { STANDARD_PATHWAY_STAGES, standardStageColor } from "@/lib/dashboard/screening-insights";
 
 export type PathwayIndicatorOption = { id: string; name: string; code?: string };
 
@@ -190,7 +198,10 @@ export function ServicePathwayConfigDialog({
         label: pathway.label.trim() || "Pathway",
         stages: pathway.stages
           .filter((stage) => stage.indicatorIds.length > 0)
-          .map((stage, index) => ({ ...stage, label: stage.label.trim() || `Stage ${index + 1}` })),
+          .map((stage, index) => {
+            const label = stage.label.trim() || `Stage ${index + 1}`;
+            return { ...stage, label, color: standardStageColor(label) ?? stage.color };
+          }),
       }))
       .filter((pathway) => pathway.stages.length > 0);
     onSave(cleaned);
@@ -245,12 +256,33 @@ export function ServicePathwayConfigDialog({
                     <div key={stage.id} className="rounded-lg border border-border/70 bg-background p-3">
                       <div className="mb-2 flex items-end gap-2">
                         <div className="flex-1 space-y-1">
-                          <Label className="text-xs">Stage label</Label>
-                          <Input
-                            value={stage.label}
-                            placeholder="e.g. Tested"
-                            onChange={(event) => updateStage(pathway.id, stage.id, { label: event.target.value })}
-                          />
+                          <Label className="text-xs">Stage</Label>
+                          <Select
+                            value={stage.label || undefined}
+                            onValueChange={(label) =>
+                              updateStage(pathway.id, stage.id, {
+                                label,
+                                // Fix the colour from the standard catalogue so the same
+                                // stage is the same colour on every card.
+                                color: standardStageColor(label) ?? stage.color,
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a stage…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {stage.label &&
+                              !STANDARD_PATHWAY_STAGES.some((option) => option.label === stage.label) ? (
+                                <SelectItem value={stage.label}>{stage.label}</SelectItem>
+                              ) : null}
+                              {STANDARD_PATHWAY_STAGES.map((option) => (
+                                <SelectItem key={option.id} value={option.label}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <Button
                           type="button"
