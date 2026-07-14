@@ -53,6 +53,7 @@
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
     "docx": "^9.6.0",
+    "echarts": "6.1.0",
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
     "jszip": "^3.10.1",
