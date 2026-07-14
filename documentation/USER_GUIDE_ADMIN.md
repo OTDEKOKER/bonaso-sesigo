@@ -15,7 +15,7 @@
 7. Reporting Periods (open/close windows)
 8. Overseeing the reporting & approval cycle
 9. Data quality & flags (oversight)
-10. Funder Report Builder (configure figures)
+10. Report Builder (configure figures)
 11. Backups & recovery
 12. System Status & health
 13. Settings
@@ -104,7 +104,7 @@ Admins can act at any tier of the review workflow (see the Staff Guide §5 for t
 1. Sidebar → **Aggregates → Open Queued Review**.
 2. Filter by **Project / Coordinator / Organization** and **Search** (admins see **all** coordinators).
 3. **Review**, **Flag**, **Approve**, or **Delete** records; use **Approve all / Delete all** on a filtered set.
-4. Only **Approved** data appears in dashboards and funder reports.
+4. Only **Approved** data appears in dashboards and reports.
 
 > Editing an already-approved record returns it to **Pending** for re-review — expected behaviour, fully audited.
 
@@ -119,12 +119,12 @@ Admins can act at any tier of the review workflow (see the Staff Guide §5 for t
 
 ---
 
-## 10. Funder Report Builder
-1. Sidebar → **Funder Reports → Report Builder**.
+## 10. Report Builder
+1. Sidebar → **Reports → Report Builder**.
 2. Configure the **figures**: map indicators to chart figures, assign each to a **section** and a **display order**, and set chart/target options.
 
-> 📷 **[Screenshot: the Funder Report Builder]** — *save as* `screenshots/admin-05-report-builder.png`
-3. **Generate Report** produces the funder report (Word/Excel) from **currently-approved** data.
+> 📷 **[Screenshot: the Report Builder]** — *save as* `screenshots/admin-05-report-builder.png`
+3. **Generate Report** produces the report (Word/Excel) from **currently-approved** data.
 
 ---
 

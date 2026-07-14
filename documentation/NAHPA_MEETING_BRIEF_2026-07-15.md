@@ -37,7 +37,7 @@ completing the piloting/rollout plan — not core development."*
 - Coordinator → sub-grantee hierarchy with rollups (NAHPA SC project = 6 coordinators, 66 sub-orgs).
 - Reporting workbook generator + smart importer (Excel round-trip with each CSO's own tool).
 - Review/approval workflow (two-tier: M&E Officer → Manager/admin), with audit trail.
-- Funder Report Builder — figures + Table 1 compliance matrix, exportable to Word/Excel (live 2026-07-09).
+- Report Builder — figures + Table 1 compliance matrix, exportable to Word/Excel (live 2026-07-09).
 - Offline/PWA capture + Android app; production hardening deployed 2026-07-07.
 
 **In progress**
@@ -61,7 +61,7 @@ NAHPA SC use case; remaining items are operational and can close in **[CONFIRM: 
 - Iterative refinement through live use (each deploy below traces to a real reporting need).
 
 **Approved requirements:** individual + aggregate reporting, coordinator hierarchy &
-rollups, targets vs achievement, review/approval, funder reporting, offline capture,
+rollups, targets vs achievement, review/approval, reporting, offline capture,
 role-based access, audit.
 
 **Changed during development:** standardised age-range disaggregation; retired
@@ -89,7 +89,7 @@ All **deployed & live** unless noted. Purpose of each:
 | Social | Social-media posts / reach |
 | Analysis | Dashboards, coordinator rollups, exports |
 | Uploads | Reporting-workbook import/export + file validation |
-| Funder Reports | Config-driven funder figures + Table 1 compliance (Word/Excel) |
+| Reports | Config-driven funder figures + Table 1 compliance (Word/Excel) |
 | Flags | Data-quality flags + review |
 | System Status | Completeness/parity monitoring + data-quality engine |
 | Messaging | In-app notifications |
@@ -107,11 +107,11 @@ All **deployed & live** unless noted. Purpose of each:
 
 Use the **demo script** in `docs/NAHPA_DEMO_SCRIPT_2026-07-15.md` (separate file).
 Covers, in order: login → role-based landing → data entry (workbook + add-entry) →
-review/approval → dashboards → funder report export → notifications → offline/mobile →
+review/approval → dashboards → report export → notifications → offline/mobile →
 access controls (show a coordinator sees only their own tree).
 
 **Do a full dry-run Tuesday** on the live or training stack. Have a fallback: screenshots
-+ the exported Word funder report, in case of connectivity issues in the room.
++ the exported Word report, in case of connectivity issues in the room.
 
 ---
 
@@ -120,7 +120,7 @@ access controls (show a coordinator sees only their own tree).
 **Internal integration (how modules connect):**
 - Single PostgreSQL database; modules share one domain model.
 - Indicators unify via a **canonical id** so duplicate/aliased indicators roll up together.
-- **Coordinator rollup engine** is the single source of truth for actual/target/effective across dashboards, funder reports and exports.
+- **Coordinator rollup engine** is the single source of truth for actual/target/effective across dashboards, reports and exports.
 - Bidirectional **target sync** (project targets ↔ coordinator targets).
 - **Offline bootstrap** feeds the PWA/Android client; queued writes replay idempotently.
 
@@ -210,7 +210,7 @@ quarter, and the documentation refreshed.
 - **In-system:** a dedicated training mode (isolated from live data) for hands-on practice.
 
 **Gaps to own honestly:**
-- **User manual is ~6 weeks stale** (dated 2026-06-01) — predates Funder Reports, Reporting Periods, Workbook Layouts, and recent review-workflow changes. **Recommend refreshing before the pilot.** *Offer: BONASO can regenerate it this week.*
+- **User manual is ~6 weeks stale** (dated 2026-06-01) — predates Reports, Reporting Periods, Workbook Layouts, and recent review-workflow changes. **Recommend refreshing before the pilot.** *Offer: BONASO can regenerate it this week.*
 - **No single consolidated Administrator Manual** — the admin knowledge is spread across handover + runbooks; consider consolidating.
 - **Training plan** for pilot users **[CONFIRM]** — propose format (in-person + manual + training mode) and schedule.
 

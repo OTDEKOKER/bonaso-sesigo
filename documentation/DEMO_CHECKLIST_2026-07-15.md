@@ -28,7 +28,7 @@ One document, three parts:
 - [ ] Mention session security: **30-min idle auto-logout** + JWT auth
 
 ## 2. Modules Overview  → #5, #6
-- [ ] Walk the left nav = the module list: Dashboard, Organizations, Projects, Indicators, **Aggregates**, Respondents, Events, Clients, Social, **Flags / Data Quality**, Reports / Analysis, **Funder Reports**, **Coordinator Targets**, Users, System Status, Backups, **Training Mode**
+- [ ] Walk the left nav = the module list: Dashboard, Organizations, Projects, Indicators, **Aggregates**, Respondents, Events, Clients, Social, **Flags / Data Quality**, Reports / Analysis, **Reports**, **Coordinator Targets**, Users, System Status, Backups, **Training Mode**
 - [ ] One line on the purpose of each as you point
 
 ## 3. Data Entry  → #6
@@ -43,7 +43,7 @@ One document, three parts:
 
 ## 5. Reporting & Dashboards  → #6, #7
 - [ ] **Aggregates** browse + charts — apply filters/search (now cover the **full** dataset, not one page)
-- [ ] **Analysis / Dashboards** and **Funder Reports** — indicator→chart figures, **Word/Excel export**
+- [ ] **Analysis / Dashboards** and **Reports** — indicator→chart figures, **Word/Excel export**
 - [ ] **Coordinator Targets** — targets vs actuals rollup
 
 ## 6. Data Quality & Flags  → #8, #6
@@ -54,7 +54,7 @@ One document, three parts:
 - [ ] Show in-app notifications (report uploaded, review pending, flag raised)
 
 ## 8. System Integration  → #7
-- [ ] Explain data flow: entries/aggregates → derived **AggregateFact** → **rollups** → dashboards & funder reports; org **hierarchy scoping** applied consistently across modules
+- [ ] Explain data flow: entries/aggregates → derived **AggregateFact** → **rollups** → dashboards & reports; org **hierarchy scoping** applied consistently across modules
 
 ## 9. Data Protection & Security  → #9
 - [ ] **Module permissions** (explicit-deny) + org-scoped visibility
@@ -76,7 +76,7 @@ One document, three parts:
 - [ ] Anything else surfaced in recent testing
 
 ### On-stage guidance
-- **Safe to show:** filters + search (now work across full datasets), review/approval flow, funder reports, backups. Layout/overflow issues are fixed and deployed.
+- **Safe to show:** filters + search (now work across full datasets), review/approval flow, reports, backups. Layout/overflow issues are fixed and deployed.
 - **Prefer Training Mode** for any create/edit/import you do live, so you don't touch real reporting data.
 - **Avoid:** deep-diving half-finished internals.
 
@@ -97,7 +97,7 @@ One document, three parts:
 - **Indicators:** shared catalogue, aliases, disaggregation config, assessments, deduplication
 - **Organisations & Projects:** hierarchy (coordinators / sub-grantees), project setup, tasks & deadlines
 - **Targets:** Coordinator Targets + server-side rollup
-- **Analysis & Reporting:** dashboards, visualizer, line lists, reports, **Funder Reports** (indicator→figure, Word/Excel export, compliance table)
+- **Analysis & Reporting:** dashboards, visualizer, line lists, reports, **Reports** (indicator→figure, Word/Excel export, compliance table)
 - **Data Quality:** Flags + auto-detected anomalies/consistency, correction queue
 - **Home dashboard** (per-organisation, DHIS2-style)
 - **Administration:** Users + roles/permissions + **activity/audit log**, System Status, **Backups** (on-demand, encrypted download, supervised restore)
@@ -139,7 +139,7 @@ One document, three parts:
 > **Role-based access** with explicit-deny permissions and **organisation-scoped visibility** (users only see their own org's data). **Encrypted** backup downloads, a full **audit log** of user activity, **TLS** in transit, **JWT** auth with **idle auto-logout**. **_Confirm_** alignment with the specific data-protection requirement/regulation they cite.
 
 **Q4. Can it integrate with other systems (e.g. DHIS2)?**  → #7
-> Internally, modules are fully integrated (one data flow feeds dashboards, rollups and funder reports). **External** integration (e.g. DHIS2) is **not built yet** but is feasible via export/API; we'd scope it if it's a requirement. (Better to be honest than over-promise.)
+> Internally, modules are fully integrated (one data flow feeds dashboards, rollups and reports). **External** integration (e.g. DHIS2) is **not built yet** but is feasible via export/API; we'd scope it if it's a requirement. (Better to be honest than over-promise.)
 
 **Q5. When can we pilot, and what's the timeline?**  → #10, #11
 > We propose piloting once three readiness items are done: **(1)** offsite backup configured, **(2)** an initial **UAT** with users, **(3)** **training materials** ready. A phased approach: pilot with a small set of sites/coordinators → gather feedback → then staged full rollout. **_Confirm_** the specific dates/sites you want to commit to.

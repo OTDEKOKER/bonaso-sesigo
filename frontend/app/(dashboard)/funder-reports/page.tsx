@@ -113,7 +113,7 @@ export default function FunderReportsPage() {
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">Funder Reports</h1>
+        <h1 className="text-2xl font-semibold">Reports</h1>
         <p className="text-muted-foreground">
           Generate funder-ready figures from approved aggregate data, in report order.
         </p>

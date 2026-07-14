@@ -14,7 +14,7 @@
 6. Flags & corrections
 7. Targets
 8. Dashboards & reports
-9. Funder reports
+9. Reports
 10. Respondents & interactions
 11. Other data (Events, Social, Clients)
 12. Notifications
@@ -28,7 +28,7 @@
 - **M&E Officer (coordinator):** review and flag submissions from your organisations.
 - **M&E Manager:** approve reviewed submissions.
 
-**Golden rule:** only **Approved** data counts in official dashboards and funder reports.
+**Golden rule:** only **Approved** data counts in official dashboards and reports.
 
 ---
 
@@ -134,8 +134,8 @@ Sidebar → **Targets → Coordinator Targets**: pick the **project** and **coor
 
 ---
 
-## 9. Funder reports
-Sidebar → **Funder Reports → Generate Report** → produce the report from approved data and **export to Word/Excel**.
+## 9. Reports
+Sidebar → **Reports → Generate Report** → produce the report from approved data and **export to Word/Excel**.
 
 ---
 

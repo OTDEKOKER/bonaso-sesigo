@@ -20,7 +20,7 @@ SESIGO is a **website** where BONASO, its partner organisations (coordinators an
 2. Staff **enter their numbers** — either by filling in a **workbook** (an Excel file the system prepares for them) and uploading it, or by typing figures directly.
 3. Each entry starts as **Pending**.
 4. A **supervisor (M&E Officer) reviews** it, and either accepts it or **flags** it for correction.
-5. A **manager approves** it. **Only approved numbers appear in the official dashboards and funder reports.**
+5. A **manager approves** it. **Only approved numbers appear in the official dashboards and reports.**
 6. If anything was flagged, the person **fixes it and resubmits**, and it goes through the checks again.
 
 That cycle — *enter → check → approve* — is the heart of the whole system. Everything else supports it.
@@ -88,9 +88,9 @@ That cycle — *enter → check → approve* — is the heart of the whole syste
 - **In plain words:** the charts-and-reports area.
 - **What you do with it:** build charts, and generate reports you can **export to PDF, Excel or Word**.
 
-### Funder Reports
+### Reports
 - **In plain words:** ready-made reports designed for funders like NAHPA.
-- **What you do with it:** **Generate** a funder report from approved data (export to Word/Excel). Admins use the **Report Builder** to choose which figures and charts appear.
+- **What you do with it:** **Generate** a report from approved data (export to Word/Excel). Admins use the **Report Builder** to choose which figures and charts appear.
 
 ### Reporting Periods
 - **In plain words:** the control that says when reporting is open or closed.

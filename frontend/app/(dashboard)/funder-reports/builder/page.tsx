@@ -76,7 +76,7 @@ export default function ReportBuilderPage() {
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">Funder Report Builder</h1>
+        <h1 className="text-2xl font-semibold">Report Builder</h1>
         <p className="text-muted-foreground">Configure each figure&apos;s indicators, chart type and rules. Changes are saved to the database and reflected on next generation.</p>
       </div>
 
