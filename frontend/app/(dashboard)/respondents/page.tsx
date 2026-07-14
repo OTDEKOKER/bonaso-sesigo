@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/shared/page-header";
 import { OrganizationSelect } from "@/components/shared/organization-select";
+import { FilterBar, FilterField } from "@/components/shared/filter-bar";
 import { DataTable } from "@/components/shared/data-table";
 import { useAllOrganizations, useRespondents } from "@/lib/hooks/use-api";
 import { respondentsService } from "@/lib/api";
@@ -460,26 +461,29 @@ export default function RespondentsPage() {
         }
       />
 
-      {/* Filters */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Input
-          placeholder="Search by name or ID..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full"
-        />
-        <Select value={genderFilter} onValueChange={setGenderFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Gender" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="male">Male</SelectItem>
-            <SelectItem value="female">Female</SelectItem>
-            <SelectItem value="other">Other</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Filters — standardised, overflow-safe FilterBar (reference adoption) */}
+      <FilterBar gridClassName="sm:grid-cols-2 lg:grid-cols-3">
+        <FilterField label="Search">
+          <Input
+            placeholder="Search by name or ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </FilterField>
+        <FilterField label="Gender">
+          <Select value={genderFilter} onValueChange={setGenderFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Gender" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="male">Male</SelectItem>
+              <SelectItem value="female">Female</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+        </FilterField>
+      </FilterBar>
 
       {/* Summary Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
