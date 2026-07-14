@@ -130,8 +130,8 @@ export function FigureEditor(props: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {form.figure_number} {form.title}
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 truncate">{form.figure_number} {form.title}</span>
             <Badge variant={status.variant}>{status.label}</Badge>
             {form.target_mode !== "none" && preview && !preview.totals?.target && (
               <Badge variant="destructive">Missing target</Badge>
@@ -151,7 +151,7 @@ export function FigureEditor(props: Props) {
           </TabsList>
 
           {/* Chart settings */}
-          <TabsContent value="chart" className="grid grid-cols-2 gap-3">
+          <TabsContent value="chart" className="grid grid-cols-1 gap-3 sm:grid-cols-2 [&>div]:min-w-0">
             <div><Label>Title</Label><Input value={form.title ?? ""} onChange={(e) => set("title", e.target.value)} disabled={!canEditMappings} /></div>
             <div><Label>Figure number</Label><Input value={form.figure_number ?? ""} onChange={(e) => set("figure_number", e.target.value)} disabled={!canEditMappings} /></div>
             <div>

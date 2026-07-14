@@ -357,7 +357,7 @@ export function AggregateChartDialog(props: AggregateChartDialogProps) {
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Chart type
           </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4 [&>*]:min-w-0">
             {CHART_TYPE_OPTIONS.map((option) => {
               const Icon = option.icon;
               const disabled =

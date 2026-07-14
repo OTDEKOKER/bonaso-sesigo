@@ -428,7 +428,7 @@ export function ReportBuilderDialog({ onCreated, trigger }: ReportBuilderDialogP
             </Select>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <div className="space-y-2">
               <Label>Project</Label>
               <Select value={formProject} onValueChange={setFormProject}>
@@ -522,7 +522,7 @@ export function ReportBuilderDialog({ onCreated, trigger }: ReportBuilderDialogP
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <div className="space-y-2">
               <Label>Date From</Label>
               <Input type="date" value={formDateFrom} onChange={(e) => setFormDateFrom(e.target.value)} />
@@ -559,7 +559,7 @@ export function ReportBuilderDialog({ onCreated, trigger }: ReportBuilderDialogP
               </Badge>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 [&>*]:min-w-0">
               <div className="rounded-xl border border-border bg-card px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Indicators</p>
                 <p className="mt-2 text-2xl font-semibold">{comparisonRows.length}</p>

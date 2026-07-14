@@ -299,7 +299,7 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
         </DialogHeader>
 
         <div className="grid gap-4 py-1">
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-2 md:grid-cols-2 [&>*]:min-w-0">
             <div className="grid gap-2 min-w-0">
               <Label>Project</Label>
               <Select value={form.projectId} onValueChange={(value) => setForm((current) => ({ ...current, projectId: value }))}>
@@ -438,7 +438,7 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
               </Select>
             </div>
             {derivedMode ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 [&>*]:min-w-0">
                 <div className="grid gap-2 min-w-0">
                   <Label>Source indicator</Label>
                   <Popover open={sourceSearchOpen} onOpenChange={setSourceSearchOpen}>
@@ -512,7 +512,7 @@ export function CoordinatorTargetFormDialog(props: CoordinatorTargetFormDialogPr
               <Label>Quarterly Targets</Label>
               {loadingQuarters ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 [&>*]:min-w-0">
               {QUARTERS.map((quarter) => (
                 <div key={quarter} className="grid gap-1.5">
                   <Label className="text-xs font-normal text-muted-foreground">{quarter}</Label>
