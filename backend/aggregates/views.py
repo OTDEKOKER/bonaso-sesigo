@@ -2137,6 +2137,19 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         if not project:
             return Response({'detail': 'Project not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Role gate: this is aggregate data, so only data-handling / oversight
+        # roles may export it. Clients are external/read-only stakeholders and are
+        # refused even when their org sits in the project — matching the single-org
+        # and coordinator workbook downloads (which gate via can_submit_aggregates).
+        if not (is_organization_admin(request.user)
+                or can_review_aggregates(request.user)
+                or can_submit_aggregates(request.user)):
+            raise PermissionDenied('Your role does not permit exporting aggregate data.')
+        # Training/Live isolation: a live-mode request may only touch live projects
+        # and a training-mode request only training projects (the async worker
+        # replays the caller's mode, so this holds off the request path too).
+        assert_project_write_allowed(request, project)
+
         resolved = self._resolve_period(request)
         if not resolved:
             return Response({'detail': 'A valid period is required (period_type=quarter|year|month with quarter/month + fiscal_year).'},
@@ -2181,6 +2194,13 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         for coordinator in sorted(coordinators, key=lambda o: (o.name or '')):
             coord_acc = {}  # indicator_id -> {'ind','cfg','cells': defaultdict(float)}
             for org in self._coordinator_sub_orgs(project, coordinator):
+                # Defence in depth: never let an org outside the caller's project
+                # scope contribute to the totals. For a project with a hierarchy the
+                # sub-orgs are already the coordinator's descendants (⊆ the caller's
+                # accessible subtree when the coordinator is in scope), but this
+                # clamp guarantees it even if the sub enumeration ever widens.
+                if allowed is not None and org.id not in allowed:
+                    continue
                 # Force with_data: a consolidated total is meaningless without values.
                 plans = self._build_indicator_plans(
                     project=project, organization=org, quarter=quarter,
