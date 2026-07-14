@@ -772,7 +772,8 @@ def _inject_formula_cache(buf: BytesIO, cached: str = "0") -> BytesIO:
 
 def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinator_plans,
                                   quarter: int, fiscal_start_year: int, generated_by: str = "",
-                                  period_start=None, period_end=None, period_label=None) -> BytesIO:
+                                  period_start=None, period_end=None, period_label=None,
+                                  with_data: bool = False) -> BytesIO:
     """One workbook for a coordinator: a reporting-form sheet per sub-organisation
     plus a leading TOTAL sheet whose cells SUM the matching sub cells live.
 
@@ -800,7 +801,8 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
         start = len(cellmap_rows)
         _write_form_sheet(wb, title, org_name=org.name, project=project, quarter=quarter,
                           fiscal_start_year=fiscal_start_year, plans=plans, cellmap_rows=cellmap_rows,
-                          period_start=period_start, period_end=period_end, period_label=period_title)
+                          period_start=period_start, period_end=period_end, period_label=period_title,
+                          with_data=with_data)
         for r in cellmap_rows[start:]:
             ind_id, _code, kind, primary, secondary, band, coord = r
             if kind in ("cell", "total"):

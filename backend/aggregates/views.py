@@ -2044,6 +2044,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             return Response({'detail': 'A valid period is required (period_type=quarter|year|month with quarter/month + fiscal_year).'},
                             status=status.HTTP_400_BAD_REQUEST)
         quarter, fiscal_start_year, period_start, period_end, period_label, period_type = resolved
+        with_data = _is_truthy(request.query_params.get("with_data"))
 
         # Data sheets: the coordinator's own (if it reports) plus every sub that
         # has assignments. The TOTAL sheet sums them all (matches partner template).
@@ -2058,7 +2059,9 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         sub_specs = []
         seen = {}
         for org in self._coordinator_sub_orgs(project, coordinator):
-            plans = self._build_indicator_plans(project=project, organization=org, quarter=quarter, period_type=period_type)
+            plans = self._build_indicator_plans(project=project, organization=org, quarter=quarter,
+                                                period_start=period_start, period_end=period_end,
+                                                with_data=with_data, period_type=period_type)
             if plans:
                 sub_specs.append((org, plans))
                 for p in plans:
@@ -2097,6 +2100,7 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
             coordinator_plans=coordinator_plans, quarter=quarter, fiscal_start_year=fiscal_start_year,
             generated_by=getattr(request.user, 'username', '') or '',
             period_start=period_start, period_end=period_end, period_label=period_label,
+            with_data=with_data,
         )
         coord_code = (coordinator.code or coordinator.name or 'coordinator').replace(' ', '_')
         period_slug = period_label.replace(' ', '_').replace('/', '-')
