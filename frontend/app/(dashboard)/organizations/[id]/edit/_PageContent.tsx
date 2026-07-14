@@ -217,7 +217,7 @@ export default function OrganizationEditPage() {
           <CardDescription>Update the profile and contact information</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <div className="space-y-2">
               <Label htmlFor="name">Name *</Label>
               <Input
@@ -235,7 +235,7 @@ export default function OrganizationEditPage() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <div className="space-y-2">
               <Label htmlFor="type">Type *</Label>
               <Select
@@ -267,7 +267,7 @@ export default function OrganizationEditPage() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <div className="space-y-2">
               <Label htmlFor="email">Contact Email</Label>
               <Input

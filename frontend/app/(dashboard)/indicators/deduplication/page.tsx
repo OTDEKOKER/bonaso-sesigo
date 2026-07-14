@@ -291,7 +291,7 @@ function PairCard({ pair, onMerge }: PairCardProps) {
 
         {expanded && (
           <div className="border-t px-4 pb-4 pt-3 space-y-3">
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-2 gap-3 text-xs [&>*]:min-w-0">
               {[pair.indicator_a, pair.indicator_b].map((ind) => (
                 <div key={ind.id} className="rounded-md border bg-muted/20 p-2 space-y-1">
                   <p className="font-semibold text-sm leading-snug">{ind.name}</p>
