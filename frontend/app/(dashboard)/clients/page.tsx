@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import {
   Building, Plus, Search, Edit, Trash2, Loader2, Save, Globe, Mail, Phone,
   FolderKanban, CheckCircle2, XCircle,
@@ -48,27 +48,28 @@ export default function ClientsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ClientOrganization | null>(null)
 
-  const { data: clientsData, isLoading, mutate } = useClientOrganizations()
+  // Filter server-side so search/status apply across ALL clients, not just the
+  // first loaded page (the list is paginated).
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(handle)
+  }, [search])
+  const clientFilters = useMemo(() => {
+    const f: Record<string, string> = { page_size: "500" }
+    if (debouncedSearch) f.search = debouncedSearch
+    if (statusFilter === "active") f.is_active = "true"
+    if (statusFilter === "inactive") f.is_active = "false"
+    return f
+  }, [debouncedSearch, statusFilter])
+  const { data: clientsData, isLoading, mutate } = useClientOrganizations(clientFilters)
   const { data: projectsData } = useProjects()
 
   const clients = clientsData?.results || []
   const projects = projectsData?.results || []
 
-  const filtered = useMemo(() => {
-    let list = clients
-    if (statusFilter === "active") list = list.filter((c) => c.is_active)
-    if (statusFilter === "inactive") list = list.filter((c) => !c.is_active)
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.contact_name || "").toLowerCase().includes(q) ||
-          (c.contact_email || "").toLowerCase().includes(q),
-      )
-    }
-    return list
-  }, [clients, statusFilter, search])
+  // Search + status applied server-side (see clientFilters); render as-is.
+  const filtered = clients
 
   const openCreate = () => {
     setEditingId(null)
