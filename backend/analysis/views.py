@@ -36,7 +36,8 @@ from projects.scope import (
     filter_queryset_by_assigned_projects,
 )
 from .serializers import ReportSerializer, SavedQuerySerializer, ScheduledReportSerializer, CoordinatorTargetSerializer
-from .services.coordinator_rollups import get_coordinator_performance, performance_status as coordinator_performance_status
+from .services.coordinator_rollups import get_coordinator_performance, performance_status as coordinator_performance_status, fiscal_quarter_range
+from .services.management_intelligence import build_coordinator_cards
 from audit.recording import record_audit_event
 from aggregates.models import Aggregate
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, should_include_training, training_view_mode, is_training_only_request
@@ -2321,4 +2322,71 @@ class DashboardView(viewsets.ViewSet):
             timeout=_MESSAGE_ANALYTICS_RESPONSE_CACHE_TTL_SECONDS,
         )
         return Response(payload)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def management_intelligence(request):
+    """Project+period-scoped management-intelligence cards (one per coordinator).
+
+    Composes the coordinator-rollup SSoT + derived targets + reporting-window
+    state + open flags into decision-ready cards (finding / evidence / DQ
+    qualifier / action / drill-down). Read-only, approved data only. Coordinator
+    visibility is restricted to the caller's project scope (no cross-coord leak).
+    """
+    q_order = {'Q1': 1, 'Q2': 2, 'Q3': 3, 'Q4': 4}
+    user = request.user
+    include_training = is_training_only_request(request)
+
+    raw_project = request.query_params.get('project')
+    try:
+        project_id = int(raw_project) if raw_project is not None else None
+    except (TypeError, ValueError):
+        return Response({'detail': 'Invalid project id.'}, status=status.HTTP_400_BAD_REQUEST)
+    if project_id is None:
+        project_id = get_default_project_id(user, include_training=include_training)
+    if project_id is None:
+        return Response({'detail': 'No project available.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    project_obj = Project.objects.filter(id=project_id).first()
+    if project_obj is None or not user_can_access_project(user, project_obj):
+        return Response({'detail': 'Project not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    year = request.query_params.get('year')
+    quarter = request.query_params.get('quarter')
+    if year and quarter:
+        try:
+            year = int(year)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Invalid year.'}, status=status.HTTP_400_BAD_REQUEST)
+        quarter = str(quarter).upper()
+        if quarter not in q_order:
+            return Response({'detail': 'Invalid quarter (Q1-Q4).'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        periods = sorted(
+            {
+                (y, q)
+                for (y, q) in CoordinatorTarget.objects.filter(
+                    project_id=project_id, is_active=True,
+                ).values_list('year', 'quarter')
+            },
+            key=lambda t: (t[0], q_order.get(t[1], 0)),
+        )
+        if not periods:
+            return Response({
+                'project': {'id': project_obj.id, 'code': project_obj.code, 'name': project_obj.name},
+                'period': None, 'lens': 'coordinator', 'cards': [],
+                'detail': 'No coordinator targets configured for this project.',
+            })
+        # Default to the latest ELAPSED quarter — a future quarter has no data yet.
+        today = timezone.localdate()
+        elapsed = [(y, q) for (y, q) in periods if fiscal_quarter_range(y, q)[1] <= today]
+        year, quarter = elapsed[-1] if elapsed else periods[0]
+
+    coordinator_ids = None if is_organization_admin(user) else get_user_project_scope(user, project_obj)
+
+    payload = build_coordinator_cards(
+        project_obj, int(year), quarter, coordinator_ids=coordinator_ids,
+    )
+    return Response(payload)
 
