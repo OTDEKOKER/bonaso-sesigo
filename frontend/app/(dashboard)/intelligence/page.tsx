@@ -3,15 +3,17 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { fetchManagementIntelligence } from "@/lib/api/services/intelligence";
-import type { ManagementIntelligenceResponse } from "@/lib/intelligence/types";
+import { fetchGeographicCoverage, fetchManagementIntelligence } from "@/lib/api/services/intelligence";
+import type { GeographicCoverageResponse, ManagementIntelligenceResponse } from "@/lib/intelligence/types";
 import { IntelligenceCard } from "@/components/intelligence/intelligence-card";
+import { CoverageMap } from "@/components/intelligence/coverage-map";
 
 function IntelligenceContent() {
   const searchParams = useSearchParams();
   const projectParam = searchParams.get("project");
 
   const [data, setData] = useState<ManagementIntelligenceResponse | null>(null);
+  const [coverage, setCoverage] = useState<GeographicCoverageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,10 +21,14 @@ function IntelligenceContent() {
     let alive = true;
     setLoading(true);
     setError(null);
-    fetchManagementIntelligence({ projectId: projectParam ? Number(projectParam) : undefined })
+    const projectId = projectParam ? Number(projectParam) : undefined;
+    fetchManagementIntelligence({ projectId })
       .then((res) => alive && setData(res))
       .catch((e) => alive && setError(e?.message ?? "Failed to load management intelligence."))
       .finally(() => alive && setLoading(false));
+    fetchGeographicCoverage(projectId)
+      .then((res) => alive && setCoverage(res))
+      .catch(() => alive && setCoverage(null));
     return () => {
       alive = false;
     };
@@ -51,6 +57,10 @@ function IntelligenceContent() {
           attention, and the recommended action. Approved data only.
         </p>
       </header>
+
+      {coverage && coverage.districts.length > 0 ? (
+        <CoverageMap districts={coverage.districts} attribution={coverage.attribution} />
+      ) : null}
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">

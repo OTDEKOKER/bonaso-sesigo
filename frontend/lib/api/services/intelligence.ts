@@ -1,5 +1,8 @@
 import { api } from "../client";
-import type { ManagementIntelligenceResponse } from "@/lib/intelligence/types";
+import type {
+  GeographicCoverageResponse,
+  ManagementIntelligenceResponse,
+} from "@/lib/intelligence/types";
 
 const ENDPOINT = "/analysis/management-intelligence/";
 
@@ -22,5 +25,19 @@ export async function fetchManagementIntelligence(
     year: params.year,
     quarter: params.quarter,
   });
+  return data;
+}
+
+/**
+ * Exact org/coordinator presence per normalised district (the 'Where' map).
+ * Read-only; presence counts only (no per-district value sums, no PII).
+ */
+export async function fetchGeographicCoverage(
+  projectId?: number,
+): Promise<GeographicCoverageResponse> {
+  const { data } = await api.get<GeographicCoverageResponse>(
+    "/analysis/geographic-coverage/",
+    { project: projectId },
+  );
   return data;
 }

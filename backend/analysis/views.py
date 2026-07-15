@@ -38,6 +38,7 @@ from projects.scope import (
 from .serializers import ReportSerializer, SavedQuerySerializer, ScheduledReportSerializer, CoordinatorTargetSerializer
 from .services.coordinator_rollups import get_coordinator_performance, performance_status as coordinator_performance_status, fiscal_quarter_range
 from .services.management_intelligence import build_coordinator_cards
+from .services.geography import build_geographic_coverage
 from audit.recording import record_audit_event
 from aggregates.models import Aggregate
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, apply_training_filter_to_projects, should_include_training, training_view_mode, is_training_only_request
@@ -2388,5 +2389,34 @@ def management_intelligence(request):
     payload = build_coordinator_cards(
         project_obj, int(year), quarter, coordinator_ids=coordinator_ids,
     )
+    return Response(payload)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def geographic_coverage(request):
+    """Exact org/coordinator presence per normalised Botswana district for a
+    project (read-only). Presence counts only — approved values are NOT summed
+    per district (org coverage is multi-district; that would double-count). No
+    beneficiary/PII data. Drives the intelligence 'Where' map + ranked bar.
+    """
+    user = request.user
+    include_training = is_training_only_request(request)
+    raw_project = request.query_params.get('project')
+    try:
+        project_id = int(raw_project) if raw_project is not None else None
+    except (TypeError, ValueError):
+        return Response({'detail': 'Invalid project id.'}, status=status.HTTP_400_BAD_REQUEST)
+    if project_id is None:
+        project_id = get_default_project_id(user, include_training=include_training)
+    if project_id is None:
+        return Response({'detail': 'No project available.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    project_obj = Project.objects.filter(id=project_id).first()
+    if project_obj is None or not user_can_access_project(user, project_obj):
+        return Response({'detail': 'Project not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    payload = build_geographic_coverage(project_obj.id)
+    payload['project'] = {'id': project_obj.id, 'code': project_obj.code, 'name': project_obj.name}
     return Response(payload)
 

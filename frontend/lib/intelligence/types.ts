@@ -81,3 +81,19 @@ export type ManagementIntelligenceResponse = {
   cards: CoordinatorIntelligenceCard[];
   detail?: string;
 };
+
+/** Exact org/coordinator presence per normalised district (the 'Where' map). */
+export type DistrictCoverage = {
+  district: string;
+  orgs_present: number;
+  coordinators_present: number;
+};
+
+export type GeographicCoverageResponse = {
+  project: { id: number; code: string; name: string };
+  orgs_with_coverage: number;
+  raw_label_count: number;
+  normalized_district_count: number;
+  attribution: string;
+  districts: DistrictCoverage[];
+};
