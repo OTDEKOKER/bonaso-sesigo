@@ -119,3 +119,31 @@ Build **one** project+period-scoped endpoint that *composes existing SSoTs*
 per-chart endpoint, re-implement targets/rollups, or touch the workbook path.
 Every card carries: chart · principal finding · supporting evidence · DQ/completeness
 qualifier · recommended action (data-grounded) · drill-down path. Approved data only.
+
+---
+
+## Phase 4 — Topography ('Where') read-only audit
+
+**Coverage data reality (verified live):**
+- **Project 2 (Annual Report dataset): NO district coverage** (0/89 orgs). A
+  geographic map is not possible for the report's data; its "Where" is by-CSO.
+- **Project 3: 73/89 orgs carry coverage**, but the 14 raw labels have DQ issues:
+  `North West` vs `North-West`; `Gaborone` vs `Greater Gaborone`; `Gantsi`
+  (=Ghanzi); `Francistown` (a city, not a district).
+- Attribution is **org-level coverage** (which districts an org operates in), not
+  per-record geo. So **presence counts are exact; per-district value sums would
+  double-count** a multi-district org and are deliberately NOT produced.
+
+**Normalisation (`analysis/services/geography.py`, DISPLAY mapping, reversible):**
+14 raw labels → **11 standard Botswana regions**. Unambiguous fixes:
+`North-West→North West`, `Gantsi→Ghanzi`. Documented judgement folds (easy to
+change): `Francistown→North East`, `Greater Gaborone→Gaborone`. Validated live:
+Central 22 orgs, North West 14, Kweneng 14, Gaborone 14, Southern 11, North East
+11, Kgatleng 9, South East 8, Chobe 4, Kgalagadi 2, Ghanzi 1.
+
+**Status:** exact presence-coverage service built + validated (read-only). The
+echarts choropleth **frontend is blocked on a Botswana districts GeoJSON** (none
+in the repo; provenance is the operator's call) + a build (runs on CI). The
+intelligence cards already answer "Where" precisely via per-sub contributions;
+the map is an additive spatial view on approximate coverage data, to be clearly
+labelled as such.
