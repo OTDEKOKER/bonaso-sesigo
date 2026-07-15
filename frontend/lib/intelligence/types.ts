@@ -1,19 +1,15 @@
 /**
- * Management-intelligence data contract.
- *
- * Every intelligence card answers the five management questions. This is the
- * shared shape returned by the backend `coordinator-intelligence` endpoint and
- * consumed by the `IntelligenceCard` component — one type so the "answers" stay
- * aligned end to end.
+ * Management-intelligence data contract (mirrors the backend
+ * `/api/analysis/management-intelligence/` payload — snake_case, matching the
+ * rest of the API services). Every card answers the five management questions
+ * and carries finding / evidence / DQ qualifier / action / drill-down.
  */
 
 export type AttentionSeverity = "critical" | "high" | "medium" | "low";
 
-/** One "what requires attention" signal, sourced from an existing subsystem. */
 export type AttentionItem = {
   severity: AttentionSeverity;
   label: string;
-  /** Which live subsystem raised it (for provenance + drill-through). */
   source: "target" | "flag" | "reporting" | "anomaly" | "parity";
 };
 
@@ -23,20 +19,32 @@ export type TrendPoint = {
   target?: number | null;
 };
 
-/** Pace of achievement vs where we should be by this point in the year. */
-export type PaceStatus = "ahead" | "on_track" | "behind" | "at_risk";
+/** Pace vs where we should be by now; `pending` when no comparable target yet. */
+export type PaceStatus = "ahead" | "on_track" | "behind" | "at_risk" | "pending";
 
 export type WhereSlice = {
   name: string;
   value: number;
+  share_percent?: number | null;
 };
 
-/** A single coordinator's headline indicator, fully answered. */
+/** Distinguishes a reported zero from a reporting gap etc. (audit taxonomy). */
+export type DataState = "approved" | "zero_reported" | "not_reported" | "target_pending";
+
+export type Drilldown = {
+  type: string;
+  project: number | null;
+  coordinator: number;
+  indicator: number;
+  year: number | null;
+  quarter: string | null;
+};
+
 export type CoordinatorIntelligenceCard = {
-  coordinatorId: number;
-  coordinatorName: string;
-  indicatorId: number;
-  indicatorLabel: string;
+  coordinator_id: number;
+  coordinator_name: string;
+  indicator_id: number;
+  indicator_label: string;
   unit?: string | null;
   period: string;
 
@@ -44,26 +52,32 @@ export type CoordinatorIntelligenceCard = {
   actual: number;
   trend: TrendPoint[];
 
-  // 2. Where did it happen?
+  // 2. Where?
   where: WhereSlice[];
 
-  // 3. Why does it matter?
-  effectiveTarget: number;
-  pctOfTarget: number;
-  expectedPacePct: number;
-  paceStatus: PaceStatus;
-  deltaVsPriorPct?: number | null;
+  // 3. Why it matters?
+  effective_target: number;
+  pct_of_target: number | null;
+  pace_status: PaceStatus;
+  delta_vs_prior_pct?: number | null;
 
-  // 4. What requires attention?
+  // 4. Needs attention?
   attention: AttentionItem[];
 
-  // 5. What action should management take?
-  recommendedAction: string;
+  // 5. Action + the mandatory management wrapper
+  finding: string;
+  evidence: string[];
+  dq_qualifier: string;
+  recommended_action: string;
+  data_state: DataState;
+  drilldown: Drilldown;
 };
 
-export type CoordinatorIntelligenceResponse = {
-  project: { id: number; code: string };
-  period: string;
-  generatedAt: string;
+export type ManagementIntelligenceResponse = {
+  project: { id: number; code: string; name: string };
+  period: { year: number; quarter: string; label: string; window_state: string | null } | null;
+  lens: string;
+  generated_at?: string;
   cards: CoordinatorIntelligenceCard[];
+  detail?: string;
 };

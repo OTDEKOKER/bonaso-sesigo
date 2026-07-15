@@ -15,6 +15,7 @@ export const PACE_COLOR: Record<PaceStatus, string> = {
   on_track: SESIGO_SEMANTIC_COLORS.achieved,
   behind: SESIGO_SEMANTIC_COLORS.late,
   at_risk: SESIGO_SEMANTIC_COLORS.missing,
+  pending: "#94a3b8",
 };
 
 /** "What happened" — compact actual-vs-target trend line. */
