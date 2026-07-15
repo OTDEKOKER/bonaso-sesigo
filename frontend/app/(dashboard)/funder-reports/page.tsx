@@ -43,9 +43,6 @@ export default function FunderReportsPage() {
   const [periodType, setPeriodType] = useState<"quarter" | "year">("quarter");
   const [quarter, setQuarter] = useState<string>("1");
   const [fy, setFy] = useState<string>(String(currentFiscalStartYear()));
-  const [sex, setSex] = useState<string>("all");
-  const [kvp, setKvp] = useState<string>("");
-  const [age, setAge] = useState<string>("");
   const [includePending, setIncludePending] = useState(false);
   const [dashboard, setDashboard] = useState<GeneratedDashboard | null>(null);
   const [activeFilters, setActiveFilters] = useState<string>("");
@@ -66,11 +63,8 @@ export default function FunderReportsPage() {
   const buildQuery = useCallback((): PeriodQuery => ({
     project: Number(projectId), period_type: periodType,
     fiscal_year: Number(fy), quarter: periodType === "quarter" ? Number(quarter) : undefined,
-    sex: sex !== "all" ? [sex] : undefined,
-    key_population: kvp ? kvp.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
-    age: age ? age.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
     include_unapproved: includePending || undefined,
-  }), [projectId, periodType, fy, quarter, sex, kvp, age, includePending]);
+  }), [projectId, periodType, fy, quarter, includePending]);
 
   const exportWord = useCallback(async () => {
     if (!templateId) return;
@@ -107,9 +101,6 @@ export default function FunderReportsPage() {
     try {
       const filters: string[] = [];
       const data = await funderReportsService.generate(Number(templateId), buildQuery());
-      if (sex !== "all") filters.push(`sex: ${sex}`);
-      if (kvp) filters.push(`KVP: ${kvp}`);
-      if (age) filters.push(`age: ${age}`);
       filters.push(includePending ? "incl. pending (if permitted)" : "approved only");
       setActiveFilters(filters.join(" · "));
       setDashboard(data);
@@ -118,7 +109,7 @@ export default function FunderReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [templateId, projectId, buildQuery, sex, kvp, age, includePending, toast]);
+  }, [templateId, projectId, buildQuery, includePending, toast]);
 
   return (
     <div className="space-y-6 p-6">
@@ -175,19 +166,6 @@ export default function FunderReportsPage() {
             <Label>Fiscal year</Label>
             <Input type="number" value={fy} onChange={(e) => setFy(e.target.value)} />
           </div>
-          <div className="w-28">
-            <Label>Sex</Label>
-            <Select value={sex} onValueChange={setSex}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="Female">Female</SelectItem>
-                <SelectItem value="Male">Male</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-40"><Label>KVP (comma-sep)</Label><Input value={kvp} onChange={(e) => setKvp(e.target.value)} placeholder="e.g. FSW, MSM" /></div>
-          <div className="w-40"><Label>Age (comma-sep)</Label><Input value={age} onChange={(e) => setAge(e.target.value)} placeholder="e.g. 20-24" /></div>
           <label className="flex items-center gap-2 pb-2 text-sm">
             <input type="checkbox" checked={includePending} onChange={(e) => setIncludePending(e.target.checked)} />
             Include pending (approvers only)
