@@ -124,8 +124,11 @@ export function EChart({
   const chartRef = useRef<EChartsType | null>(null);
   // Keep the latest handlers in a ref so we bind echarts events once but always
   // dispatch to the current callbacks (which may close over changing props).
+  // Sync in an effect (never mutate a ref during render).
   const eventsRef = useRef<EChartEventHandlers | undefined>(onEvents);
-  eventsRef.current = onEvents;
+  useEffect(() => {
+    eventsRef.current = onEvents;
+  }, [onEvents]);
 
   // Init once; resize with the container; dispose on unmount.
   useEffect(() => {
