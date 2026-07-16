@@ -36,6 +36,22 @@ STANDARD_AGE_BAND_VALUES = [
 ]
 STANDARD_KP_VALUES = ["GENERAL POP.", "FSW", "MSM", "PWID", "PWD", "LGBTQI+"]
 
+# Known spelling variants of a disaggregate category -> its canonical label.
+# Keyed by a punctuation/space-insensitive fold so "General population",
+# "Gen Pop", "General Poluation" (typo) etc. all collapse. This is the single
+# place new aliases are added; the data write-path and config recovery both use
+# it so a variant can never persist and re-create duplicate rows / workbook
+# columns. NB: PWUD (people who use drugs) is a DISTINCT category, never aliased
+# to PWID.
+DISAGGREGATE_LABEL_ALIASES = {
+    "general population": "GENERAL POP.",
+    "general pop": "GENERAL POP.",
+    "gen pop": "GENERAL POP.",
+    "gen population": "GENERAL POP.",
+    "general poluation": "GENERAL POP.",
+    "pwids": "PWID",
+}
+
 # Maps a normalised legacy sub_label name -> (key, canonical label, standard values).
 # Only names with a confident, house-standard value set are listed here; any
 # other legacy label (e.g. "Disaggregate", a free-form primary) cannot be
@@ -88,6 +104,53 @@ def _ordered_unique(values):
     return out
 
 
+def _alias_fold(label) -> str:
+    """Punctuation/space-insensitive fold used only for alias lookup."""
+    return re.sub(r"[^a-z0-9]+", " ", str(label or "").lower()).strip()
+
+
+def canonical_disaggregate_label(label):
+    """Map a disaggregate label to its canonical spelling (identity if unknown)."""
+    canon = DISAGGREGATE_LABEL_ALIASES.get(_alias_fold(label))
+    return canon if canon is not None else label
+
+
+def _deep_add(a, b):
+    """Sum two nested numeric maps leaf-wise (used to merge two labels' data)."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        out = dict(a)
+        for k, bv in b.items():
+            out[k] = _deep_add(out[k], bv) if k in out else bv
+        return out
+    an = a if isinstance(a, (int, float)) and not isinstance(a, bool) else 0
+    bn = b if isinstance(b, (int, float)) and not isinstance(b, bool) else 0
+    return an + bn
+
+
+def _canonicalize_primary_map(mapping):
+    """Rename variant primary keys to canonical, deep-summing any collision so
+    the leaf total is preserved (two spellings of one category become one)."""
+    if not isinstance(mapping, dict):
+        return mapping
+    out: dict = {}
+    for label, node in mapping.items():
+        target = canonical_disaggregate_label(label)
+        out[target] = _deep_add(out[target], node) if target in out else node
+    return out
+
+
+def canonicalize_value_disaggregate_labels(value):
+    """In-place canonicalise the ``disaggregates``/``categories`` primary labels
+    of a stored aggregate ``value``. Sum-preserving; safe no-op for anything else.
+    This is the single write-path guard so no variant label is ever persisted."""
+    if isinstance(value, dict):
+        for key in ("disaggregates", "categories"):
+            node = value.get(key)
+            if isinstance(node, dict):
+                value[key] = _canonicalize_primary_map(node)
+    return value
+
+
 def _layout_for(dimensions) -> str:
     return {1: "list", 2: "matrix"}.get(len(dimensions), "nested-matrix") if dimensions else "none"
 
@@ -136,7 +199,10 @@ def config_from_aggregate_data(disaggregate_samples, sub_labels=None) -> dict:
             continue
         for primary, secondary_map in disag.items():
             if str(primary or "").strip():
-                primary_values.append(str(primary).strip())
+                # Canonicalise so a variant spelling in legacy data can't be
+                # recovered into the config (and thence the workbook) as a
+                # duplicate of its canonical category.
+                primary_values.append(canonical_disaggregate_label(str(primary).strip()))
             if not isinstance(secondary_map, dict):
                 continue
             for secondary, band_map in secondary_map.items():

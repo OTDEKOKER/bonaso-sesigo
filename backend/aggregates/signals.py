@@ -10,12 +10,28 @@ from __future__ import annotations
 import logging
 
 from django.db import transaction
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from .models import Aggregate
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(pre_save, sender=Aggregate, dispatch_uid="aggregates_canonicalize_labels")
+def _canonicalize_aggregate_labels(sender, instance, **kwargs):
+    """Fold disaggregate label spelling variants to canonical BEFORE persisting,
+    so no aggregate ever stores two spellings of one category (which would
+    re-create duplicate matrix rows / workbook columns). Central write-path guard
+    covering the capture API, update_or_create and every importer that .save()s.
+    Sum-preserving; never blocks the write."""
+    try:
+        from indicators.disaggregation import canonicalize_value_disaggregate_labels
+
+        if isinstance(instance.value, dict):
+            canonicalize_value_disaggregate_labels(instance.value)
+    except Exception:  # normalisation must never break the primary write
+        logger.exception("Label canonicalization failed for aggregate %s", getattr(instance, "pk", None))
 
 
 @receiver(post_save, sender=Aggregate, dispatch_uid="aggregates_sync_facts")
