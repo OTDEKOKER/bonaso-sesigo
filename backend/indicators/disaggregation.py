@@ -34,7 +34,7 @@ STANDARD_AGE_BAND_VALUES = [
     "10-14", "15-19", "20-24", "25-29", "30-34", "35-39",
     "40-44", "45-49", "50-54", "55-59", "60-64", "65+",
 ]
-STANDARD_KP_VALUES = ["GENERAL POP.", "FSW", "MSM", "PWID", "PWD", "LGBTQI+"]
+STANDARD_KP_VALUES = ["GENERAL POP.", "FSW", "MSM", "PWID", "PWUD", "PWD", "LGBTQI+"]
 
 # Known spelling variants of a disaggregate category -> its canonical label.
 # Keyed by a punctuation/space-insensitive fold so "General population",
