@@ -159,46 +159,49 @@ function FigureTable({ figure }: { figure: GeneratedFigure }) {
   const hasPct = Array.isArray(figure.achievement_percent) && figure.achievement_percent.length > 0;
   const th = "px-2 py-1.5 text-left font-normal whitespace-nowrap";
   const td = "px-2 py-1.5 text-right tabular-nums";
+  const colHead = "px-2 py-1.5 text-right font-medium text-slate-700 whitespace-nowrap";
   const swatch = (color: string) => (
     <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm align-middle" style={{ background: color }} />
   );
+  // Categories are listed vertically (one row each — e.g. age ranges 18-24 at the
+  // top), and the series/Target/Achievement% are the columns, matching the
+  // published funder Excel layout.
+  const DIM_LABELS: Record<string, string> = {
+    age: "Age range", sex: "Sex", key_population: "Category", coordinator: "Coordinator / CSO",
+    organization: "CSO / organization", indicator: "Indicator", district: "District", period: "Period",
+  };
+  const rowHeaderLabel = DIM_LABELS[(figure as { grouping_dimension?: string }).grouping_dimension ?? ""] ?? "Category";
   return (
     <div className="mt-4 overflow-x-auto">
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr className="border-b">
-            <th className="px-2 py-1.5 text-left font-medium text-muted-foreground" />
-            {cats.map((c) => (
-              <th key={c} className="px-2 py-1.5 text-right font-medium text-slate-700 whitespace-nowrap">{c}</th>
+            <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">{rowHeaderLabel}</th>
+            {figure.series.map((s, i) => (
+              <th key={s.name} className={colHead}>{swatch(seriesColor(i))}{s.name}</th>
             ))}
+            {hasTarget && <th className={colHead}>{swatch(SESIGO_SEMANTIC_COLORS.target)}Target</th>}
+            {hasPct && <th className={colHead}>Achievement %</th>}
           </tr>
         </thead>
         <tbody>
-          {figure.series.map((s, i) => (
-            <tr key={s.name} className="border-b border-slate-100">
-              <th className={th}>{swatch(seriesColor(i))}{s.name}</th>
-              {cats.map((c, ci) => (
-                <td key={c} className={td}>{fmt(Number(s.data[ci]) || 0)}</td>
-              ))}
-            </tr>
-          ))}
-          {hasTarget && (
-            <tr className="border-b border-slate-100">
-              <th className={th}>{swatch(SESIGO_SEMANTIC_COLORS.target)}Target</th>
-              {cats.map((c, ci) => (
-                <td key={c} className={`${td} text-muted-foreground`}>{fmt(Number(figure.target![ci]) || 0)}</td>
-              ))}
-            </tr>
-          )}
-          {hasPct && (
-            <tr>
-              <th className={th}>Achievement %</th>
-              {cats.map((c, ci) => {
-                const v = figure.achievement_percent![ci];
-                return <td key={c} className={`${td} ${v != null && v >= 100 ? "text-emerald-600" : v != null ? "text-amber-600" : ""}`}>{v == null ? "—" : `${v}%`}</td>;
-              })}
-            </tr>
-          )}
+          {cats.map((c, ci) => {
+            const pct = hasPct ? figure.achievement_percent![ci] : null;
+            return (
+              <tr key={c} className="border-b border-slate-100">
+                <th className={th}>{c}</th>
+                {figure.series.map((s) => (
+                  <td key={s.name} className={td}>{fmt(Number(s.data[ci]) || 0)}</td>
+                ))}
+                {hasTarget && <td className={`${td} text-muted-foreground`}>{fmt(Number(figure.target![ci]) || 0)}</td>}
+                {hasPct && (
+                  <td className={`${td} ${pct != null && pct >= 100 ? "text-emerald-600" : pct != null ? "text-amber-600" : ""}`}>
+                    {pct == null ? "—" : `${pct}%`}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

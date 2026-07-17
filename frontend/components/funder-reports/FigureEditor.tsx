@@ -105,8 +105,11 @@ export function FigureEditor(props: Props) {
         const key = String(d.key ?? "").toLowerCase();
         const label = String(d.label ?? "").trim();
         const ll = label.toLowerCase();
+        // Match "age" only as a whole token — NOT the substring in e.g.
+        // "…Mess-age-s" (which would wrongly map a Message Type dimension to the
+        // age axis and produce an age×age chart).
         if (key === "sex" || ll === "sex") add("sex", label || "Sex");
-        else if (key.includes("age") || ll.includes("age")) add("age", label || "Age range");
+        else if (/(^|[_\s])age([_\s]|$)/.test(key) || /\bage\b/.test(ll)) add("age", label || "Age range");
         else add("key_population", label || "Category");
       }
     }
