@@ -296,6 +296,12 @@ class FigureGenerator:
             category_keys = sorted(cat_totals, key=lambda k: _age_band_sort_key(str(k)))
         else:
             category_keys = sorted(cat_totals, key=lambda k: -cat_totals[k])
+        # Drop the residual "Total"/"All" placeholder (facts carrying no value on
+        # this axis) when it is empty, so a disaggregate chart doesn't show a
+        # stray zero "Total" bar. Kept when non-zero (it's real un-disaggregated
+        # data) and never affects indicator/coordinator/org keys.
+        _residual = {AggregateFact.TOTAL_BAND, AggregateFact.ALL}
+        category_keys = [k for k in category_keys if not (str(k) in _residual and not cat_totals.get(k))]
         p_labels = self._labels_for(primary_dim, category_keys, label_by_indicator)
 
         if s_field:
