@@ -40,7 +40,18 @@ import { getIndicatorDisplayName } from "@/lib/indicators/display-name";
 import { cn } from "@/lib/utils";
 
 const CHART_TYPES = ["achieved_vs_target", "grouped_bar", "stacked_bar", "horizontal_bar", "line", "pie", "heatmap", "cascade", "table"];
-const DIMENSIONS = ["none", "organization", "coordinator", "indicator", "sex", "age", "key_population", "district", "period"];
+type DimOpt = { value: string; label: string };
+// Structural dimensions always available regardless of the mapped indicator.
+// (Disaggregate dimensions — sex/age/the primary category — are added
+// dynamically from the mapped indicators' disaggregation config. "district" is
+// dropped: the generator can't group on it, facts don't carry it.)
+const BASE_DIMS: DimOpt[] = [
+  { value: "none", label: "None" },
+  { value: "organization", label: "CSO / organization" },
+  { value: "coordinator", label: "Coordinator" },
+  { value: "indicator", label: "Indicator" },
+  { value: "period", label: "Reporting period (trend)" },
+];
 const ROLES = ["achieved", "target", "numerator", "denominator", "category", "comparison", "excluded", "supporting_narrative"];
 const TARGET_MODES = ["none", "org_quarter", "project"];
 const CALC_MODES = ["none", "achievement_percent", "ratio_percent"];
@@ -62,7 +73,7 @@ export function FigureEditor(props: Props) {
   const { toast } = useToast();
   const [form, setForm] = useState<Partial<ReportFigure>>(figure);
   const [mappings, setMappings] = useState(figure.mappings ?? []);
-  const [indicators, setIndicators] = useState<Array<{ id: number; name: string; short_name?: string; code?: string }>>([]);
+  const [indicators, setIndicators] = useState<Array<{ id: number; name: string; short_name?: string; code?: string; config?: { dimensions?: Array<{ key?: string; label?: string }> } }>>([]);
   const [newIndicator, setNewIndicator] = useState<string>("");
   const [indicatorPickerOpen, setIndicatorPickerOpen] = useState(false);
   const [indicatorSearch, setIndicatorSearch] = useState("");
@@ -75,8 +86,38 @@ export function FigureEditor(props: Props) {
   useEffect(() => {
     if (!open) return;
     indicatorsService.listAll().then((rows) =>
-      setIndicators(rows.map((r) => ({ id: Number(r.id), name: r.name, short_name: r.short_name, code: r.code })))).catch(() => {});
+      setIndicators(rows.map((r) => ({ id: Number(r.id), name: r.name, short_name: r.short_name, code: r.code, config: (r as { aggregate_disaggregation_config?: { dimensions?: Array<{ key?: string; label?: string }> } }).aggregate_disaggregation_config })))).catch(() => {});
   }, [open]);
+
+  // "Group by" options are driven by the MAPPED indicators' actual
+  // disaggregation: structural dims are always offered, and each mapped
+  // indicator's config dimensions add sex / age / its primary category (with the
+  // config's own label, e.g. "Message Type"). So the builder only offers
+  // breakdowns the data can actually produce.
+  const groupOptions = useMemo<DimOpt[]>(() => {
+    const mappedIds = new Set(mappings.map((m) => Number(m.indicator)));
+    const opts: DimOpt[] = [...BASE_DIMS];
+    const seen = new Set(opts.map((o) => o.value));
+    const add = (value: string, label: string) => { if (!seen.has(value)) { seen.add(value); opts.push({ value, label }); } };
+    for (const ind of indicators) {
+      if (!mappedIds.has(ind.id)) continue;
+      for (const d of ind.config?.dimensions ?? []) {
+        const key = String(d.key ?? "").toLowerCase();
+        const label = String(d.label ?? "").trim();
+        const ll = label.toLowerCase();
+        if (key === "sex" || ll === "sex") add("sex", label || "Sex");
+        else if (key.includes("age") || ll.includes("age")) add("age", label || "Age range");
+        else add("key_population", label || "Category");
+      }
+    }
+    return opts;
+  }, [indicators, mappings]);
+
+  // Keep a currently-selected dimension selectable even if no mapped indicator
+  // advertises it (e.g. an existing figure grouped on a dim before mapping).
+  const withCurrent = useCallback((val: string): DimOpt[] =>
+    groupOptions.some((o) => o.value === val) ? groupOptions : [...groupOptions, { value: val, label: val }],
+  [groupOptions]);
 
   const set = (k: keyof ReportFigure, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -182,8 +223,6 @@ export function FigureEditor(props: Props) {
             <div><Label>Display order</Label><Input type="number" value={form.display_order ?? 0} onChange={(e) => set("display_order", Number(e.target.value))} disabled={!canEditMappings} /></div>
             {([
               ["chart_type", "Chart type", CHART_TYPES],
-              ["grouping_dimension", "Group by", DIMENSIONS],
-              ["secondary_grouping_dimension", "Secondary group", DIMENSIONS],
               ["target_mode", "Target mode", TARGET_MODES],
               ["calculation_mode", "Calculation", CALC_MODES],
             ] as const).map(([key, label, opts]) => (
@@ -193,6 +232,20 @@ export function FigureEditor(props: Props) {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{opts.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                 </Select>
+              </div>
+            ))}
+            {/* Grouping dropdowns are driven by the mapped indicator's disaggregation. */}
+            {([
+              ["grouping_dimension", "Group by"],
+              ["secondary_grouping_dimension", "Secondary group"],
+            ] as const).map(([key, label]) => (
+              <div key={key}>
+                <Label>{label}</Label>
+                <Select value={String(form[key])} onValueChange={(v) => set(key, v)} disabled={!canEditMappings}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{withCurrent(String(form[key] ?? "none")).map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                </Select>
+                {mappings.length === 0 && <p className="text-xs text-muted-foreground mt-1">Map an indicator to offer its disaggregate categories.</p>}
               </div>
             ))}
             <div className="flex items-center gap-2 pt-6">

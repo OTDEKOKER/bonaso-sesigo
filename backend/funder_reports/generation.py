@@ -285,10 +285,15 @@ class FigureGenerator:
 
         # Order categories: for indicator grouping keep the configured MAPPING
         # order (cascade/funnel stages must read testing→positive→ART in sequence,
-        # never reordered by value); every other grouping is ranked by value desc.
+        # never reordered by value); age is ordered youngest→oldest (so any age
+        # band set — standard health bands or the Facebook/social 18-24…65+ set —
+        # reads chronologically, not by size); every other grouping is by value desc.
         if primary_dim == Dimension.INDICATOR:
             order = {k: i for i, k in enumerate(label_by_indicator)}
             category_keys = sorted(cat_totals, key=lambda k: (order.get(k, len(order)), -cat_totals[k]))
+        elif primary_dim == Dimension.AGE:
+            from indicators.disaggregation import _age_band_sort_key
+            category_keys = sorted(cat_totals, key=lambda k: _age_band_sort_key(str(k)))
         else:
             category_keys = sorted(cat_totals, key=lambda k: -cat_totals[k])
         p_labels = self._labels_for(primary_dim, category_keys, label_by_indicator)
