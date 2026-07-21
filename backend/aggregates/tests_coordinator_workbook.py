@@ -90,8 +90,9 @@ class CoordinatorWorkbookTests(SimpleTestCase):
     def test_formula_cells_have_cached_values_not_empty(self):
         """openpyxl emits ``<f>…</f><v/>`` (empty cached value); Excel "repairs"
         cross-sheet rollup formulas that carry an empty cached value. The workbook
-        must ship every formula cell with an explicit ``<v>0</v>`` (recomputed on
-        open via fullCalcOnLoad) and zero empty ``<v/>`` left behind."""
+        must ship every formula cell with an explicit cached ``<v>`` (the real
+        computed total, also recomputed on open via fullCalcOnLoad) and zero empty
+        ``<v/>`` left behind."""
         import zipfile
         i1 = _indicator(1, "IND1", "Indicator One")
         i2 = _indicator(2, "IND2", "Indicator Two")
@@ -112,10 +113,47 @@ class CoordinatorWorkbookTests(SimpleTestCase):
                     formulas += xml.count("</f>")
                     empty += len(re.findall(r"</f><v\s*/>", xml))
                     empty += xml.count("</f><v></v>")
-                    cached += len(re.findall(r"</f><v>0</v>", xml))
+                    # An explicit cached value of ANY number (not just 0).
+                    cached += len(re.findall(r"</f><v>[^<]*</v>", xml))
         self.assertGreater(formulas, 0)
         self.assertEqual(empty, 0, "formula cells must not ship an empty <v/> cached value")
         self.assertEqual(cached, formulas, "every formula cell should carry an explicit cached value")
+
+    def test_total_sheet_caches_real_computed_totals(self):
+        """With data, the TOTAL sheet's cross-sheet SUM cells must ship the REAL
+        rollup as their cached ``<v>`` — so the workbook reads correctly in
+        Protected View / non-Excel viewers, before any recalculation. Regression
+        guard for the 'coordinator workbook shows zeros' report."""
+        i1 = _indicator(1, "IND1", "Indicator One")
+        project = SimpleNamespace(id=99, name="Test Project", code="TP", is_training=False)
+        coord = SimpleNamespace(id=5, name="Coordinator Org", code="COORD")
+        subA = SimpleNamespace(id=11, name="Sub A", code="A")
+        subB = SimpleNamespace(id=12, name="Sub B", code="B")
+        key = (rw.ALL_PRIMARY, "Male", "10-14")  # one filled (primary, secondary, band) cell
+        planA = rw.IndicatorPlan(indicator=i1, config=rw.resolve_matrix_config(i1),
+                                 target=None, existing_cells={key: 5})
+        planB = rw.IndicatorPlan(indicator=i1, config=rw.resolve_matrix_config(i1),
+                                 target=None, existing_cells={key: 7})
+        buf = rw.generate_coordinator_workbook(
+            project=project, coordinator=coord,
+            sub_specs=[(subA, [planA]), (subB, [planB])],
+            coordinator_plans=[_plan(i1)], quarter=1, fiscal_start_year=2026,
+            with_data=True,
+        )
+        wb = load_workbook(BytesIO(buf.getvalue()), data_only=True)  # cached values only
+        cellmap = wb["_cellmap"]
+        prefix = rw.SHEET_TOTAL + "!"
+        total_cells = [
+            coord_ref.split("!", 1)[1]
+            for (ind_id, code, kind, primary, secondary, band, coord_ref)
+            in cellmap.iter_rows(min_row=2, values_only=True)
+            if str(ind_id) == "1" and kind == "cell" and coord_ref and coord_ref.startswith(prefix)
+        ]
+        total_sheet = wb[rw.SHEET_TOTAL]
+        summed = sum((total_sheet[c].value or 0) for c in total_cells)
+        self.assertEqual(summed, 12, "TOTAL sheet cached values must equal the real rollup (5 + 7)")
+        self.assertTrue(any((total_sheet[c].value or 0) > 0 for c in total_cells),
+                        "cached rollup must be non-zero (not the legacy <v>0</v> placeholder)")
 
     def test_indicator_only_in_one_sub_sums_only_that_sub(self):
         wb = self._build()

@@ -737,34 +737,222 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
     return ws
 
 
-# openpyxl writes formula cells as ``<f>…</f><v/>`` — an *empty* self-closing
-# cached-value element (not a missing one). Excel tolerates that for same-sheet
-# formulas, but for the coordinator TOTAL sheet's *cross-sheet* ``=SUM('Sub'!…)``
-# rollups it reports "we found a problem with some content" and silently strips
-# them ("Repaired"). This matches the empty cached value (``<v/>`` or ``<v></v>``)
-# or a missing one, right before the cell closes.
-_FORMULA_CACHE_RE = re.compile(r"</f>(?:<v\s*/>|<v></v>)?</c>")
+# ── Formula cached-value evaluation ──────────────────────────────────────────
+# openpyxl writes formula cells as ``<f>…</f>`` with NO cached ``<v>`` (or an
+# empty ``<v/>``). Excel tolerates that for same-sheet formulas, but for the
+# coordinator/consolidated TOTAL sheets' *cross-sheet* ``=SUM('Sub'!…)`` rollups
+# it reports "we found a problem with some content" and silently strips them
+# ("Repaired"). It also means every formula cell reads as blank until Excel
+# recalculates — so in Protected View (which does NOT recalc), non-Excel viewers
+# (Google Sheets, LibreOffice, macOS Preview) and in-browser previews, the whole
+# TOTAL sheet shows zeros even though the underlying data is correct.
+#
+# We fix both by (1) setting ``fullCalcOnLoad`` on the workbook so Excel force-
+# recomputes on open, and (2) writing the REAL computed total as each formula
+# cell's cached ``<v>`` so the numbers are already correct before any recalc.
 
 
-def _inject_formula_cache(buf: BytesIO, cached: str = "0") -> BytesIO:
+def _split_top_level_commas(text: str) -> list[str]:
+    """Split ``SUM(...)`` arguments on top-level commas, respecting the single
+    quotes that wrap sheet names (which may themselves contain commas)."""
+    args, buf, in_quote = [], [], False
+    for ch in text:
+        if ch == "'":
+            in_quote = not in_quote
+            buf.append(ch)
+        elif ch == "," and not in_quote:
+            args.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        args.append("".join(buf))
+    return args
+
+
+def _parse_cell_ref(current_title: str, ref: str) -> tuple[str, str]:
+    """Resolve ``'Sheet Name'!A1`` / ``Sheet!A1`` / ``A1`` to ``(title, coord)``."""
+    title, coord = current_title, ref
+    if "!" in ref:
+        sheet, coord = ref.rsplit("!", 1)
+        sheet = sheet.strip()
+        if sheet.startswith("'") and sheet.endswith("'"):
+            sheet = sheet[1:-1].replace("''", "'")
+        title = sheet
+    return title, coord.strip()
+
+
+def _evaluate_workbook_values(wb) -> dict[tuple[str, str], float]:
+    """Compute the numeric result of every formula cell in ``wb``.
+
+    The reporting workbooks only ever emit SUM-of-cells formulas: ``=SUM(range)``,
+    ``=SUM('Sheet'!A1,'Sheet'!A2,…)`` and ``=A1+B1+…`` (plus bare ``0``). That is a
+    pure DAG of additions over literal input cells, so a small fixed-point pass
+    resolves it exactly the way Excel would — no external formula engine needed.
+    Returns ``{(sheet_title, coord): value}`` for formula cells only.
+    """
+    from openpyxl.utils import range_boundaries, get_column_letter
+
+    literals: dict[tuple[str, str], float] = {}
+    formulas: dict[tuple[str, str], str] = {}
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                value = cell.value
+                if value is None:
+                    continue
+                if isinstance(value, str) and value.startswith("="):
+                    formulas[(ws.title, cell.coordinate)] = value[1:]
+                elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                    literals[(ws.title, cell.coordinate)] = float(value)
+
+    computed = dict(literals)
+
+    def _lookup(title: str, coord: str):
+        """(known, value): a blank cell counts as 0; a not-yet-evaluated formula
+        cell is 'unknown' so its dependants are deferred to a later pass."""
+        key = (title, coord)
+        if key in computed:
+            return True, computed[key]
+        if key in formulas:
+            return False, None
+        return True, 0.0
+
+    def _eval(title: str, formula: str):
+        expr = formula.strip()
+        upper = expr.upper()
+        if upper.startswith("SUM(") and expr.endswith(")"):
+            total = 0.0
+            for arg in _split_top_level_commas(expr[4:-1]):
+                arg = arg.strip()
+                if not arg:
+                    continue
+                if ":" in arg:
+                    rng_title, rng = title, arg
+                    if "!" in arg:
+                        sheet, rng = arg.rsplit("!", 1)
+                        sheet = sheet.strip()
+                        if sheet.startswith("'") and sheet.endswith("'"):
+                            sheet = sheet[1:-1].replace("''", "'")
+                        rng_title = sheet
+                    min_col, min_row, max_col, max_row = range_boundaries(rng)
+                    for rr in range(min_row, max_row + 1):
+                        for cc in range(min_col, max_col + 1):
+                            known, val = _lookup(rng_title, f"{get_column_letter(cc)}{rr}")
+                            if not known:
+                                return None
+                            total += val or 0
+                else:
+                    ref_title, ref_coord = _parse_cell_ref(title, arg)
+                    known, val = _lookup(ref_title, ref_coord)
+                    if not known:
+                        return None
+                    total += val or 0
+            return total
+        if "+" in expr:
+            total = 0.0
+            for part in expr.split("+"):
+                part = part.strip()
+                if not part:
+                    continue
+                ref_title, ref_coord = _parse_cell_ref(title, part)
+                known, val = _lookup(ref_title, ref_coord)
+                if not known:
+                    return None
+                total += val or 0
+            return total
+        try:
+            return float(expr)
+        except ValueError:
+            ref_title, ref_coord = _parse_cell_ref(title, expr)
+            known, val = _lookup(ref_title, ref_coord)
+            return val if known else None
+
+    pending = dict(formulas)
+    # Dependency depth is tiny (input → sub-total → total); bound the passes by the
+    # formula count so a malformed/circular ref can never spin forever.
+    for _ in range(len(formulas) + 2):
+        if not pending:
+            break
+        progressed = False
+        for key, formula in list(pending.items()):
+            result = _eval(key[0], formula)
+            if result is not None:
+                computed[key] = result
+                del pending[key]
+                progressed = True
+        if not progressed:
+            break
+    return {key: computed[key] for key in formulas if key in computed}
+
+
+# Matches one formula cell — captures the opening ``<c r="COORD" …>`` tag, the
+# ``<f>…</f>`` element and any existing cached ``<v>`` so we can replace the value.
+_FORMULA_CELL_RE = re.compile(
+    r'(<c\b[^>]*\br="([A-Z]+[0-9]+)"[^>]*>)(<f\b[^>]*>.*?</f>)'
+    r'(?:<v\b[^>]*>.*?</v>|<v\s*/>)?(</c>)',
+    re.DOTALL,
+)
+
+
+def _inject_formula_cache(buf: BytesIO, value_map: dict | None = None) -> BytesIO:
     """Give every formula cell an explicit cached ``<v>`` value.
 
-    Replaces openpyxl's empty ``<v/>`` with ``<v>0</v>`` so each formula cell is
-    structurally complete and Excel stops "repairing" the cross-sheet rollup
-    formulas. Excel still recomputes the real total on open because the workbook
-    has ``fullCalcOnLoad`` set. Only worksheet parts are rewritten. Cells that
-    already carry a real cached value (``<v>123</v>``) are left untouched.
+    ``value_map`` maps ``(sheet_title, coord) -> number`` (from
+    :func:`_evaluate_workbook_values`); each formula cell is stamped with its real
+    total so the workbook reads correctly even before Excel recalculates. Cells
+    missing from the map fall back to ``0`` (structurally complete, so Excel still
+    stops "repairing" the file). Only worksheet parts are rewritten; label/string
+    cells have no ``<f>`` and are left untouched.
     """
     import zipfile
+    from xml.sax.saxutils import unescape
 
-    replacement = f"</f><v>{cached}</v></c>"
+    value_map = value_map or {}
     src = zipfile.ZipFile(buf, "r")
+
+    # Map each worksheet part (xl/worksheets/sheetN.xml) to its sheet title via
+    # workbook.xml + its rels, so per-cell values land on the right sheet.
+    path_to_title: dict[str, str] = {}
+    try:
+        wb_xml = src.read("xl/workbook.xml").decode("utf-8")
+        rels_xml = src.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+        rid_to_path: dict[str, str] = {}
+        for rel in re.finditer(r"<Relationship\b[^>]*?/>", rels_xml):
+            el = rel.group(0)
+            rid = re.search(r'Id="([^"]+)"', el)
+            target = re.search(r'Target="([^"]+)"', el)
+            if rid and target:
+                path = target.group(1).lstrip("/")
+                if not path.startswith("xl/"):
+                    path = "xl/" + path
+                rid_to_path[rid.group(1)] = path
+        for sheet in re.finditer(r"<sheet\b[^>]*?/>", wb_xml):
+            el = sheet.group(0)
+            name = re.search(r'name="([^"]+)"', el)
+            rid = re.search(r'r:id="([^"]+)"', el)
+            if name and rid and rid.group(1) in rid_to_path:
+                path_to_title[rid_to_path[rid.group(1)]] = unescape(name.group(1))
+    except KeyError:
+        pass
+
     out = BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
         for name in src.namelist():
             data = src.read(name)
             if name.startswith("xl/worksheets/") and name.endswith(".xml"):
-                data = _FORMULA_CACHE_RE.sub(replacement, data.decode("utf-8")).encode("utf-8")
+                title = path_to_title.get(name)
+
+                def _repl(match, _title=title):
+                    coord = match.group(2)
+                    val = value_map.get((_title, coord)) if _title is not None else None
+                    if val is None:
+                        cached = "0"
+                    else:
+                        cached = str(int(val)) if float(val).is_integer() else repr(float(val))
+                    return f"{match.group(1)}{match.group(3)}<v>{cached}</v>{match.group(4)}"
+
+                data = _FORMULA_CELL_RE.sub(_repl, data.decode("utf-8")).encode("utf-8")
             zout.writestr(name, data)
     out.seek(0)
     return out
@@ -856,12 +1044,15 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
 
     wb.active = 0  # open on the first data sheet (coordinator / first sub)
     wb.security = WorkbookProtection(workbookPassword=PROTECTION_PASSWORD, lockStructure=True)
+    wb.calculation.fullCalcOnLoad = True  # force Excel to recompute the rollups on open
+    # Stamp each formula cell with its real computed total BEFORE saving-out, so the
+    # cross-sheet TOTAL sheet reads correctly even in Protected View / non-Excel
+    # viewers (and Excel stops "repairing" the file).
+    cached_values = _evaluate_workbook_values(wb)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    # Cross-sheet rollup formulas need a cached value or Excel reports the file as
-    # corrupt and strips them ("Repaired"). Recomputed on open via fullCalcOnLoad.
-    buf = _inject_formula_cache(buf)
+    buf = _inject_formula_cache(buf, cached_values)
     return buf
 
 
@@ -959,10 +1150,12 @@ def generate_bonaso_workbook(*, project, org_label, coordinator_groups, grand_pl
 
     wb.active = 0
     wb.security = WorkbookProtection(workbookPassword=PROTECTION_PASSWORD, lockStructure=True)
+    wb.calculation.fullCalcOnLoad = True  # force Excel to recompute the rollups on open
+    cached_values = _evaluate_workbook_values(wb)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    buf = _inject_formula_cache(buf)
+    buf = _inject_formula_cache(buf, cached_values)
     return buf
 
 
