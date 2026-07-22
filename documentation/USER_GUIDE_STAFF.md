@@ -129,8 +129,8 @@ Sidebar → **Targets → Coordinator Targets**: pick the **project** and **coor
 
 ## 8. Dashboards & reports
 - **Dashboard** (top of sidebar) — your organisation's key figures.
-- **Analysis → Dashboards** — view charts.
-- **Analysis → Reports** — generate reports and **export to PDF/Excel/CSV**.
+- **Insights → Dashboards** — view charts.
+- **Insights → Analytics** — generate reports and **export to PDF/Excel/CSV**.
 
 ---
 

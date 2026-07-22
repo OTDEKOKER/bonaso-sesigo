@@ -84,7 +84,7 @@ That cycle — *enter → check → approve* — is the heart of the whole syste
 - **In plain words:** the goals each organisation is supposed to reach, next to what they actually achieved.
 - **What you do with it:** view **target vs actual** per indicator and see overall progress; admins set the targets.
 
-### Analysis *(Reports & Dashboards)*
+### Insights *(Analytics & Dashboards)*
 - **In plain words:** the charts-and-reports area.
 - **What you do with it:** build charts, and generate reports you can **export to PDF, Excel or Word**.
 

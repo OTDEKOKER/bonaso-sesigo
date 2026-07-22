@@ -87,7 +87,7 @@ All **deployed & live** unless noted. Purpose of each:
 | Aggregates | Numeric/aggregate reporting, review workflow, reporting-period control |
 | Events | Activities + public event check-in |
 | Social | Social-media posts / reach |
-| Analysis | Dashboards, coordinator rollups, exports |
+| Insights | Dashboards, coordinator rollups, exports |
 | Uploads | Reporting-workbook import/export + file validation |
 | Reports | Config-driven funder figures + Table 1 compliance (Word/Excel) |
 | Flags | Data-quality flags + review |

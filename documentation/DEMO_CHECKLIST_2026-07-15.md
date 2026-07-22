@@ -28,7 +28,7 @@ One document, three parts:
 - [ ] Mention session security: **30-min idle auto-logout** + JWT auth
 
 ## 2. Modules Overview  → #5, #6
-- [ ] Walk the left nav = the module list: Dashboard, Organizations, Projects, Indicators, **Aggregates**, Respondents, Events, Clients, Social, **Flags / Data Quality**, Reports / Analysis, **Reports**, **Coordinator Targets**, Users, System Status, Backups, **Training Mode**
+- [ ] Walk the left nav = the module list: Dashboard, Organizations, Projects, Indicators, **Aggregates**, Respondents, Events, Clients, Social, **Flags / Data Quality**, **Insights**, **Reports**, **Coordinator Targets**, Users, System Status, Backups, **Training Mode**
 - [ ] One line on the purpose of each as you point
 
 ## 3. Data Entry  → #6
@@ -43,7 +43,7 @@ One document, three parts:
 
 ## 5. Reporting & Dashboards  → #6, #7
 - [ ] **Aggregates** browse + charts — apply filters/search (now cover the **full** dataset, not one page)
-- [ ] **Analysis / Dashboards** and **Reports** — indicator→chart figures, **Word/Excel export**
+- [ ] **Insights / Dashboards** and **Reports** — indicator→chart figures, **Word/Excel export**
 - [ ] **Coordinator Targets** — targets vs actuals rollup
 
 ## 6. Data Quality & Flags  → #8, #6
@@ -97,7 +97,7 @@ One document, three parts:
 - **Indicators:** shared catalogue, aliases, disaggregation config, assessments, deduplication
 - **Organisations & Projects:** hierarchy (coordinators / sub-grantees), project setup, tasks & deadlines
 - **Targets:** Coordinator Targets + server-side rollup
-- **Analysis & Reporting:** dashboards, visualizer, line lists, reports, **Reports** (indicator→figure, Word/Excel export, compliance table)
+- **Insights & Reporting:** dashboards, analytics (charts + PDF/Excel/CSV export), **Reports** (indicator→figure, Word/Excel export, compliance table)
 - **Data Quality:** Flags + auto-detected anomalies/consistency, correction queue
 - **Home dashboard** (per-organisation, DHIS2-style)
 - **Administration:** Users + roles/permissions + **activity/audit log**, System Status, **Backups** (on-demand, encrypted download, supervised restore)

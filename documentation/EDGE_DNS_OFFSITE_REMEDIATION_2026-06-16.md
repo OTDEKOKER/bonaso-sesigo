@@ -68,6 +68,40 @@ Add the `www` record at the DNS registrar. After it resolves, ensure the host
 NGINX `server_name` includes `www.sesigo.org.bw` (or 301s www → apex) and that
 the TLS certificate covers both names.
 
+### Host-side www redirect — STAGED 2026-07-15 (not yet applied)
+
+Re-verified 2026-07-15: `getent hosts www.sesigo.org.bw` → empty (still no DNS
+record); host NGINX `server_name` is apex-only; only `:80`/`:443` listen (no
+`:445` on the host — item B is purely upstream). The host-side half of item C is
+now staged in `documentation/edge/sesigo-www-redirect.conf` (www→apex 301 on 80
+and 443). **Nothing on the live edge was changed.**
+
+Apply order (touches the live edge — do only with go-ahead, and only *after* the
+registrar `www` record from the table above resolves):
+
+```
+# 1. confirm DNS now resolves (must return 38.51.241.67 before certbot can validate)
+getent hosts www.sesigo.org.bw
+
+# 2. expand the existing cert to cover www (adds the SAN; --nginx handles ACME http-01)
+sudo certbot --nginx --expand -d sesigo.org.bw -d www.sesigo.org.bw
+
+# 3. add the staged www→apex blocks to the site config
+sudo cp documentation/edge/sesigo-www-redirect.conf /etc/nginx/sites-enabled/sesigo-www.conf
+#    (or paste the two server blocks into /etc/nginx/sites-enabled/sesigo.org.bw)
+
+# 4. validate + reload (nginx -t first; reload is graceful, no dropped connections)
+sudo nginx -t && sudo systemctl reload nginx
+
+# 5. verify www now 301s to canonical apex with a valid cert
+curl -sI  http://www.sesigo.org.bw  | grep -i location   # -> https://sesigo.org.bw/
+curl -sI https://www.sesigo.org.bw  | head -1            # -> HTTP/.. 301
+```
+
+Rollback: `sudo rm /etc/nginx/sites-enabled/sesigo-www.conf && sudo nginx -t &&
+sudo systemctl reload nginx` (or delete the two appended blocks). The cert SAN
+expansion is additive and safe to leave.
+
 ---
 
 ## A) Off-site backup
