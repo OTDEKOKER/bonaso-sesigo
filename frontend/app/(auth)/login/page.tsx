@@ -42,6 +42,10 @@ function LoginForm() {
   useEffect(() => {
     if (authService.isAuthenticated()) {
       const isTraining = mode === "training" || (mode === null && isTrainingMode())
+      // Persist the training marker when arriving via ?mode=training while already
+      // signed in, so the route guard keeps the user on /training/* (matches the
+      // fresh-login path in applyModeAndRedirect).
+      if (mode === "training") setTrainingMode()
       router.push(isTraining ? "/training/dashboard" : "/dashboard")
     }
   }, [router, mode])
