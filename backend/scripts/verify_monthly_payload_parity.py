@@ -376,18 +376,40 @@ def main() -> int:
             summary["quarters_checked"] += 1
             expected_by_indicator = expected_by_quarter.get(quarter_name, {})
 
+            # Aggregates are stored either as an exact quarterly rollup row
+            # (period == the whole quarter) OR as monthly rows. Mirror the
+            # workbook side — which already sums each quarter's months (see
+            # ``collect_expected_payloads_for_org``) — by preferring an exact
+            # quarter row and otherwise summing the monthly rows inside the
+            # quarter. Matching the exact quarter boundary ONLY (the previous
+            # behaviour) reported every monthly-stored organization's values as
+            # ``missing_in_db`` even though a (possibly wrong) value was present.
+            q_start = quarter["period_start"]
+            q_end = quarter["period_end"]
             db_rows = Aggregate.objects.filter(
                 project=project,
                 organization=organization,
-                period_start=quarter["period_start"],
-                period_end=quarter["period_end"],
+                period_start__gte=q_start,
+                period_end__lte=q_end,
             )
-            db_by_indicator: dict[int, dict] = {}
+            exact_by_indicator: dict[int, dict] = {}
+            summed_by_indicator: dict[int, dict] = {}
             for row in db_rows:
                 payload = row.value if isinstance(row.value, dict) else {}
                 if to_decimal(payload.get("total")) == 0:
                     continue
-                db_by_indicator[row.indicator_id] = payload
+                if row.period_start == q_start and row.period_end == q_end:
+                    exact_by_indicator[row.indicator_id] = payload
+                elif row.indicator_id in summed_by_indicator:
+                    summed_by_indicator[row.indicator_id] = merge_json_values(
+                        summed_by_indicator[row.indicator_id], payload,
+                    )
+                else:
+                    summed_by_indicator[row.indicator_id] = payload
+            # Exact quarterly rollup wins over the summed monthly reconstruction
+            # for the same indicator, so an org that stores BOTH is never
+            # double-counted.
+            db_by_indicator: dict[int, dict] = {**summed_by_indicator, **exact_by_indicator}
 
             indicator_ids = sorted(set(expected_by_indicator.keys()) | set(db_by_indicator.keys()))
             for indicator_id in indicator_ids:
