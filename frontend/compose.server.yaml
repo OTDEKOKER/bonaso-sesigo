@@ -1,3 +1,11 @@
+# Content-Security-Policy (audit S1), defined once and shared by the backend
+# (runtime env) and frontend (build arg — Next bakes headers() at build time).
+# Rolled out in REPORT-ONLY mode: browsers report violations but never block, so
+# this cannot break the app. Switch _REPORT_ONLY to "false" to enforce once the
+# reports are clean.
+x-csp-policy: &csp_policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'"
+x-csp-report-only: &csp_report_only "true"
+
 services:
   backend:
     build:
@@ -16,6 +24,9 @@ services:
       SECURE_SSL_REDIRECT: "True"
       USE_X_FORWARDED_PROTO: "True"
       BONASO_DJANGO_ROOT: "/app"
+      # CSP for Django-served surfaces (admin, error pages). Report-only (S1).
+      CONTENT_SECURITY_POLICY: *csp_policy
+      CONTENT_SECURITY_POLICY_REPORT_ONLY: *csp_report_only
       # Access logging w/ request duration (%(D)s, microseconds) so slow endpoints
       # are visible before they hit the gunicorn --timeout and get SIGKILLed.
       # Gunicorn reads GUNICORN_CMD_ARGS automatically; no entrypoint/image change.
@@ -41,6 +52,9 @@ services:
       args:
         NEXT_PUBLIC_API_URL: /api
         BACKEND_API_URL: http://127.0.0.1:18000/api
+        # CSP baked into the Next headers() manifest at build time (S1, report-only).
+        CONTENT_SECURITY_POLICY: *csp_policy
+        CONTENT_SECURITY_POLICY_REPORT_ONLY: *csp_report_only
     depends_on:
       - backend
     network_mode: host
