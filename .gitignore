@@ -13,6 +13,11 @@
 *.egg-info/
 .pytest_cache/
 
+# ---- Ad-hoc scratch / one-off scripts (leading-underscore convention; not app code) ----
+/backend/_*.py
+/backend/scripts/_*.py
+*.bak_*
+
 # ---- Node / Next.js ----
 **/node_modules/
 **/.next/
