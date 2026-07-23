@@ -87,6 +87,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.ContentSecurityPolicyMiddleware',
     'core.middleware.ApiCacheControlMiddleware',
 ]
 
@@ -214,6 +215,18 @@ X_FRAME_OPTIONS = os.getenv('X_FRAME_OPTIONS', 'DENY')
 # and as defence-in-depth alongside the upload extension allowlist): browsers
 # must not MIME-sniff responses into an executable content-type.
 SECURE_CONTENT_TYPE_NOSNIFF = env_bool('SECURE_CONTENT_TYPE_NOSNIFF', True)
+
+# Content-Security-Policy (audit S1). DISABLED by default: the header is only
+# emitted when CONTENT_SECURITY_POLICY is set to a non-empty policy string, so
+# this changes nothing until an operator opts in with a tested policy. Covers
+# Django-served surfaces (admin, error pages); the Next.js app pages set their
+# own CSP in the frontend. Roll out with CONTENT_SECURITY_POLICY_REPORT_ONLY=True
+# first (report, don't block), then switch to enforcing. Applied by
+# core.middleware.ContentSecurityPolicyMiddleware. Example starter policy:
+#   default-src 'self'; frame-ancestors 'none'; object-src 'none';
+#   base-uri 'self'; form-action 'self'
+CONTENT_SECURITY_POLICY = os.getenv('CONTENT_SECURITY_POLICY', '').strip()
+CONTENT_SECURITY_POLICY_REPORT_ONLY = env_bool('CONTENT_SECURITY_POLICY_REPORT_ONLY', False)
 
 # Production safety guards (audit findings L2, L4). When DEBUG is off we refuse
 # to start with a wide-open CORS policy or on the SQLite dev database, so a

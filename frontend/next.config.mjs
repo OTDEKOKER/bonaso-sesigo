@@ -29,6 +29,35 @@ const nextConfig = {
     },
   } : {}),
 
+  // Security headers on the app pages (audit S1). `headers()` is unsupported by
+  // `output: 'export'`, so it is only wired up for the server (non-mobile) build.
+  //
+  // - X-Content-Type-Options: nosniff is always safe and matches the backend.
+  // - Content-Security-Policy is emitted ONLY when CONTENT_SECURITY_POLICY is
+  //   set, so shipping this changes nothing until an operator opts in with a
+  //   tested policy. Set CONTENT_SECURITY_POLICY_REPORT_ONLY=true to roll out in
+  //   report-only mode first (browsers report violations without blocking), then
+  //   switch to enforcing once the reports are clean. A CSP that is too strict
+  //   will break the app, so this stays default-off deliberately.
+  ...(!IS_MOBILE_BUILD ? {
+    async headers() {
+      const csp = (process.env.CONTENT_SECURITY_POLICY || '').trim();
+      const reportOnly = /^(1|true|yes)$/i.test(
+        (process.env.CONTENT_SECURITY_POLICY_REPORT_ONLY || '').trim()
+      );
+      const headers = [
+        { key: 'X-Content-Type-Options', value: 'nosniff' },
+      ];
+      if (csp) {
+        headers.push({
+          key: reportOnly ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy',
+          value: csp,
+        });
+      }
+      return [{ source: '/:path*', headers }];
+    },
+  } : {}),
+
   typescript: {
     // Production builds on this host intermittently fail in the Next build worker
     // after app compilation completes. We run lint/type checks separately.

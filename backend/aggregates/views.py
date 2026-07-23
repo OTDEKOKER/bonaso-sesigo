@@ -164,6 +164,27 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     # reviewer knows a previously-signed-off record moved.
     REVIEW_LOCKED_STATUSES = {'reviewed', 'approved'}
 
+    # Allowed review-state transitions (audit finding P1). The protective
+    # invariant is that a record may only become ``approved`` from the review
+    # queue (``pending``/``reviewed``) — never straight from ``draft``,
+    # ``flagged`` or ``rejected``, which would let a reviewer sign off data that
+    # never passed correction. This mirrors ``bulk_approve``'s existing
+    # ``status__in=['pending', 'reviewed']`` filter, so single and bulk approval
+    # behave identically. Every OTHER transition stays permissive so no
+    # legitimate reviewer action is broken; re-issuing the current status is an
+    # idempotent no-op (handled below). NOTE: the flag-dismissal restore
+    # (flagged → approved) is a distinct, Manager-only sign-off performed by the
+    # ``unflag`` action, which sets ``approved`` directly and does NOT route
+    # through this map — so restoring a previously-approved-then-flagged record
+    # is unaffected.
+    REVIEW_TRANSITIONS = {
+        'pending': {'draft', 'pending', 'reviewed', 'flagged', 'rejected', 'approved'},
+        'reviewed': {'draft', 'pending', 'reviewed', 'flagged', 'approved'},
+        'flagged': {'draft', 'pending', 'reviewed', 'flagged', 'rejected', 'approved'},
+        'rejected': {'draft', 'pending', 'reviewed', 'flagged', 'rejected', 'approved'},
+        'approved': {'pending', 'reviewed'},
+    }
+
     queryset = Aggregate.objects.all()
     serializer_class = AggregateSerializer
     pagination_class = AggregatePagination
@@ -720,6 +741,23 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         if status_value == 'approved' and not can_approve_aggregates(user):
             raise PermissionDenied('Only M&E Managers and admins can approve aggregate records.')
         previous_status = aggregate.status
+        # Transition legality (P1). Checked AFTER the role gates so a role/scope
+        # denial still surfaces as 403, not a validation error. Same-status is an
+        # idempotent no-op and always allowed.
+        if previous_status != status_value:
+            allowed_from = self.REVIEW_TRANSITIONS.get(status_value, set())
+            if previous_status not in allowed_from:
+                if status_value == 'approved':
+                    detail = (
+                        f"Cannot approve a '{previous_status}' record. It must pass "
+                        "through review (pending or reviewed) before approval."
+                    )
+                else:
+                    detail = (
+                        f"Cannot change status from '{previous_status}' to "
+                        f"'{status_value}'."
+                    )
+                raise ValidationError(detail)
         aggregate.status = status_value
         if status_value == 'pending':
             aggregate.reviewed_at = None

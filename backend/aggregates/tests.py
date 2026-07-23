@@ -170,6 +170,44 @@ class AggregateSecurityTests(APITestCase):
         self.assertEqual(aggregate.status, 'approved')
         self.assertEqual(aggregate.reviewed_by_id, self.manager.id)
 
+    # --- Review-state transition legality (audit finding P1) ---------------
+    def test_manager_cannot_approve_rejected_aggregate(self):
+        """A rejected record must be resubmitted (→ pending) before it can be
+        approved; approving it straight from 'rejected' would bypass correction."""
+        aggregate = self._make_pending_aggregate(status='rejected')
+        self.client.force_authenticate(self.manager)
+        response = self.client.post(f'/api/aggregates/{aggregate.id}/approve/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        aggregate.refresh_from_db()
+        self.assertEqual(aggregate.status, 'rejected')
+
+    def test_manager_cannot_approve_draft_aggregate(self):
+        aggregate = self._make_pending_aggregate(status='draft')
+        self.client.force_authenticate(self.manager)
+        response = self.client.post(f'/api/aggregates/{aggregate.id}/approve/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        aggregate.refresh_from_db()
+        self.assertEqual(aggregate.status, 'draft')
+
+    def test_manager_can_approve_reviewed_aggregate(self):
+        """Approval from the review queue (pending/reviewed) still works."""
+        aggregate = self._make_pending_aggregate(status='reviewed')
+        self.client.force_authenticate(self.manager)
+        response = self.client.post(f'/api/aggregates/{aggregate.id}/approve/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        aggregate.refresh_from_db()
+        self.assertEqual(aggregate.status, 'approved')
+
+    def test_unflag_still_restores_flagged_to_approved(self):
+        """The Manager-only flag-dismissal restore (flagged → approved) must
+        remain allowed — it does not route through the transition guard."""
+        aggregate = self._make_pending_aggregate(status='flagged')
+        self.client.force_authenticate(self.manager)
+        response = self.client.post(f'/api/aggregates/{aggregate.id}/unflag/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        aggregate.refresh_from_db()
+        self.assertEqual(aggregate.status, 'approved')
+
     def test_manager_cannot_approve_out_of_scope_aggregate(self):
         # org_b is not the manager's org nor a descendant of it.
         self.project.organizations.add(self.org_b)
