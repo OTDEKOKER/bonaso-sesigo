@@ -3,6 +3,7 @@
 import React, { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { GraduationCap, Loader2, ShieldCheck } from "lucide-react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -113,9 +114,13 @@ function LoginForm() {
             <p className="mt-2 text-xs font-medium uppercase tracking-[0.25em] text-white/45 sm:text-sm">
               Data Portal
             </p>
-            <div
-              className="mt-4 h-0 w-0 border-l-[36px] border-r-[36px] border-t-[64px] border-l-transparent border-r-transparent border-t-emerald-400 sm:border-l-[44px] sm:border-r-[44px] sm:border-t-[80px]"
-              aria-hidden="true"
+            <Image
+              src="/BonLog.png"
+              alt="Sesigo logo"
+              width={80}
+              height={80}
+              className="mt-4 h-16 w-16 sm:h-20 sm:w-20"
+              priority
             />
             <h1 className="mt-5 text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
               {mode === "training" ? "Training Login" : "Welcome!"}
@@ -262,4 +267,4 @@ export default function LoginPage() {
       <LoginForm />
     </Suspense>
   )
-}
+} 
