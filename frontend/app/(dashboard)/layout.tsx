@@ -9,14 +9,7 @@ import { systemService } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { ConfidentialityGate } from "@/components/auth/confidentiality-gate"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { IdleLogout } from "@/components/auth/idle-logout"
@@ -102,86 +95,8 @@ function DashboardShell({
   desktopSidebarOpen: boolean
   setDesktopSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>
 }) {
-  const pathname = usePathname()
-  // sessionStorage is client-only; reading it in the initial state would diverge
-  // from the server-rendered HTML (→ hydration mismatch). Start false and read
-  // the just-logged-in flag in a mount effect. Doing the read+clear in an effect
-  // also keeps the initializer pure (it previously mutated sessionStorage, which
-  // runs twice under StrictMode).
-  const [showDisclaimerFromLogin, setShowDisclaimerFromLogin] = useState(false)
-  const [dismissedPathname, setDismissedPathname] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (sessionStorage.getItem("show_login_disclaimer") === "1") {
-      sessionStorage.removeItem("show_login_disclaimer")
-      setShowDisclaimerFromLogin(true)
-    }
-  }, [])
-
-  const isDashboardHome = pathname === "/dashboard"
-  const showDisclaimer =
-    dismissedPathname !== pathname && (showDisclaimerFromLogin || isDashboardHome)
-
-  const handleDisclaimerOpenChange = (open: boolean) => {
-    if (open) {
-      setDismissedPathname(null)
-      return
-    }
-    setShowDisclaimerFromLogin(false)
-    setDismissedPathname(pathname)
-  }
-
   return (
     <div className="min-h-screen w-full min-w-0 max-w-full overflow-x-clip bg-background">
-      <Dialog open={showDisclaimer} onOpenChange={handleDisclaimerOpenChange}>
-        <DialogContent
-          showCloseButton={false}
-          className="top-1/2 w-[calc(100vw-1rem)] max-w-[76rem] overflow-hidden border-0 bg-transparent p-0 shadow-none sm:w-[min(calc(100vw-2rem),76rem)]"
-        >
-          <DialogClose
-            className="absolute right-5 top-5 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-background/80 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Close confidentiality notice"
-          >
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </DialogClose>
-
-          <div className="w-full rounded-none border-[10px] border-border bg-card px-6 py-5 text-foreground shadow-[0_24px_60px_rgba(0,0,0,0.18)] sm:border-[12px] sm:px-12 sm:py-7 md:px-16 md:py-8">
-          <DialogHeader className="mx-auto flex w-full max-w-[68rem] items-center space-y-3 text-center sm:space-y-4">
-            <DialogTitle className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              Welcome to the Sesigo Data Portal
-            </DialogTitle>
-            <DialogDescription asChild className="text-muted-foreground">
-              <div className="mx-auto flex w-full max-w-[62rem] flex-col items-center space-y-5 text-foreground">
-                <p className="w-full text-justify text-sm leading-6 [text-wrap:pretty] sm:text-base">
-                  Welcome to the Sesigo Data Portal, powered by BONASO. Please note that any information you see in this portal
-                  is confidential, and may not be shared or distributed to anyone outside of your organization.
-                  <strong className="font-bold text-foreground">
-                    {" "}Any violations of client confidentiality is against the law and is punishable by fines
-                    and/or jail time.
-                  </strong>{" "}
-                  By entering this portal, you agree to maintain confidentiality of all data you see here and
-                  agree that you will not misuse any information here.
-                </p>
-                <p className="w-full text-justify text-sm leading-6 [text-wrap:pretty] sm:text-base">
-                  Thank you for all the important work you do in the fight for a healthier Botswana!
-                </p>
-              </div>
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="mx-auto mt-5 flex w-full max-w-[62rem] justify-center">
-            <Button
-              onClick={() => handleDisclaimerOpenChange(false)}
-              className="min-h-11 w-full whitespace-normal rounded-none bg-primary px-5 py-2.5 text-center text-sm font-semibold leading-5 text-primary-foreground shadow-none hover:bg-primary/90"
-            >
-              I understand, and will not misuse any data I access on this portal.
-            </Button>
-          </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -250,7 +165,7 @@ function DashboardShell({
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { isAuthenticated, isLoading, accessLoadFailed, logout } = useAuth()
+  const { user, isAuthenticated, isLoading, hasRevalidated, accessLoadFailed, logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true)
 
@@ -325,6 +240,23 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   // While the redirect is happening, don't render the dashboard shell.
   if (!isAuthenticated) return null
+
+  // Mandatory confidentiality gate: block EVERY protected page until the user
+  // accepts the current notice version. Rendering only the gate here means the
+  // shell and page children never mount, so a refresh, a direct URL, the back
+  // button or any other protected route cannot bypass it — they all resolve
+  // through this layout and hit the same check.
+  //
+  // `ackUnknown` covers a returning session hydrated from the cached user (which
+  // predates this field): show the gate while the fresh /me is still in flight
+  // rather than briefly flashing the dashboard. Once /me has resolved
+  // (hasRevalidated) an absent block means the backend has no gate → fail OPEN,
+  // so a wrong deploy order can never permanently lock users out.
+  const ackUnknown = user?.confidentiality === undefined
+  const needsAck = user?.confidentiality?.needs_acknowledgement === true
+  if (needsAck || (ackUnknown && !hasRevalidated)) {
+    return <ConfidentialityGate />
+  }
 
   return (
     <ModuleRouteGuard>

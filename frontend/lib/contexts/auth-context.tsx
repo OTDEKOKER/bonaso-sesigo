@@ -67,6 +67,8 @@ interface AuthContextType {
   isLoading: boolean;
   /** True once we know the user's access state (from cache or a fresh fetch). */
   hasResolvedAccess: boolean;
+  /** True once the initial /me revalidation has completed (not just the cache). */
+  hasRevalidated: boolean;
   /** True when there is no cached user AND the profile fetch failed. */
   accessLoadFailed: boolean;
   error: string | null;
@@ -91,6 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hadCachedUser = useRef(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasResolvedAccess, setHasResolvedAccess] = useState(false);
+  // True once the initial background /me revalidation has completed (success OR
+  // failure), as opposed to hasResolvedAccess which is also set from the cache.
+  // Consumers that must not act on a stale cached user (e.g. the confidentiality
+  // gate) wait on this so a returning session can't briefly bypass a server-side
+  // requirement before the fresh /me lands.
+  const [hasRevalidated, setHasRevalidated] = useState(false);
   const [accessLoadFailed, setAccessLoadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setUser(null);
           setHasResolvedAccess(true);
+          setHasRevalidated(true);
           setIsLoading(false);
         }
         return;
@@ -166,7 +175,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setHasRevalidated(true);
+        }
       }
     };
 
@@ -257,6 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         isLoading,
         hasResolvedAccess,
+        hasRevalidated,
         accessLoadFailed,
         error,
         login,

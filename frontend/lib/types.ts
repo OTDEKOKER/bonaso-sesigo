@@ -32,6 +32,13 @@ export interface User {
   // permissions. The UI restricts access ONLY when this is true, so existing
   // (un-configured) users keep their full role-based experience.
   module_permissions_enforced?: boolean
+  // Mandatory confidentiality gate status (from /api/users/me/). The dashboard
+  // blocks every protected page until needs_acknowledgement is false; it flips
+  // back to true whenever the notice's version/wording is updated.
+  confidentiality?: {
+    required_version: string
+    needs_acknowledgement: boolean
+  }
 }
 
 export interface Profile extends User {

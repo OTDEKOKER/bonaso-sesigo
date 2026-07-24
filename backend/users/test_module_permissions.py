@@ -181,8 +181,8 @@ class ModulePermissionApiTests(APITestCase):
     # Exact query count for GET /api/users/me/ — the request the whole dashboard
     # shell blocks on. Constant regardless of how many groups / projects / module
     # rows the user has; a bump here means an N+1 crept back in.
-    #   1 user (select_related organization)
-    #   2 module_permissions prefetch        5 groups values_list
-    #   3 assigned_projects prefetch         6 assigned_projects ids (default proj)
-    #   4 user_permissions values_list       7 default project lookup
-    CURRENT_USER_QUERY_BUDGET = 7
+    #   1 user (select_related organization)  5 groups values_list
+    #   2 module_permissions prefetch         6 assigned_projects ids (default proj)
+    #   3 assigned_projects prefetch          7 default project lookup
+    #   4 user_permissions values_list        8 confidentiality acknowledgement exists()
+    CURRENT_USER_QUERY_BUDGET = 8

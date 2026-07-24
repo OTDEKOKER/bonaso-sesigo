@@ -33,6 +33,7 @@ function LoginForm() {
   const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [signoutNotice, setSignoutNotice] = useState("")
 
   const queryMode = searchParams.get("mode")
   const initialMode: Mode | null =
@@ -57,6 +58,15 @@ function LoginForm() {
       if (sessionStorage.getItem("inactivity_logout") === "1") {
         sessionStorage.removeItem("inactivity_logout")
         setError("You were signed out due to inactivity. Please sign in again.")
+      }
+      // Signed out from the mandatory confidentiality gate ("I do not understand").
+      if (sessionStorage.getItem("confidentiality_signout") === "1") {
+        sessionStorage.removeItem("confidentiality_signout")
+        setSignoutNotice(
+          "You have been signed out because access to the Sesigo Data Portal requires " +
+            "acknowledgement of the confidentiality requirements. Please contact your " +
+            "supervisor or system administrator if you need clarification."
+        )
       }
     } catch {
       /* sessionStorage unavailable — skip the notice */
@@ -139,6 +149,15 @@ function LoginForm() {
             </h1>
             <p className="mt-2 text-xs uppercase tracking-wide text-white/40">Powered by BONASO</p>
           </div>
+
+          {signoutNotice ? (
+            <div
+              role="alert"
+              className="mx-auto mt-6 w-full max-w-[560px] rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-center text-sm leading-6 text-amber-100"
+            >
+              {signoutNotice}
+            </div>
+          ) : null}
 
           {mode === null ? (
             // ---- STEP 1: no mode chosen yet — show the two selection cards ----

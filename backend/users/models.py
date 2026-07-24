@@ -113,3 +113,44 @@ class UserActivity(models.Model):
     
     def __str__(self):
         return f"{self.user.username} - {self.action} - {self.timestamp}"
+
+
+class ConfidentialityAcknowledgement(models.Model):
+    """Durable record that a user accepted the mandatory confidentiality notice.
+
+    One row per (user, version): the acknowledgement gate (frontend layout +
+    users.views.current_user) treats a user as acknowledged for the current
+    settings.CONFIDENTIALITY_ACK_VERSION once such a row exists. ``environment``
+    captures whether the acceptance happened in the LIVE or TRAINING session
+    (from the authoritative JWT mode claim). This is the audit trail for who
+    accepted which version, when, and in which environment.
+    """
+
+    ENVIRONMENT_CHOICES = [
+        ('live', 'Live'),
+        ('training', 'Training'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='confidentiality_acknowledgements',
+    )
+    version = models.CharField(max_length=64)
+    environment = models.CharField(max_length=10, choices=ENVIRONMENT_CHOICES)
+    accepted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-accepted_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'version'],
+                name='unique_user_confidentiality_version',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'version']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} accepted {self.version} ({self.environment})"

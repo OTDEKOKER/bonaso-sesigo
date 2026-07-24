@@ -183,6 +183,22 @@ export const authService = {
   },
 
   /**
+   * Record acceptance of the mandatory confidentiality notice for the current
+   * version. Idempotent server-side; returns the refreshed gate status.
+   * Django endpoint: POST /api/users/confidentiality-acknowledgement/
+   */
+  async acknowledgeConfidentiality(): Promise<{
+    required_version: string;
+    needs_acknowledgement: boolean;
+  }> {
+    const { data } = await api.post<{
+      required_version: string;
+      needs_acknowledgement: boolean;
+    }>(`${USERS_BASE_PATH}/confidentiality-acknowledgement/`);
+    return data;
+  },
+
+  /**
    * Create a new user (registration)
    * Django endpoint: POST /api/users/create-user/
    */

@@ -10,6 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission, Group
+from django.conf import settings
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -18,7 +19,7 @@ from users.permissions import HasModulePermission
 
 from django.db import transaction
 
-from .models import UserActivity, UserModulePermission
+from .models import UserActivity, UserModulePermission, ConfidentialityAcknowledgement
 from .module_permissions import (
     MODULE_ACTIONS,
     MODULES,
@@ -184,7 +185,44 @@ def current_user(request):
         not is_organization_admin(user)
         and bool(module_rows)
     )
+    # Mandatory confidentiality gate: the frontend blocks every protected page
+    # until needs_acknowledgement is false for the current version.
+    data['confidentiality'] = confidentiality_status(user)
     return Response(data)
+
+
+def confidentiality_status(user):
+    """Confidentiality-gate status for `user` against the current version.
+
+    Returns the required version and whether the user still needs to accept it
+    (true until a ConfidentialityAcknowledgement row exists for that version).
+    """
+    required = settings.CONFIDENTIALITY_ACK_VERSION
+    accepted = user.confidentiality_acknowledgements.filter(version=required).exists()
+    return {
+        'required_version': required,
+        'needs_acknowledgement': not accepted,
+    }
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def confidentiality_acknowledgement(request):
+    """Record the current user's acceptance of the confidentiality notice.
+
+    Idempotent per (user, current version): the environment (LIVE/TRAINING) is
+    taken from the authoritative JWT mode claim and stored on first acceptance.
+    Returns the refreshed confidentiality status so the client can clear the gate.
+    """
+    from organizations.access import request_mode_value
+
+    environment = request_mode_value(request)  # 'training' | 'live', from signed JWT claim
+    ConfidentialityAcknowledgement.objects.get_or_create(
+        user=request.user,
+        version=settings.CONFIDENTIALITY_ACK_VERSION,
+        defaults={'environment': environment},
+    )
+    return Response(confidentiality_status(request.user))
 
 
 @api_view(['POST'])

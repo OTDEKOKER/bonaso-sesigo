@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     CookieTokenObtainPairView, CookieTokenRefreshView,
-    current_user, logout_view, TestConnectionView,
+    current_user, confidentiality_acknowledgement, logout_view, TestConnectionView,
     ApplyForNewUser, AdminResetPasswordView, UserViewSet
 )
 
@@ -16,6 +16,7 @@ urlpatterns = [
     
     # User info
     path('me/', current_user, name='current_user'),
+    path('confidentiality-acknowledgement/', confidentiality_acknowledgement, name='confidentiality_acknowledgement'),
     path('logout/', logout_view, name='logout'),
     
     # Test

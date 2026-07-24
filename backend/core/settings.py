@@ -148,6 +148,17 @@ if db_test_name:
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
+# ----------------------------------------------------------------------------
+# Confidentiality acknowledgement
+# ----------------------------------------------------------------------------
+# The version of the mandatory confidentiality notice users must accept before
+# reaching any protected page. The notice WORDING lives in the frontend modal
+# (frontend/app/(dashboard)/layout.tsx); bump this string whenever that wording
+# changes so every user is re-prompted and re-recorded. Users are considered
+# acknowledged once they have a users.ConfidentialityAcknowledgement row for the
+# current value (see users.views.current_user / confidentiality_acknowledgement).
+CONFIDENTIALITY_ACK_VERSION = os.getenv('CONFIDENTIALITY_ACK_VERSION', '2026-07-23')
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
