@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react"
 import { authService } from "@/lib/api"
 import { useAuth } from "@/lib/contexts/auth-context"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -28,8 +29,11 @@ import {
 export function ConfidentialityGate() {
   const { logout, refreshUser } = useAuth()
   const [submitting, setSubmitting] = useState(false)
+  // The user must tick the acknowledgement box before OK is enabled.
+  const [agreed, setAgreed] = useState(false)
 
   const handleAccept = async () => {
+    if (!agreed) return
     setSubmitting(true)
     try {
       await authService.acknowledgeConfidentiality()
@@ -84,14 +88,31 @@ export function ConfidentialityGate() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mx-auto mt-6 flex w-full max-w-[40rem] flex-col gap-3 sm:flex-row">
+          {/* Deliberate acknowledgement: the box must be ticked before OK enables. */}
+          <div className="mx-auto mt-6 flex w-full max-w-[40rem] items-start gap-3">
+            <Checkbox
+              id="confidentiality-agree"
+              checked={agreed}
+              onCheckedChange={(value) => setAgreed(value === true)}
+              disabled={submitting}
+              className="mt-0.5"
+            />
+            <label
+              htmlFor="confidentiality-agree"
+              className="cursor-pointer text-sm font-medium leading-5 text-foreground"
+            >
+              I have read, understand, and agree.
+            </label>
+          </div>
+
+          <div className="mx-auto mt-5 flex w-full max-w-[40rem] flex-col gap-3 sm:flex-row">
             <Button
               onClick={handleAccept}
-              disabled={submitting}
-              className="min-h-11 w-full whitespace-normal rounded-none bg-primary px-5 py-2.5 text-center text-sm font-semibold leading-5 text-primary-foreground shadow-none hover:bg-primary/90 sm:flex-1 sm:min-w-0"
+              disabled={submitting || !agreed}
+              className="min-h-11 w-full whitespace-normal rounded-none bg-primary px-5 py-2.5 text-center text-sm font-semibold leading-5 text-primary-foreground shadow-none hover:bg-primary/90 disabled:opacity-50 sm:flex-1 sm:min-w-0"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              I have read, understand, and agree.
+              OK
             </Button>
             <Button
               variant="outline"

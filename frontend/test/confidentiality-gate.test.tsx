@@ -21,7 +21,7 @@ vi.mock("@/lib/api", () => ({
 // Imported after the mocks so the component picks up the mocked modules.
 import { ConfidentialityGate } from "@/components/auth/confidentiality-gate"
 
-const ACCEPT = "I have read, understand, and agree."
+const AGREE_LABEL = "I have read, understand, and agree."
 const SIGNOUT = "I do not understand — Sign me out."
 
 describe("ConfidentialityGate", () => {
@@ -34,19 +34,38 @@ describe("ConfidentialityGate", () => {
     sessionStorage.clear()
   })
 
-  it("shows the notice, both buttons, and NO close (X) control", () => {
+  it("shows the notice, the acknowledgement checkbox, OK + sign-out, and NO close (X)", () => {
     render(<ConfidentialityGate />)
     expect(screen.getByText("Welcome to the Sesigo Data Portal")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: ACCEPT })).toBeInTheDocument()
+    expect(screen.getByRole("checkbox")).toBeInTheDocument()
+    expect(screen.getByText(AGREE_LABEL)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "OK" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: SIGNOUT })).toBeInTheDocument()
     // Radix's default dialog close has the accessible name "Close"; it must be gone.
     expect(screen.queryByRole("button", { name: /close/i })).toBeNull()
   })
 
-  it("acceptance records the acknowledgement, then refreshes the user (no logout)", async () => {
+  it("keeps OK disabled until the acknowledgement box is ticked", async () => {
     const user = userEvent.setup()
     render(<ConfidentialityGate />)
-    await user.click(screen.getByRole("button", { name: ACCEPT }))
+    const ok = screen.getByRole("button", { name: "OK" })
+    expect(ok).toBeDisabled()
+    await user.click(screen.getByRole("checkbox"))
+    expect(ok).toBeEnabled()
+  })
+
+  it("does not record if OK is somehow invoked without ticking the box", async () => {
+    render(<ConfidentialityGate />)
+    // Button is disabled, but guard also short-circuits programmatic clicks.
+    screen.getByRole("button", { name: "OK" }).click()
+    expect(acknowledgeConfidentiality).not.toHaveBeenCalled()
+  })
+
+  it("acceptance (tick + OK) records the acknowledgement, then refreshes the user", async () => {
+    const user = userEvent.setup()
+    render(<ConfidentialityGate />)
+    await user.click(screen.getByRole("checkbox"))
+    await user.click(screen.getByRole("button", { name: "OK" }))
     await waitFor(() => expect(acknowledgeConfidentiality).toHaveBeenCalledTimes(1))
     expect(refreshUser).toHaveBeenCalledTimes(1)
     expect(logout).not.toHaveBeenCalled()
@@ -65,7 +84,8 @@ describe("ConfidentialityGate", () => {
     acknowledgeConfidentiality.mockRejectedValueOnce(new Error("network"))
     const user = userEvent.setup()
     render(<ConfidentialityGate />)
-    await user.click(screen.getByRole("button", { name: ACCEPT }))
+    await user.click(screen.getByRole("checkbox"))
+    await user.click(screen.getByRole("button", { name: "OK" }))
     await waitFor(() => expect(acknowledgeConfidentiality).toHaveBeenCalled())
     expect(refreshUser).not.toHaveBeenCalled()
     expect(screen.getByText("Welcome to the Sesigo Data Portal")).toBeInTheDocument()
