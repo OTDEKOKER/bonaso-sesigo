@@ -84,11 +84,11 @@ export function ConfidentialityGate() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="mx-auto mt-6 flex w-full max-w-[62rem] flex-col gap-3 sm:flex-row sm:justify-center">
+          <div className="mx-auto mt-6 flex w-full max-w-[40rem] flex-col gap-3 sm:flex-row">
             <Button
               onClick={handleAccept}
               disabled={submitting}
-              className="min-h-11 w-full whitespace-normal rounded-none bg-primary px-5 py-2.5 text-center text-sm font-semibold leading-5 text-primary-foreground shadow-none hover:bg-primary/90 sm:w-auto"
+              className="min-h-11 w-full whitespace-normal rounded-none bg-primary px-5 py-2.5 text-center text-sm font-semibold leading-5 text-primary-foreground shadow-none hover:bg-primary/90 sm:flex-1 sm:min-w-0"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               I have read, understand, and agree.
@@ -97,7 +97,7 @@ export function ConfidentialityGate() {
               variant="outline"
               onClick={handleSignOut}
               disabled={submitting}
-              className="min-h-11 w-full whitespace-normal rounded-none px-5 py-2.5 text-center text-sm font-semibold leading-5 sm:w-auto"
+              className="min-h-11 w-full whitespace-normal rounded-none px-5 py-2.5 text-center text-sm font-semibold leading-5 sm:flex-1 sm:min-w-0"
             >
               I do not understand — Sign me out.
             </Button>
