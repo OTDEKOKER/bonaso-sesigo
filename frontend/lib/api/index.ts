@@ -194,6 +194,17 @@ export type { UploadFilters, CreateUploadRequest, UpdateUploadRequest, UploadRec
 export { notificationsService, messagesService, announcementsService } from './services/messaging';
 export type { NotificationFilters, MessageFilters, CreateMessageRequest, AnnouncementFilters, CreateAnnouncementRequest } from './services/messaging';
 
+// Support / help desk
+export {
+  supportService,
+  SUPPORT_CATEGORIES, SUPPORT_STATUSES, SUPPORT_SEVERITIES, SUPPORT_PRIORITIES,
+} from './services/support';
+export type {
+  SupportTicket, SupportComment, SupportHistoryEvent, SupportStats,
+  SupportTicketFilters, CreateSupportTicket,
+  SupportStatus, SupportSeverity, SupportPriority,
+} from './services/support';
+
 // System operations
 export { systemService } from './services/system';
 export type { SystemHealthStatus, SystemStatusResponse, BackupManagementStatus, BackupReminderLevel, RestoreValidationResult, RestoreHistoryEntry, SystemIssue, IssueSeverity, IssueStatus } from './services/system';

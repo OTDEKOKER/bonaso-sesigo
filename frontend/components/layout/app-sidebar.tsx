@@ -30,6 +30,7 @@ import {
   FileSpreadsheet,
   Building,
   BookOpen,
+  LifeBuoy,
 } from "lucide-react"
 import {
   Collapsible,
@@ -285,6 +286,7 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
     href: "/reporting-periods",
     icon: <CalendarDays className="h-4 w-4" />,
   },
+  { title: "Support", href: "/support", icon: <LifeBuoy className="h-4 w-4" /> },
 ]
 
 export function AppSidebar() {
