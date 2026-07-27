@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'recovery',
     'system_status',
     'funder_reports',
+    'support',
 ]
 
 MIDDLEWARE = [

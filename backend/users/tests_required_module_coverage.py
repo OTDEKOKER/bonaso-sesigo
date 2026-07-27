@@ -23,6 +23,7 @@ from organizations.views import OrganizationViewSet
 from projects.views import ProjectViewSet
 from respondents.views import RespondentViewSet, InteractionViewSet, ResponseViewSet
 from social.views import SocialPostViewSet
+from support.views import SupportTicketViewSet, SupportTicketCommentViewSet
 from uploads.views import UploadViewSet, ImportJobViewSet
 from users.views import UserViewSet
 
@@ -46,6 +47,8 @@ SENSITIVE_VIEWSETS = [
     (InteractionViewSet, "respondents"),
     (ResponseViewSet, "respondents"),
     (SocialPostViewSet, "social"),
+    (SupportTicketViewSet, "support"),
+    (SupportTicketCommentViewSet, "support"),
     (UploadViewSet, "uploads"),
     (ImportJobViewSet, "uploads"),
     (UserViewSet, "users"),

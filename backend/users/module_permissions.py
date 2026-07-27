@@ -34,6 +34,7 @@ MODULE_ACTIONS: dict[str, list[str]] = {
     'notifications': ['view'],
     'social': ['view', 'create', 'edit', 'delete'],
     'flags': ['view', 'create', 'edit', 'resolve'],
+    'support': ['view', 'create', 'edit', 'delete', 'assign', 'resolve'],
     'system_status': ['view'],
     'settings': ['view', 'manage'],
     'training_mode': ['view'],
@@ -66,6 +67,8 @@ ROLE_MODULE_DEFAULTS: dict[str, dict[str, list[str]]] = {
         'analytics': ['view', 'export'],
         'notifications': ['view'],
         'messages': ['view', 'create'],
+        # Managers are front-line support staff: full triage of the help desk.
+        'support': ['view', 'create', 'edit', 'delete', 'assign', 'resolve'],
     },
     'officer': {
         'dashboard': ['view'],
@@ -75,6 +78,8 @@ ROLE_MODULE_DEFAULTS: dict[str, dict[str, list[str]]] = {
         'reports': ['view', 'export'],
         'notifications': ['view'],
         'messages': ['view', 'create'],
+        # Officers triage help-desk tickets but cannot delete them.
+        'support': ['view', 'create', 'edit', 'assign', 'resolve'],
     },
     'collector': {
         'dashboard': ['view'],
@@ -82,12 +87,16 @@ ROLE_MODULE_DEFAULTS: dict[str, dict[str, list[str]]] = {
         'events': ['view', 'create'],
         'batch_record': ['view', 'import'],
         'notifications': ['view'],
+        # Collectors may raise and follow their own tickets.
+        'support': ['view', 'create'],
     },
     'client': {
         'dashboard': ['view'],
         'reports': ['view'],
         'analytics': ['view'],
         'notifications': ['view'],
+        # Clients/funders may raise and follow their own tickets.
+        'support': ['view', 'create'],
     },
 }
 
