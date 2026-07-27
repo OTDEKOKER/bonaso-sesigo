@@ -7,12 +7,16 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from .status_views import SystemStatusView
+from .health_views import HealthView
 from .offline_views import OfflineBootstrapView
 from .backup_views import BackupStatusView, BackupGenerateView, BackupDownloadView, EncryptedBackupDownloadView
 
 urlpatterns = [
     # Admin site
     path('admin/', admin.site.urls),
+
+    # Unauthenticated liveness/readiness probe (container healthcheck + edge).
+    path('api/health/', HealthView.as_view(), name='health'),
 
     # Users: authentication, current user, and management
     path('api/users/', include('users.urls')),  # handles auth, JWT, UserViewSet, etc.

@@ -33,6 +33,23 @@ services:
       # --max-requests recycles each worker after N requests (+jitter) to bound
       # gradual memory growth/leaks (audit O3).
       GUNICORN_CMD_ARGS: "--max-requests 800 --max-requests-jitter 100 --access-logfile - --access-logformat '%(h)s %(m)s %(U)s?%(q)s -> %(s)s %(D)sus %(b)sb'"
+    # Liveness/readiness probe (audit WS3). Surfaces an up-but-broken backend
+    # (e.g. Postgres unreachable) as "unhealthy" in `docker ps`. curl is present
+    # in the image (installed for the PG apt key). Note: a healthcheck gives
+    # visibility, not auto-restart — restart:unless-stopped still only recovers a
+    # process that actually exits; pair with an autoheal sidecar for auto-restart.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18000/api/health/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    # Bound container log growth (audit WS3): 5 x 20 MB rotated JSON logs.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     volumes:
       - ../backend/.env:/app/.env:ro
       - ../backend/uploads:/app/uploads
@@ -75,3 +92,16 @@ services:
       NEXT_PUBLIC_API_BASE_URL: /api
       BACKEND_API_URL: http://127.0.0.1:18000/api
       NEXT_PUBLIC_APP_URL: https://sesigo.org.bw
+    # Liveness probe (audit WS3). node:20 has global fetch; any HTTP response
+    # means Next.js is serving (a network error means it is down).
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:13000/').then(()=>process.exit(0)).catch(()=>process.exit(1))\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
