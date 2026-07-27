@@ -706,3 +706,51 @@ class ApprovedDataLifecycleTests(_BaseSetup):
             ).count(),
             created,
         )
+
+
+class SingleCountNoTotalColumnTests(_BaseSetup):
+    """A primary-only count indicator (exactly ONE disaggregate — a category list,
+    no sex, no age) must NOT emit a redundant TOTAL column: the single Count column
+    plus the 'Sub - total' row already carry the total (workbook fix)."""
+
+    def _single_count_indicator(self):
+        return Indicator.objects.create(
+            name="Number of media platforms used per quarter", code="WB_SINGLE",
+            type="number", category="hiv_prevention", created_by=self.admin,
+            aggregate_disaggregation_config={
+                "enabled": True, "layout": "matrix",
+                "dimensions": [{"key": "platform", "label": "Media Platform",
+                                "values": ["Facebook", "X", "Instagram"]}],
+            },
+        )
+
+    def _generate(self, *indicators):
+        plans = [rw.IndicatorPlan(indicator=i, config=rw.resolve_matrix_config(i), target=None)
+                 for i in indicators]
+        return load_workbook(rw.generate_workbook(
+            project=self.project, organization=self.org, quarter=3,
+            fiscal_start_year=2025, indicator_plans=plans))
+
+    def test_single_count_indicator_has_no_total_column(self):
+        single = self._single_count_indicator()
+        wb = self._generate(single, self.matrix)
+        form = wb[rw.SHEET_FORM]
+        headers = [c.value.strip() for rowcells in form.iter_rows() for c in rowcells
+                   if isinstance(c.value, str)]
+        # Only the matrix (sex/age) indicator emits a TOTAL header now; the single-
+        # count indicator emits none. Before the fix there would be two.
+        self.assertEqual(headers.count("TOTAL"), 1,
+                         "primary-only count indicator must not emit a TOTAL column")
+        # It still shows its category value column ("Count") and the Sub - total row.
+        self.assertIn("Count", headers)
+        self.assertIn("Sub - total", headers)
+
+    def test_single_count_inputs_still_captured_for_import_roundtrip(self):
+        single = self._single_count_indicator()
+        wb = self._generate(single)
+        cellmap = wb[rw.SHEET_CELLMAP]
+        # Every category must still have a recorded input cell (kind='cell'), so the
+        # cellmap-driven importer round-trip is intact despite the missing TOTAL col.
+        recorded = {row[3] for row in cellmap.iter_rows(min_row=2, values_only=True)
+                    if row and row[2] == "cell"}
+        self.assertTrue({"Facebook", "X", "Instagram"}.issubset(recorded), recorded)

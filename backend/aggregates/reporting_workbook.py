@@ -1400,7 +1400,15 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         col_sub = (last_band + 1) if has_age else None
         col_total = (col_sub if col_sub else last_band) + 1
         col_ayp = (col_total + 1) if has_age else None
-    last_col = col_ayp or col_total
+    # A primary-only count indicator (exactly ONE disaggregate — a category list,
+    # no sex and no age) needs no TOTAL column: with a single value column
+    # ("Count") the per-row TOTAL merely repeats that Count, and the "Sub - total"
+    # row already gives the overall total. Suppress it. The coordinator/consolidated
+    # cross-sheet rollups are keyed on the recorded "cell" inputs (the Count column),
+    # NOT this derived column, so removing it is round-trip safe.
+    if single_count:
+        col_total = None
+    last_col = col_ayp or col_total or last_band
 
     for c in range(first_band, last_band + 1):
         ws.column_dimensions[get_column_letter(c)].width = 7
@@ -1433,7 +1441,8 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         band_cols[band] = c
     if col_sub:
         _style(ws.cell(row=hr, column=col_sub, value="Sub - total"), fill=_HEADCELL_FILL, font=_BOLD)
-    _style(ws.cell(row=hr, column=col_total, value="TOTAL"), fill=_HEADCELL_FILL, font=_BOLD)
+    if col_total:
+        _style(ws.cell(row=hr, column=col_total, value="TOTAL"), fill=_HEADCELL_FILL, font=_BOLD)
     if col_ayp:
         _style(ws.cell(row=hr, column=col_ayp, value=AYP_LABEL), fill=_HEADCELL_FILL, font=_BOLD)
 
@@ -1476,17 +1485,19 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         # Key-population label (col B), merged across its sex rows.
         _merge(ws, kp_first, COL_KP, kp_last, COL_KP, primary if has_kp else "All",
                fill=_LABEL_FILL, font=_BOLD, align=_CENTER)
-        # TOTAL per key population (sum of its rows' sub-totals), merged.
-        if col_sub:
-            total_formula = f"=SUM({get_column_letter(col_sub)}{kp_first}:{get_column_letter(col_sub)}{kp_last})"
-        else:
-            total_formula = (
-                f"=SUM({get_column_letter(first_band)}{kp_first}:{get_column_letter(last_band)}{kp_last})"
-                if has_age else
-                f"=SUM({get_column_letter(first_band)}{kp_first}:{get_column_letter(first_band)}{kp_last})"
-            )
-        _merge(ws, kp_first, col_total, kp_last, col_total, total_formula,
-               fill=_SUBTOTAL_FILL, font=_BOLD)
+        # TOTAL per key population (sum of its rows' sub-totals), merged. Skipped
+        # for primary-only count indicators, which carry no TOTAL column.
+        if col_total:
+            if col_sub:
+                total_formula = f"=SUM({get_column_letter(col_sub)}{kp_first}:{get_column_letter(col_sub)}{kp_last})"
+            else:
+                total_formula = (
+                    f"=SUM({get_column_letter(first_band)}{kp_first}:{get_column_letter(last_band)}{kp_last})"
+                    if has_age else
+                    f"=SUM({get_column_letter(first_band)}{kp_first}:{get_column_letter(first_band)}{kp_last})"
+                )
+            _merge(ws, kp_first, col_total, kp_last, col_total, total_formula,
+                   fill=_SUBTOTAL_FILL, font=_BOLD)
     data_end = row - 1
 
     # Indicator name down the left, spanning the whole block.
@@ -1506,9 +1517,10 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         _style(ws.cell(row=row, column=col_sub,
                        value=f"=SUM({get_column_letter(col_sub)}{data_start}:{get_column_letter(col_sub)}{data_end})"),
                fill=_SUBTOTAL_FILL, font=_BOLD)
-    _style(ws.cell(row=row, column=col_total,
-                   value=f"=SUM({get_column_letter(first_band)}{data_start}:{get_column_letter(last_band)}{data_end})"),
-           fill=_SUBTOTAL_FILL, font=_BOLD)
+    if col_total:
+        _style(ws.cell(row=row, column=col_total,
+                       value=f"=SUM({get_column_letter(first_band)}{data_start}:{get_column_letter(last_band)}{data_end})"),
+               fill=_SUBTOTAL_FILL, font=_BOLD)
     if col_ayp:
         _style(ws.cell(row=row, column=col_ayp,
                        value=f"=SUM({get_column_letter(col_ayp)}{data_start}:{get_column_letter(col_ayp)}{data_end})"),
