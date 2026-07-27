@@ -29,6 +29,14 @@
 *.dump
 *.sql
 backend/backups/
+# Root-level snapshot/rollback dumps and ad-hoc DB patch scripts written by
+# remediation work (e.g. backups/kp_fix_*.json, backups/manual-patches/). These
+# contain REAL programme data and must never be committed. Only backend/backups/
+# was previously ignored, leaving the repo-root backups/ dir exposed.
+/backups/
+# Dated read-only audit artefact dirs dropped at the repo root (jsonl/csv dumps
+# of real programme data — e.g. audit_2026-06-22/).
+/audit_[0-9]*/
 *.bak
 .git.broken*/
 
