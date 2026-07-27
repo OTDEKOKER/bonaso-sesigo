@@ -38,8 +38,11 @@ services:
     # in the image (installed for the PG apt key). Note: a healthcheck gives
     # visibility, not auto-restart — restart:unless-stopped still only recovers a
     # process that actually exits; pair with an autoheal sidecar for auto-restart.
+    # X-Forwarded-Proto: https bypasses SECURE_SSL_REDIRECT so the probe reaches
+    # the view and gets a real 200 + DB check (a true readiness probe, not just a
+    # 301 liveness ping). -f fails the check on any >=400 (e.g. 503 when DB down).
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18000/api/health/ || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:18000/api/health/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
