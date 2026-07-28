@@ -21,6 +21,9 @@ services:
     memswap_limit: 2560m
     environment:
       PORT: "18000"
+      # 2 sync workers (was default 3) on this 1-vCPU host to cut ~1 worker's
+      # RSS (~90-100 MB) of memory pressure. Concurrency is low; 2 is ample.
+      GUNICORN_WORKERS: "2"
       SECURE_SSL_REDIRECT: "True"
       USE_X_FORWARDED_PROTO: "True"
       BONASO_DJANGO_ROOT: "/app"
