@@ -601,6 +601,7 @@ def generate_workbook(
     # labels, headers and auto-sum formulas stay locked.
     form.protection.sheet = True
     form.protection.password = PROTECTION_PASSWORD
+    form.protection.formatCells = False  # allow wrap-text / alignment tweaks (values stay locked)
     form.protection.formatColumns = False
     form.protection.formatRows = False
 
@@ -732,6 +733,7 @@ def _write_form_sheet(wb, title, *, org_name, project, quarter, fiscal_start_yea
 
     ws.protection.sheet = True
     ws.protection.password = PROTECTION_PASSWORD
+    ws.protection.formatCells = False  # allow wrap-text / alignment tweaks (values stay locked)
     ws.protection.formatColumns = False
     ws.protection.formatRows = False
     return ws
