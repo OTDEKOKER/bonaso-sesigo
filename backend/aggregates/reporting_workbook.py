@@ -960,6 +960,34 @@ def _inject_formula_cache(buf: BytesIO, value_map: dict | None = None) -> BytesI
     return out
 
 
+def _drop_empty_formula_values(buf: BytesIO) -> BytesIO:
+    """Strip the empty ``<v></v>`` openpyxl writes after every ``<f>…</f>``.
+
+    An empty cached value is harmless for same-sheet formulas — Excel recalculates
+    them immediately (the single-org workbook ships them and never repairs). But on
+    a workbook with cross-sheet ``=SUM('Sub'!…)`` rollups Excel treats the empty
+    string result as a corrupt numeric cache and "repairs" the file on open,
+    stripping merged-cell/border records (the table grid). Leaving the formula with
+    NO ``<v>`` is the canonical not-yet-calculated form Excel accepts and recomputes
+    on open — so the tables/borders survive and the TOTAL sheet auto-populates.
+    """
+    import zipfile
+
+    src = zipfile.ZipFile(buf, "r")
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name in src.namelist():
+            data = src.read(name)
+            if name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                text = data.decode("utf-8")
+                text = re.sub(r"(</f>)<v\s*/>", r"\1", text)
+                text = re.sub(r"(</f>)<v>\s*</v>", r"\1", text)
+                data = text.encode("utf-8")
+            zout.writestr(name, data)
+    out.seek(0)
+    return out
+
+
 def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinator_plans,
                                   quarter: int, fiscal_start_year: int, generated_by: str = "",
                                   period_start=None, period_end=None, period_label=None,
@@ -1055,7 +1083,7 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return buf
+    return _drop_empty_formula_values(buf)
 
 
 def generate_bonaso_workbook(*, project, org_label, coordinator_groups, grand_plans,
@@ -1159,7 +1187,7 @@ def generate_bonaso_workbook(*, project, org_label, coordinator_groups, grand_pl
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return buf
+    return _drop_empty_formula_values(buf)
 
 
 def generate_consolidated_workbook(*, project, org_label, coordinator_specs, grand_plans,
@@ -1298,8 +1326,11 @@ def _value_cell(ws, row, col, dv, *, formula_provider, kind, primary, secondary,
     Excel formula string for this (kind, primary, secondary, band), or None."""
     if formula_provider is not None:
         formula = formula_provider(kind, primary, secondary, band)
+        # Same blue input fill as the CSO/sub sheets so the coordinator TOTAL sheet
+        # is a visual copy of them (it just auto-populates via the rollup formula);
+        # locked so the formula can't be overwritten.
         cell = _style(ws.cell(row=row, column=col, value=formula if formula is not None else 0),
-                      fill=_SUBTOTAL_FILL, locked=True)
+                      fill=_INPUT_FILL, locked=True)
         return cell
     return _input_cell(ws, row, col, dv)
 
@@ -1371,7 +1402,7 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
         if end_col > anchor:
             ws.merge_cells(start_row=start_row, start_column=anchor,
                            end_row=start_row, end_column=end_col)
-            fill = _SUBTOTAL_FILL if formula_provider is not None else _INPUT_FILL
+            fill = _INPUT_FILL  # match the CSO/sub sheets (blue), even on the TOTAL sheet
             locked = formula_provider is not None
             for cc in range(anchor, end_col + 1):
                 covered = ws.cell(row=start_row, column=cc)
