@@ -87,12 +87,15 @@ class CoordinatorWorkbookTests(SimpleTestCase):
         # B) → its total cells reference only Sub B. So Sub A appears for IND1 only.
         self.assertGreater(ref_to_a, 0)
 
-    def test_formula_cells_have_cached_values_not_empty(self):
-        """openpyxl emits ``<f>…</f><v/>`` (empty cached value); Excel "repairs"
-        cross-sheet rollup formulas that carry an empty cached value. The workbook
-        must ship every formula cell with an explicit cached ``<v>`` (the real
-        computed total, also recomputed on open via fullCalcOnLoad) and zero empty
-        ``<v/>`` left behind."""
+    def test_no_injected_cached_values_like_single_org(self):
+        """The coordinator workbook must finalize like the single-org workbook: a
+        plain openpyxl save with NO raw-XML cached-value injection. Stamping
+        ``<v>real</v>`` into the cross-sheet formula cells is what made Excel
+        "repair" the file on open — stripping merged-cell/border records (the table
+        grid) and zeroing the TOTAL sheet. openpyxl's native ``<f>…</f><v></v>`` is
+        exactly what the never-repairing single-org sheet ships, and Excel
+        recomputes the rollups on open. Regression guard for the 'coordinator
+        workbook repairs / tables & borders broken' report."""
         import zipfile
         i1 = _indicator(1, "IND1", "Indicator One")
         i2 = _indicator(2, "IND2", "Indicator Two")
@@ -105,25 +108,24 @@ class CoordinatorWorkbookTests(SimpleTestCase):
             sub_specs=[(subA, [_plan(i1)]), (subB, [_plan(i2), _plan(i1)])],
             coordinator_plans=[_plan(i1), _plan(i2)], quarter=1, fiscal_start_year=2026,
         )
-        empty = cached = formulas = 0
+        injected = formulas = 0
         with zipfile.ZipFile(BytesIO(buf.getvalue())) as z:
             for name in z.namelist():
                 if name.startswith("xl/worksheets/") and name.endswith(".xml"):
                     xml = z.read(name).decode("utf-8")
                     formulas += xml.count("</f>")
-                    empty += len(re.findall(r"</f><v\s*/>", xml))
-                    empty += xml.count("</f><v></v>")
-                    # An explicit cached value of ANY number (not just 0).
-                    cached += len(re.findall(r"</f><v>[^<]*</v>", xml))
+                    # a NON-empty cached value stamped right after a formula
+                    injected += len(re.findall(r"</f><v>[^<]+</v>", xml))
         self.assertGreater(formulas, 0)
-        self.assertEqual(empty, 0, "formula cells must not ship an empty <v/> cached value")
-        self.assertEqual(cached, formulas, "every formula cell should carry an explicit cached value")
+        self.assertEqual(injected, 0,
+                         "formula cells must NOT carry injected cached values — that "
+                         "raw-XML injection triggers Excel's repair (tables/borders stripped)")
 
-    def test_total_sheet_caches_real_computed_totals(self):
-        """With data, the TOTAL sheet's cross-sheet SUM cells must ship the REAL
-        rollup as their cached ``<v>`` — so the workbook reads correctly in
-        Protected View / non-Excel viewers, before any recalculation. Regression
-        guard for the 'coordinator workbook shows zeros' report."""
+    def test_total_sheet_rolls_up_by_cross_sheet_formula(self):
+        """The TOTAL sheet rolls up via live cross-sheet ``=SUM`` formulas that Excel
+        recomputes on open — not injected static values. Guards that each rollup
+        cell references the matching (primary, secondary, band) cell on every
+        reporting sub."""
         i1 = _indicator(1, "IND1", "Indicator One")
         project = SimpleNamespace(id=99, name="Test Project", code="TP", is_training=False)
         coord = SimpleNamespace(id=5, name="Coordinator Org", code="COORD")
@@ -140,7 +142,7 @@ class CoordinatorWorkbookTests(SimpleTestCase):
             coordinator_plans=[_plan(i1)], quarter=1, fiscal_start_year=2026,
             with_data=True,
         )
-        wb = load_workbook(BytesIO(buf.getvalue()), data_only=True)  # cached values only
+        wb = load_workbook(BytesIO(buf.getvalue()))  # formulas, not cached values
         cellmap = wb["_cellmap"]
         prefix = rw.SHEET_TOTAL + "!"
         total_cells = [
@@ -150,10 +152,12 @@ class CoordinatorWorkbookTests(SimpleTestCase):
             if str(ind_id) == "1" and kind == "cell" and coord_ref and coord_ref.startswith(prefix)
         ]
         total_sheet = wb[rw.SHEET_TOTAL]
-        summed = sum((total_sheet[c].value or 0) for c in total_cells)
-        self.assertEqual(summed, 12, "TOTAL sheet cached values must equal the real rollup (5 + 7)")
-        self.assertTrue(any((total_sheet[c].value or 0) > 0 for c in total_cells),
-                        "cached rollup must be non-zero (not the legacy <v>0</v> placeholder)")
+        sum_formulas = [total_sheet[c].value for c in total_cells
+                        if isinstance(total_sheet[c].value, str) and total_sheet[c].value.startswith("=SUM(")]
+        self.assertTrue(sum_formulas, "TOTAL cells must be cross-sheet =SUM formulas")
+        joined = " ".join(sum_formulas)
+        self.assertIn("'Sub A'!", joined)
+        self.assertIn("'Sub B'!", joined)
 
     def test_indicator_only_in_one_sub_sums_only_that_sub(self):
         wb = self._build()

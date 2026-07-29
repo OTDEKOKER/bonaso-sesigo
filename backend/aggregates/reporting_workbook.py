@@ -1046,15 +1046,15 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
 
     wb.active = 0  # open on the first data sheet (coordinator / first sub)
     wb.security = WorkbookProtection(workbookPassword=PROTECTION_PASSWORD, lockStructure=True)
-    wb.calculation.fullCalcOnLoad = True  # force Excel to recompute the rollups on open
-    # Stamp each formula cell with its real computed total BEFORE saving-out, so the
-    # cross-sheet TOTAL sheet reads correctly even in Protected View / non-Excel
-    # viewers (and Excel stops "repairing" the file).
-    cached_values = _evaluate_workbook_values(wb)
+    # Finalize EXACTLY like the single-org workbook: a plain save, no cached-value
+    # injection. The raw-XML <v> injection on the cross-sheet =SUM formulas made
+    # Excel "repair" the file on open — stripping merged-cell/border records (the
+    # table grid) and zeroing the TOTAL sheet. Excel recalculates the cross-sheet
+    # rollups automatically on open, so the TOTAL sheet still auto-populates and the
+    # tables/borders stay identical to the sub sheets.
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    buf = _inject_formula_cache(buf, cached_values)
     return buf
 
 
@@ -1152,12 +1152,13 @@ def generate_bonaso_workbook(*, project, org_label, coordinator_groups, grand_pl
 
     wb.active = 0
     wb.security = WorkbookProtection(workbookPassword=PROTECTION_PASSWORD, lockStructure=True)
-    wb.calculation.fullCalcOnLoad = True  # force Excel to recompute the rollups on open
-    cached_values = _evaluate_workbook_values(wb)
+    # Plain save, no cached-value injection (see generate_coordinator_workbook): the
+    # raw-XML <v> injection on cross-sheet =SUM formulas triggered Excel's file
+    # "repair", which stripped merged-cell/border records. Excel recalculates the
+    # GRAND TOTAL rollups automatically on open.
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    buf = _inject_formula_cache(buf, cached_values)
     return buf
 
 
