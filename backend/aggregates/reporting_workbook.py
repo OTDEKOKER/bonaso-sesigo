@@ -1357,8 +1357,13 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
                fill=_LABEL_FILL, font=_BOLD, align=_LEFT)
         anchor = COL_SEX
         end_col = fixed_ayp_col if aligned else (COL_BAND_START + 6)
+        # ``_record`` below keys this plain cell with EMPTY primary/secondary/band,
+        # and ref_index (→ the coordinator TOTAL provider) is built from those
+        # recorded keys. The provider lookup must therefore use the same empties,
+        # or the TOTAL sheet gets a literal 0 instead of the cross-sheet =SUM — i.e.
+        # no auto-calculation for no-disaggregate (count) indicators.
         cell = _value_cell(ws, start_row, anchor, dv, formula_provider=formula_provider,
-                           kind="total", primary=ALL_PRIMARY, secondary=ALL_PRIMARY, band=NO_BAND)
+                           kind="total", primary="", secondary="", band="")
         if with_data and formula_provider is None:
             amount = plan.existing_cells.get((ALL_PRIMARY, ALL_PRIMARY, NO_BAND))
             if amount is not None:

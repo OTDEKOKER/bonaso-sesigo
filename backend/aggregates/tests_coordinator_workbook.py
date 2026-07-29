@@ -159,6 +159,43 @@ class CoordinatorWorkbookTests(SimpleTestCase):
         self.assertIn("'Sub A'!", joined)
         self.assertIn("'Sub B'!", joined)
 
+    def test_no_disaggregate_total_cell_is_cross_sheet_formula(self):
+        """A no-disaggregate (count) indicator's TOTAL cell must be a live
+        cross-sheet ``=SUM`` — not a dead literal 0. The plain cell is recorded
+        with EMPTY primary/secondary/band, so the TOTAL provider must look it up
+        under the same empties (regression guard: the block used to pass
+        ALL_PRIMARY/NO_BAND, which never matched ref_index → no auto-calc)."""
+        plain = SimpleNamespace(id=1, code="CNT", name="Number of support groups",
+                                type="number", aggregate_disaggregation_config={"enabled": False})
+        self.assertFalse(rw.resolve_matrix_config(plain).has_disaggregates)
+        project = SimpleNamespace(id=99, name="P", code="P", is_training=False)
+        coord = SimpleNamespace(id=5, name="Coord", code="C")
+        subA = SimpleNamespace(id=11, name="Sub A", code="A")
+        subB = SimpleNamespace(id=12, name="Sub B", code="B")
+        kp = (rw.ALL_PRIMARY, rw.ALL_PRIMARY, rw.NO_BAND)
+        buf = rw.generate_coordinator_workbook(
+            project=project, coordinator=coord,
+            sub_specs=[(subA, [rw.IndicatorPlan(indicator=plain, config=rw.resolve_matrix_config(plain), target=None, existing_cells={kp: 3})]),
+                       (subB, [rw.IndicatorPlan(indicator=plain, config=rw.resolve_matrix_config(plain), target=None, existing_cells={kp: 4})])],
+            coordinator_plans=[_plan(plain)], quarter=1, fiscal_start_year=2026, with_data=True,
+        )
+        wb = load_workbook(BytesIO(buf.getvalue()))
+        cm = wb["_cellmap"]
+        prefix = rw.SHEET_TOTAL + "!"
+        total_cells = [ref.split("!", 1)[1] for (i, c, k, pr, se, ba, ref) in cm.iter_rows(min_row=2, values_only=True)
+                       if str(i) == "1" and ref and ref.startswith(prefix)]
+        total = wb[rw.SHEET_TOTAL]
+        self.assertTrue(total_cells)
+        for c in total_cells:
+            v = total[c].value
+            self.assertTrue(isinstance(v, str) and v.startswith("=SUM(") and "!" in v,
+                            f"no-disaggregate TOTAL cell {c} must be a cross-sheet =SUM, got {v!r}")
+        # and the plain cell's merge must match the sub sheet's (consistent tables)
+        r = int(re.sub(r"[A-Z]", "", total_cells[0]))
+        tm = {str(m) for m in total.merged_cells.ranges if m.min_row <= r <= m.max_row}
+        sm = {str(m) for m in wb["Sub A"].merged_cells.ranges if m.min_row <= r <= m.max_row}
+        self.assertEqual(tm, sm, "no-disaggregate row merges must match the sub sheet")
+
     def test_indicator_only_in_one_sub_sums_only_that_sub(self):
         wb = self._build()
         cm = wb["_cellmap"]
