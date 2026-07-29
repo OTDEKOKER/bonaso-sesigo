@@ -1295,7 +1295,14 @@ def _style(cell, *, fill=None, font=None, align=_CENTER, locked=True):
 
 
 def _merge(ws, r1, c1, r2, c2, value, *, fill=None, font=None, align=_CENTER):
-    ws.merge_cells(start_row=r1, start_column=c1, end_row=r2, end_column=c2)
+    # A single-cell "merge" (r1==r2 and c1==c2) is invalid OOXML: openpyxl still
+    # writes <mergeCell ref="B6"/>, which Excel "repairs" on open (Removed Records:
+    # Merged Cells) — stripping merge/border records (the table grid) and showing
+    # the "Repaired" prompt. Only emit a real, multi-cell merge; a 1x1 range is
+    # just a normal styled cell. (Happens when a key-population/label group spans a
+    # single row, e.g. an indicator with one sex/category.)
+    if (r1, c1) != (r2, c2):
+        ws.merge_cells(start_row=r1, start_column=c1, end_row=r2, end_column=c2)
     for rr in range(r1, r2 + 1):
         for cc in range(c1, c2 + 1):
             _style(ws.cell(row=rr, column=cc), fill=fill, font=font, align=align)

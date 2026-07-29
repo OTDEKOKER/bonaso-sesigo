@@ -196,6 +196,31 @@ class CoordinatorWorkbookTests(SimpleTestCase):
         sm = {str(m) for m in wb["Sub A"].merged_cells.ranges if m.min_row <= r <= m.max_row}
         self.assertEqual(tm, sm, "no-disaggregate row merges must match the sub sheet")
 
+    def test_no_single_cell_merges_anywhere(self):
+        """A 1x1 merged range (openpyxl still writes <mergeCell ref="B6"/>) is
+        invalid OOXML — Excel "repairs" the file on open (Removed Records: Merged
+        Cells), stripping the table grid and showing the "Repaired" prompt. Guard
+        that NO sheet emits a single-cell merge. Uses an indicator with single-row
+        key-population groups (primary + age, no sex), which produced degenerate
+        B/TOTAL-column merges before the _merge guard. Root-cause regression."""
+        kp = SimpleNamespace(id=3, code="KP", name="KP indicator", type="number",
+            aggregate_disaggregation_config={"enabled": True, "dimensions": [
+                {"label": "Key Population", "key": "kp", "values": ["FSW", "MSM"]},
+                {"label": "Age Range", "key": "age_band", "values": ["10-14", "15-19"]}]})
+        project = SimpleNamespace(id=99, name="P", code="P", is_training=False)
+        coord = SimpleNamespace(id=5, name="Coord", code="C")
+        subA = SimpleNamespace(id=11, name="Sub A", code="A")
+        subB = SimpleNamespace(id=12, name="Sub B", code="B")
+        buf = rw.generate_coordinator_workbook(
+            project=project, coordinator=coord,
+            sub_specs=[(subA, [_plan(kp)]), (subB, [_plan(kp)])],
+            coordinator_plans=[_plan(kp)], quarter=1, fiscal_start_year=2026, with_data=True)
+        wb = load_workbook(BytesIO(buf.getvalue()))
+        for ws in wb.worksheets:
+            for m in ws.merged_cells.ranges:
+                self.assertFalse(m.min_row == m.max_row and m.min_col == m.max_col,
+                                 f"single-cell merge {m} on sheet {ws.title!r}")
+
     def test_indicator_only_in_one_sub_sums_only_that_sub(self):
         wb = self._build()
         cm = wb["_cellmap"]
