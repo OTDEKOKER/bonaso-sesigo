@@ -3,10 +3,11 @@ import { ShieldCheck } from "lucide-react"
 
 import { QuestionnaireFrame } from "@/components/cso-mapping/questionnaire-frame"
 
-// Iframe-optimised embed URL for the survey. Kept in one place so it can be
-// updated if the questionnaire is ever republished under a new id. Not shown to
-// respondents — the page stays fully SESIGO-branded on sesigo.org.bw.
-const QUESTIONNAIRE_EMBED_URL = "https://ee.kobotoolbox.org/i/bV765QEZ"
+// Standard web-form URL for the survey, embedded so the questionnaire behaves
+// exactly as it does natively (form navigation, language, submit, geolocation).
+// Kept in one place so it can be updated if the form is republished under a new
+// id. The page around it stays SESIGO-branded on sesigo.org.bw.
+const QUESTIONNAIRE_EMBED_URL = "https://ee.kobotoolbox.org/x/bV765QEZ"
 
 // Existing in-app support contact (see components/shared/maintenance-screen.tsx).
 // TODO(management): confirm this is the correct public support address for the
