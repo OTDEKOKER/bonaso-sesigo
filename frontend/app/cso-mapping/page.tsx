@@ -1,13 +1,6 @@
 import type { Metadata } from "next"
-import { ShieldCheck } from "lucide-react"
-
-import { QuestionnaireFrame } from "@/components/cso-mapping/questionnaire-frame"
-
-// Standard web-form URL for the survey, embedded so the questionnaire behaves
-// exactly as it does natively (form navigation, language, submit, geolocation).
-// Kept in one place so it can be updated if the form is republished under a new
-// id. The page around it stays SESIGO-branded on sesigo.org.bw.
-const QUESTIONNAIRE_EMBED_URL = "https://ee.kobotoolbox.org/x/bV765QEZ"
+import Link from "next/link"
+import { ArrowRight, ShieldCheck } from "lucide-react"
 
 // Existing in-app support contact (see components/shared/maintenance-screen.tsx).
 // TODO(management): confirm this is the correct public support address for the
@@ -22,11 +15,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-export default function CsoMappingPage() {
+export default function CsoMappingIntroPage() {
   return (
     <main className="min-h-[100dvh] bg-[#0b2318] text-white">
       <header className="border-b border-white/10 bg-[#0e1f16]">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-4">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-4">
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-extrabold tracking-tight">Sesigo</span>
             <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-white/45">
@@ -39,7 +32,7 @@ export default function CsoMappingPage() {
         </div>
       </header>
 
-      <section className="mx-auto w-full max-w-3xl px-4 pb-4 pt-8">
+      <section className="mx-auto w-full max-w-3xl px-4 pb-12 pt-8">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/80">
           BONASO · Botswana
         </p>
@@ -67,29 +60,35 @@ export default function CsoMappingPage() {
             to authorised project personnel.
           </p>
         </div>
-      </section>
 
-      <section className="mx-auto w-full max-w-5xl px-2 pb-4 sm:px-4" aria-label="Questionnaire">
-        <QuestionnaireFrame
-          embedUrl={QUESTIONNAIRE_EMBED_URL}
-          title="BONASO Health Service CSO Mapping and Capacity Assessment"
-        />
-      </section>
-
-      <footer className="mx-auto w-full max-w-3xl px-4 pb-10">
-        <p className="text-sm leading-6 text-white/70">
-          <span className="font-semibold text-white/85">Need help?</span> If you experience any
-          technical difficulties completing this questionnaire, please contact BONASO at{" "}
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
-            className="font-medium text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+        <div className="mt-8">
+          <Link
+            href="/cso-mapping/questionnaire"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-6 py-3 text-base font-semibold tracking-tight text-[#04140d] transition-colors hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
           >
-            {SUPPORT_EMAIL}
-          </a>
-          .
-        </p>
-        <p className="mt-4 text-[11px] text-white/40">© 2026 Sesigo Data Portal. Powered by BONASO.</p>
-      </footer>
+            Start Questionnaire
+            <ArrowRight className="h-5 w-5" aria-hidden="true" />
+          </Link>
+          <p className="mt-3 text-xs text-white/45">The questionnaire opens on the next page.</p>
+        </div>
+
+        <div className="mt-10 border-t border-white/10 pt-5">
+          <p className="text-sm leading-6 text-white/70">
+            <span className="font-semibold text-white/85">Need help?</span> If you experience any
+            technical difficulties completing this questionnaire, please contact BONASO at{" "}
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="font-medium text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+            >
+              {SUPPORT_EMAIL}
+            </a>
+            .
+          </p>
+          <p className="mt-4 text-[11px] text-white/40">
+            © 2026 Sesigo Data Portal. Powered by BONASO.
+          </p>
+        </div>
+      </section>
     </main>
   )
 }

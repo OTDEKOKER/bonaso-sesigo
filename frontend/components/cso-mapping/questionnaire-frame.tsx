@@ -4,10 +4,12 @@ import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 
 interface QuestionnaireFrameProps {
-  /** Iframe-optimised embed URL for the questionnaire. */
+  /** Embed URL for the questionnaire. */
   embedUrl: string
   /** Accessible title for the embedded form. */
   title: string
+  /** CSS height for the frame (viewport-relative). Defaults to a full-page form. */
+  heightCss?: string
 }
 
 /**
@@ -20,7 +22,11 @@ interface QuestionnaireFrameProps {
  *
  * Responses submit straight to the survey backend; nothing is stored in SESIGO.
  */
-export function QuestionnaireFrame({ embedUrl, title }: QuestionnaireFrameProps) {
+export function QuestionnaireFrame({
+  embedUrl,
+  title,
+  heightCss = "calc(100dvh - 8rem)",
+}: QuestionnaireFrameProps) {
   const [loaded, setLoaded] = useState(false)
   const [slow, setSlow] = useState(false)
 
@@ -54,7 +60,7 @@ export function QuestionnaireFrame({ embedUrl, title }: QuestionnaireFrameProps)
           src={embedUrl}
           title={title}
           className="block w-full border-0"
-          style={{ height: "calc(100dvh - 8rem)", minHeight: 640 }}
+          style={{ height: heightCss, minHeight: 640 }}
           loading="lazy"
           allow="geolocation; camera; microphone"
           referrerPolicy="strict-origin-when-cross-origin"
