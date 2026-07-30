@@ -17,74 +17,76 @@ export const metadata: Metadata = {
 
 export default function CsoMappingIntroPage() {
   return (
-    <main className="min-h-[100dvh] bg-[#0b2318] text-white">
-      <header className="border-b border-white/10 bg-[#0e1f16]">
+    <main className="min-h-[100dvh] bg-[#f4f6f8] text-slate-700">
+      <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-4">
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold tracking-tight">Sesigo</span>
-            <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-white/45">
+            <span className="text-2xl font-extrabold tracking-tight text-slate-900">Sesigo</span>
+            <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-slate-400">
               Data Portal
             </span>
           </div>
-          <span className="text-[10px] font-medium uppercase tracking-wide text-white/40">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
             Powered by BONASO
           </span>
         </div>
       </header>
 
       <section className="mx-auto w-full max-w-3xl px-4 pb-12 pt-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/80">
-          BONASO · Botswana
-        </p>
-        <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
-          Health Service Civil Society Organisation Mapping and Capacity Assessment
-        </h1>
-        <p className="mt-4 text-sm leading-7 text-white/80 sm:text-base">
-          This questionnaire is part of the BONASO Health Service Civil Society Organisation Mapping
-          and Capacity Assessment. It is being conducted to identify health-service CSOs operating
-          across Botswana, understand the services they provide, assess their organisational and
-          technical capacities, and identify gaps affecting effective participation in Primary Health
-          Care Revitalisation. The information collected will support improved coordination, capacity
-          strengthening, service planning and the development of a national Health Service CSO
-          Directory.
-        </p>
-
-        <div className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
-          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-200">
-            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-            Confidentiality
-          </h2>
-          <p className="mt-1.5 text-sm leading-6 text-white/75">
-            Participation is voluntary. Information collected through this questionnaire will be used
-            for the CSO Mapping and Capacity Assessment. Access to raw information will be restricted
-            to authorised project personnel.
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#356a8d]">
+            BONASO · Botswana
           </p>
+          <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight text-[#2b5872] sm:text-3xl">
+            Health Service Civil Society Organisation Mapping and Capacity Assessment
+          </h1>
+          <p className="mt-4 text-sm leading-7 text-slate-600 sm:text-base">
+            This questionnaire is part of the BONASO Health Service Civil Society Organisation
+            Mapping and Capacity Assessment. It is being conducted to identify health-service CSOs
+            operating across Botswana, understand the services they provide, assess their
+            organisational and technical capacities, and identify gaps affecting effective
+            participation in Primary Health Care Revitalisation. The information collected will
+            support improved coordination, capacity strengthening, service planning and the
+            development of a national Health Service CSO Directory.
+          </p>
+
+          <div className="mt-5 rounded-xl border border-[#d6e3ec] bg-[#eef4f8] px-4 py-3">
+            <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#2b5872]">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              Confidentiality
+            </h2>
+            <p className="mt-1.5 text-sm leading-6 text-slate-600">
+              Participation is voluntary. Information collected through this questionnaire will be
+              used for the CSO Mapping and Capacity Assessment. Access to raw information will be
+              restricted to authorised project personnel.
+            </p>
+          </div>
+
+          <div className="mt-8">
+            <Link
+              href="/cso-mapping/questionnaire"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#356a8d] px-6 py-3 text-base font-semibold tracking-tight text-white transition-colors hover:bg-[#2b5872] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#356a8d]"
+            >
+              Start Questionnaire
+              <ArrowRight className="h-5 w-5" aria-hidden="true" />
+            </Link>
+            <p className="mt-3 text-xs text-slate-400">The questionnaire opens on the next page.</p>
+          </div>
         </div>
 
         <div className="mt-8">
-          <Link
-            href="/cso-mapping/questionnaire"
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-6 py-3 text-base font-semibold tracking-tight text-[#04140d] transition-colors hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-          >
-            Start Questionnaire
-            <ArrowRight className="h-5 w-5" aria-hidden="true" />
-          </Link>
-          <p className="mt-3 text-xs text-white/45">The questionnaire opens on the next page.</p>
-        </div>
-
-        <div className="mt-10 border-t border-white/10 pt-5">
-          <p className="text-sm leading-6 text-white/70">
-            <span className="font-semibold text-white/85">Need help?</span> If you experience any
+          <p className="text-sm leading-6 text-slate-500">
+            <span className="font-semibold text-slate-700">Need help?</span> If you experience any
             technical difficulties completing this questionnaire, please contact BONASO at{" "}
             <a
               href={`mailto:${SUPPORT_EMAIL}`}
-              className="font-medium text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+              className="font-medium text-[#356a8d] underline underline-offset-2 hover:text-[#2b5872]"
             >
               {SUPPORT_EMAIL}
             </a>
             .
           </p>
-          <p className="mt-4 text-[11px] text-white/40">
+          <p className="mt-4 text-[11px] text-slate-400">
             © 2026 Sesigo Data Portal. Powered by BONASO.
           </p>
         </div>

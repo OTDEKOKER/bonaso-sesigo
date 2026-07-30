@@ -38,14 +38,14 @@ export function QuestionnaireFrame({
 
   return (
     <div>
-      <div className="relative w-full overflow-hidden rounded-2xl bg-white shadow-2xl shadow-black/40 ring-1 ring-white/10">
+      <div className="relative w-full overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
         {!loaded ? (
           <div
             className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white px-6 text-center text-gray-600"
             role="status"
             aria-live="polite"
           >
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-500" aria-hidden="true" />
+            <Loader2 className="h-8 w-8 animate-spin text-[#356a8d]" aria-hidden="true" />
             <p className="text-sm font-medium text-gray-700">Loading the questionnaire…</p>
             {slow ? (
               <p className="max-w-sm text-xs leading-5 text-gray-500">
@@ -68,7 +68,7 @@ export function QuestionnaireFrame({
         />
       </div>
 
-      <p className="mt-3 text-center text-xs text-white/50">
+      <p className="mt-3 text-center text-xs text-slate-500">
         If the questionnaire does not appear, please refresh the page.
       </p>
     </div>
