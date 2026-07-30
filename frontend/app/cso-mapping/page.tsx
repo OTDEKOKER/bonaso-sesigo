@@ -29,20 +29,20 @@ export default function CsoMappingIntroPage() {
           </div>
           <div className="flex items-center gap-4 sm:gap-5">
             <Image
-              src="/bonaso-logo.png"
-              alt="BONASO — Botswana Network of AIDS Services Organisations"
-              width={284}
-              height={372}
-              priority
-              className="h-14 w-auto sm:h-16"
-            />
-            <Image
               src="/nahpa-logo.png"
               alt="NAHPA — National AIDS and Health Promotion Agency, Botswana"
               width={865}
               height={433}
               priority
               className="h-9 w-auto sm:h-10"
+            />
+            <Image
+              src="/bonaso-logo.png"
+              alt="BONASO — Botswana Network of AIDS Services Organisations"
+              width={284}
+              height={372}
+              priority
+              className="h-14 w-auto sm:h-16"
             />
           </div>
         </div>

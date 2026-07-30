@@ -42,18 +42,18 @@ export default function CsoMappingQuestionnairePage() {
           </div>
           <div className="flex shrink-0 items-center gap-3 sm:gap-4">
             <Image
-              src="/bonaso-logo.png"
-              alt="BONASO — Botswana Network of AIDS Services Organisations"
-              width={284}
-              height={372}
-              className="h-10 w-auto sm:h-12"
-            />
-            <Image
               src="/nahpa-logo.png"
               alt="NAHPA — National AIDS and Health Promotion Agency, Botswana"
               width={865}
               height={433}
               className="h-7 w-auto sm:h-8"
+            />
+            <Image
+              src="/bonaso-logo.png"
+              alt="BONASO — Botswana Network of AIDS Services Organisations"
+              width={284}
+              height={372}
+              className="h-10 w-auto sm:h-12"
             />
           </div>
         </div>
