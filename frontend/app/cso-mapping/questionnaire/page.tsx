@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Image from "next/image"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
@@ -20,23 +21,30 @@ export const metadata: Metadata = {
 export default function CsoMappingQuestionnairePage() {
   return (
     <main className="flex min-h-[100dvh] flex-col bg-[#f4f6f8] text-slate-700">
-      <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3">
+      <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-2.5">
         <Link
           href="/cso-mapping"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+          className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back
         </Link>
-        <div className="flex items-baseline gap-2">
-          <span className="text-lg font-extrabold tracking-tight text-slate-900">Sesigo</span>
-          <span className="hidden text-[10px] font-medium uppercase tracking-[0.25em] text-slate-400 sm:inline">
-            Data Portal
-          </span>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <Image
+            src="/bonaso-logo.png"
+            alt="BONASO — Botswana Network of AIDS Services Organisations"
+            width={284}
+            height={372}
+            className="h-8 w-auto sm:h-9"
+          />
+          <Image
+            src="/nahpa-logo.png"
+            alt="NAHPA — National AIDS and Health Promotion Agency, Botswana"
+            width={865}
+            height={433}
+            className="h-6 w-auto sm:h-7"
+          />
         </div>
-        <span className="hidden text-[10px] font-medium uppercase tracking-wide text-slate-400 sm:inline">
-          Powered by BONASO
-        </span>
       </header>
 
       <section

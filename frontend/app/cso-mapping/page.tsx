@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Image from "next/image"
 import Link from "next/link"
 import { ArrowRight, ShieldCheck } from "lucide-react"
 
@@ -19,16 +20,23 @@ export default function CsoMappingIntroPage() {
   return (
     <main className="min-h-[100dvh] bg-[#f4f6f8] text-slate-700">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-4">
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold tracking-tight text-slate-900">Sesigo</span>
-            <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-slate-400">
-              Data Portal
-            </span>
-          </div>
-          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-            Powered by BONASO
-          </span>
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-3">
+          <Image
+            src="/bonaso-logo.png"
+            alt="BONASO — Botswana Network of AIDS Services Organisations"
+            width={284}
+            height={372}
+            priority
+            className="h-12 w-auto sm:h-14"
+          />
+          <Image
+            src="/nahpa-logo.png"
+            alt="NAHPA — National AIDS and Health Promotion Agency, Botswana"
+            width={865}
+            height={433}
+            priority
+            className="h-9 w-auto sm:h-11"
+          />
         </div>
       </header>
 
