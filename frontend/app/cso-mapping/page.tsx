@@ -21,22 +21,30 @@ export default function CsoMappingIntroPage() {
     <main className="min-h-[100dvh] bg-[#f4f6f8] text-slate-700">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-3">
-          <Image
-            src="/bonaso-logo.png"
-            alt="BONASO — Botswana Network of AIDS Services Organisations"
-            width={284}
-            height={372}
-            priority
-            className="h-12 w-auto sm:h-14"
-          />
-          <Image
-            src="/nahpa-logo.png"
-            alt="NAHPA — National AIDS and Health Promotion Agency, Botswana"
-            width={865}
-            height={433}
-            priority
-            className="h-9 w-auto sm:h-11"
-          />
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-extrabold tracking-tight text-slate-900">Sesigo</span>
+            <span className="hidden text-[10px] font-medium uppercase tracking-[0.25em] text-slate-400 sm:inline">
+              Data Portal
+            </span>
+          </div>
+          <div className="flex items-center gap-4 sm:gap-5">
+            <Image
+              src="/bonaso-logo.png"
+              alt="BONASO — Botswana Network of AIDS Services Organisations"
+              width={284}
+              height={372}
+              priority
+              className="h-14 w-auto sm:h-16"
+            />
+            <Image
+              src="/nahpa-logo.png"
+              alt="NAHPA — National AIDS and Health Promotion Agency, Botswana"
+              width={865}
+              height={433}
+              priority
+              className="h-9 w-auto sm:h-10"
+            />
+          </div>
         </div>
       </header>
 
