@@ -7,6 +7,8 @@ import { ArrowRight, ShieldCheck } from "lucide-react"
 // TODO(management): confirm this is the correct public support address for the
 // CSO Mapping questionnaire before wide distribution.
 const SUPPORT_EMAIL = "info@bonaso.org"
+// BONASO support phone (Botswana). Rendered with a tel: link (spaces stripped).
+const SUPPORT_PHONE = "+267 317 0582"
 
 export const metadata: Metadata = {
   title: "Botswana Health Service CSO Mapping & Capacity Assessment — Sesigo",
@@ -99,6 +101,13 @@ export default function CsoMappingIntroPage() {
               className="font-medium text-[#356a8d] underline underline-offset-2 hover:text-[#2b5872]"
             >
               {SUPPORT_EMAIL}
+            </a>{" "}
+            or{" "}
+            <a
+              href={`tel:${SUPPORT_PHONE.replace(/\s+/g, "")}`}
+              className="font-medium text-[#356a8d] underline underline-offset-2 hover:text-[#2b5872]"
+            >
+              {SUPPORT_PHONE}
             </a>
             .
           </p>
