@@ -21,9 +21,9 @@ export default function CsoMappingIntroPage() {
     <main className="min-h-[100dvh] bg-[#f4f6f8] text-slate-700">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-3">
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-col leading-none">
             <span className="text-2xl font-extrabold tracking-tight text-slate-900">Sesigo</span>
-            <span className="hidden text-[10px] font-medium uppercase tracking-[0.25em] text-slate-400 sm:inline">
+            <span className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.25em] text-slate-400">
               Data Portal
             </span>
           </div>
