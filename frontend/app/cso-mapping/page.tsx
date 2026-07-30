@@ -3,10 +3,10 @@ import { ShieldCheck } from "lucide-react"
 
 import { QuestionnaireFrame } from "@/components/cso-mapping/questionnaire-frame"
 
-// Kobo "embeddable web form" (iframe-optimised Enketo variant) for the survey.
-// Change these two constants if the Kobo form is ever republished under a new id.
-const KOBO_EMBED_URL = "https://ee.kobotoolbox.org/i/bV765QEZ"
-const KOBO_DIRECT_URL = "https://ee.kobotoolbox.org/x/bV765QEZ"
+// Iframe-optimised embed URL for the survey. Kept in one place so it can be
+// updated if the questionnaire is ever republished under a new id. Not shown to
+// respondents — the page stays fully SESIGO-branded on sesigo.org.bw.
+const QUESTIONNAIRE_EMBED_URL = "https://ee.kobotoolbox.org/i/bV765QEZ"
 
 // Existing in-app support contact (see components/shared/maintenance-screen.tsx).
 // TODO(management): confirm this is the correct public support address for the
@@ -70,8 +70,7 @@ export default function CsoMappingPage() {
 
       <section className="mx-auto w-full max-w-5xl px-2 pb-4 sm:px-4" aria-label="Questionnaire">
         <QuestionnaireFrame
-          embedUrl={KOBO_EMBED_URL}
-          directUrl={KOBO_DIRECT_URL}
+          embedUrl={QUESTIONNAIRE_EMBED_URL}
           title="BONASO Health Service CSO Mapping and Capacity Assessment"
         />
       </section>

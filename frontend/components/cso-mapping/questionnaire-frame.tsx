@@ -1,28 +1,26 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ExternalLink, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
 interface QuestionnaireFrameProps {
-  /** Iframe-optimised Enketo embed URL (Kobo "embeddable web form"). */
+  /** Iframe-optimised embed URL for the questionnaire. */
   embedUrl: string
-  /** Standard Enketo URL used for the "open directly" fallback link. */
-  directUrl: string
   /** Accessible title for the embedded form. */
   title: string
 }
 
 /**
- * Renders the KoboToolbox (Enketo) questionnaire inside a responsive iframe.
+ * Renders the questionnaire inside a responsive iframe, fully SESIGO-branded.
  *
  * - Shows a loading state until the form's `onLoad` fires.
- * - After a delay, surfaces a prominent "open directly" hint in case the embed
- *   is slow or blocked by the respondent's network/browser.
- * - Always keeps a subtle direct-link fallback below the frame.
+ * - After a delay, surfaces a neutral "refresh / contact BONASO" hint in case
+ *   the form is slow to appear. No third-party name or URL is shown to the
+ *   respondent, so the experience stays on sesigo.org.bw throughout.
  *
- * Responses submit straight to KoboToolbox; nothing is stored in SESIGO.
+ * Responses submit straight to the survey backend; nothing is stored in SESIGO.
  */
-export function QuestionnaireFrame({ embedUrl, directUrl, title }: QuestionnaireFrameProps) {
+export function QuestionnaireFrame({ embedUrl, title }: QuestionnaireFrameProps) {
   const [loaded, setLoaded] = useState(false)
   const [slow, setSlow] = useState(false)
 
@@ -45,16 +43,8 @@ export function QuestionnaireFrame({ embedUrl, directUrl, title }: Questionnaire
             <p className="text-sm font-medium text-gray-700">Loading the questionnaire…</p>
             {slow ? (
               <p className="max-w-sm text-xs leading-5 text-gray-500">
-                This is taking longer than usual. If the form does not appear, you can{" "}
-                <a
-                  href={directUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-emerald-600 underline underline-offset-2"
-                >
-                  open the questionnaire directly
-                </a>
-                .
+                This is taking longer than usual. Please check your connection and refresh the page.
+                If the problem continues, contact BONASO for assistance.
               </p>
             ) : null}
           </div>
@@ -72,17 +62,8 @@ export function QuestionnaireFrame({ embedUrl, directUrl, title }: Questionnaire
         />
       </div>
 
-      <p className="mt-3 text-center text-xs text-white/55">
-        Having trouble viewing the form?{" "}
-        <a
-          href={directUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 font-medium text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
-        >
-          Open the questionnaire directly
-          <ExternalLink className="h-3 w-3" aria-hidden="true" />
-        </a>
+      <p className="mt-3 text-center text-xs text-white/50">
+        If the questionnaire does not appear, please refresh the page.
       </p>
     </div>
   )
