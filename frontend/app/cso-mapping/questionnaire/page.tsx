@@ -57,11 +57,11 @@ export default function CsoMappingQuestionnairePage() {
 
       <section
         className="mx-auto w-full max-w-5xl flex-1 px-2 py-3 sm:px-4"
-        aria-label="Health Service CSO Mapping and Capacity Assessment questionnaire"
+        aria-label="Botswana Health Service CSO Mapping and Capacity Assessment questionnaire"
       >
         <QuestionnaireFrame
           embedUrl={QUESTIONNAIRE_EMBED_URL}
-          title="BONASO Health Service CSO Mapping and Capacity Assessment"
+          title="Botswana Health Service CSO Mapping and Capacity Assessment"
           heightCss="calc(100dvh - 5rem)"
         />
       </section>
