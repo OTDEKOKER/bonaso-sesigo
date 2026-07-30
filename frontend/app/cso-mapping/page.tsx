@@ -40,7 +40,7 @@ export default function CsoMappingIntroPage() {
           <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight text-[#2b5872] sm:text-3xl">
             Health Service Civil Society Organisation Mapping and Capacity Assessment
           </h1>
-          <p className="mt-4 text-sm leading-7 text-slate-600 sm:text-base">
+          <p className="mt-4 text-justify text-sm leading-7 text-slate-600 sm:text-base">
             This questionnaire is part of the BONASO Health Service Civil Society Organisation
             Mapping and Capacity Assessment. It is being conducted to identify health-service CSOs
             operating across Botswana, understand the services they provide, assess their
@@ -55,7 +55,7 @@ export default function CsoMappingIntroPage() {
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               Confidentiality
             </h2>
-            <p className="mt-1.5 text-sm leading-6 text-slate-600">
+            <p className="mt-1.5 text-justify text-sm leading-6 text-slate-600">
               Participation is voluntary. Information collected through this questionnaire will be
               used for the CSO Mapping and Capacity Assessment. Access to raw information will be
               restricted to authorised project personnel.
