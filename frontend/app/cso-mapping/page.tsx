@@ -9,9 +9,9 @@ import { ArrowRight, ShieldCheck } from "lucide-react"
 const SUPPORT_EMAIL = "info@bonaso.org"
 
 export const metadata: Metadata = {
-  title: "Health Service CSO Mapping & Capacity Assessment — Sesigo",
+  title: "Botswana Health Service CSO Mapping & Capacity Assessment — Sesigo",
   description:
-    "BONASO Health Service Civil Society Organisation Mapping and Capacity Assessment. Help identify health-service CSOs operating across Botswana.",
+    "Botswana Health Service CSO Mapping and Capacity Assessment. Help identify health-service CSOs operating across Botswana.",
   // Public survey landing page — keep it out of search indexes.
   robots: { index: false, follow: false },
 }
@@ -54,11 +54,11 @@ export default function CsoMappingIntroPage() {
             BONASO · Botswana
           </p>
           <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight text-[#2b5872] sm:text-3xl">
-            Health Service Civil Society Organisation Mapping and Capacity Assessment
+            Botswana Health Service CSO Mapping &amp; Capacity Assessment
           </h1>
           <p className="mt-4 text-justify text-sm leading-7 text-slate-600 sm:text-base">
-            This questionnaire is part of the BONASO Health Service Civil Society Organisation
-            Mapping and Capacity Assessment. It is being conducted to identify health-service CSOs
+            This questionnaire is part of the Botswana Health Service CSO Mapping and Capacity
+            Assessment. It is being conducted to identify health-service CSOs
             operating across Botswana, understand the services they provide, assess their
             organisational and technical capacities, and identify gaps affecting effective
             participation in Primary Health Care Revitalisation. The information collected will
