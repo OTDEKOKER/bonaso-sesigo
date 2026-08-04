@@ -1,6 +1,6 @@
 "use client"
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import {
   AlertCircle,
@@ -8,9 +8,13 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardCheck,
+  Cloud,
+  CloudOff,
   Loader2,
   Pencil,
+  RotateCcw,
   Send,
+  Trash2,
 } from "lucide-react"
 
 import { api } from "@/lib/api"
@@ -29,12 +33,12 @@ import {
 
 const ACCENT = "#356a8d"
 const ACCENT_DARK = "#2b5872"
+const TOKEN_KEY = "cso-mapping-draft-token" // stores ONLY the opaque token, never answers
+const AUTOSAVE_DELAY = 1500
 
-// Approved BONASO support contacts (also shown on the /cso-mapping intro page).
 const SUPPORT_EMAIL = "info@bonaso.org"
 const SUPPORT_PHONE = "+267 317 0582"
 
-// Per-field mobile keyboard + autofill hints.
 type InputMode = "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search"
 const INPUT_ATTRS: Record<string, { type?: string; inputMode?: InputMode; autoComplete?: string }> = {
   respondent_phone: { type: "tel", inputMode: "tel", autoComplete: "tel" },
@@ -51,6 +55,18 @@ interface Receipt {
   responding_entity: string
 }
 
+interface DraftState {
+  current_step: number
+  form_version: string
+  updated_at: string
+  expires_at: string
+  client_submission_id: string | null
+  answers?: Answers
+  resume_token?: string
+}
+
+type SaveStatus = "idle" | "saving" | "saved" | "error"
+
 function newAttemptId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID()
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -64,13 +80,28 @@ function choiceLabel(field: Field, value: string): string {
   return field.choices?.find((c) => c.name === value)?.label ?? value
 }
 
+function readStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+function writeStoredToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* storage unavailable — autosave still works for this session */
+  }
+}
+
 /**
- * Native, Sesigo-hosted CSO Mapping questionnaire.
+ * Native, Sesigo-hosted CSO Mapping questionnaire with secure server-side drafts.
  *
- * Fetches the form schema from the backend and renders it as a paged wizard with
- * conditional branching (Annex 2/3/4 by respondent type), a review step, and a
- * receipt. Responses POST to Sesigo's own API — nothing leaves in-country
- * infrastructure. A per-attempt client_submission_id makes submission idempotent.
+ * Answers autosave to Sesigo's DB behind an opaque resume token (only the token —
+ * never the answers — is kept in the browser). A saved response can be resumed on
+ * the same device automatically or on another device via its resume code.
  */
 export function NativeQuestionnaire() {
   const [schema, setSchema] = useState<FormSchema | null>(null)
@@ -82,16 +113,45 @@ export function NativeQuestionnaire() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [attemptId, setAttemptId] = useState<string>(() => newAttemptId())
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
+  const [resumePrompt, setResumePrompt] = useState<{ token: string; updatedAt: string } | null>(null)
+  const [restoredNote, setRestoredNote] = useState(false)
+
   const topRef = useRef<HTMLDivElement>(null)
   const errorSummaryRef = useRef<HTMLDivElement>(null)
+  const mountedRef = useRef(true)
+  const tokenRef = useRef<string | null>(null)
+  const answersRef = useRef(answers)
+  const stepRef = useRef(0)
+  const attemptRef = useRef(attemptId)
+  const savingRef = useRef(false)
+  const pendingRef = useRef(false)
 
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  // Load schema, then look for a saved draft on this device.
   useEffect(() => {
     let active = true
     setLoadError(false)
     api
       .get<FormSchema>("/cso-mapping/schema/")
-      .then(({ data }) => {
-        if (active) setSchema(data)
+      .then(async ({ data }) => {
+        if (!active) return
+        setSchema(data)
+        const stored = readStoredToken()
+        if (stored) {
+          try {
+            const { data: draft } = await api.get<DraftState>(`/cso-mapping/drafts/${stored}/`)
+            if (active) setResumePrompt({ token: stored, updatedAt: draft.updated_at })
+          } catch {
+            writeStoredToken(null) // stale/expired token — forget it
+          }
+        }
       })
       .catch(() => {
         if (active) setLoadError(true)
@@ -110,9 +170,67 @@ export function NativeQuestionnaire() {
   const currentStep: Section | undefined = onReviewStep ? undefined : steps[safeIndex]
   const isLastFormStep = safeIndex === steps.length - 1
 
+  useEffect(() => {
+    answersRef.current = answers
+  }, [answers])
+  useEffect(() => {
+    stepRef.current = safeIndex
+  }, [safeIndex])
+  useEffect(() => {
+    attemptRef.current = attemptId
+  }, [attemptId])
+
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
-  const focusErrorSummary = () =>
-    requestAnimationFrame(() => errorSummaryRef.current?.focus())
+  const focusErrorSummary = () => requestAnimationFrame(() => errorSummaryRef.current?.focus())
+
+  // ── Autosave (coalesced, no overlap, no out-of-order) ──────────────────────
+  const saveDraft = useCallback(async () => {
+    if (!schema) return
+    if (savingRef.current) {
+      pendingRef.current = true // a change arrived mid-save — save again after
+      return
+    }
+    savingRef.current = true
+    if (mountedRef.current) setSaveStatus("saving")
+    const body = {
+      answers: answersRef.current,
+      current_step: stepRef.current,
+      form_version: schema.version,
+      client_submission_id: attemptRef.current,
+    }
+    try {
+      if (!tokenRef.current) {
+        const { data } = await api.post<DraftState>("/cso-mapping/drafts/", body)
+        tokenRef.current = data.resume_token ?? null
+        writeStoredToken(tokenRef.current)
+      } else {
+        await api.put(`/cso-mapping/drafts/${tokenRef.current}/`, body)
+      }
+      if (mountedRef.current) setSaveStatus("saved")
+    } catch (err) {
+      // A vanished draft (expired/deleted server-side) — drop the token so the
+      // next save recreates it rather than looping on 404.
+      if ((err as { status?: number })?.status === 404) {
+        tokenRef.current = null
+        writeStoredToken(null)
+      }
+      if (mountedRef.current) setSaveStatus("error")
+    } finally {
+      savingRef.current = false
+      if (pendingRef.current) {
+        pendingRef.current = false
+        void saveDraft()
+      }
+    }
+  }, [schema])
+
+  // Debounced trigger: autosave once consent is given and there is something to save.
+  useEffect(() => {
+    if (!schema || receipt || resumePrompt) return
+    if (answers.consent !== "yes") return
+    const handle = setTimeout(() => void saveDraft(), AUTOSAVE_DELAY)
+    return () => clearTimeout(handle)
+  }, [answers, safeIndex, schema, receipt, resumePrompt, saveDraft])
 
   const setAnswer = (name: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [name]: value }))
@@ -127,8 +245,7 @@ export function NativeQuestionnaire() {
   const jumpToField = (name: string) => {
     const el = document.getElementById(`cso-field-${name}`)
     el?.scrollIntoView({ behavior: "smooth", block: "center" })
-    const focusable = el?.querySelector<HTMLElement>("input, textarea")
-    focusable?.focus()
+    el?.querySelector<HTMLElement>("input, textarea")?.focus()
   }
 
   const goNext = () => {
@@ -157,11 +274,57 @@ export function NativeQuestionnaire() {
     scrollTop()
   }
 
+  const applyDraft = (draft: DraftState, token: string) => {
+    tokenRef.current = token
+    writeStoredToken(token)
+    setAnswers(draft.answers ?? {})
+    setStepIndex(draft.current_step ?? 0)
+    if (draft.client_submission_id) setAttemptId(draft.client_submission_id)
+    setResumePrompt(null)
+    setSaveStatus("saved")
+    setRestoredNote(true)
+    scrollTop()
+  }
+
+  const resumeSavedDraft = async (token: string) => {
+    try {
+      const { data } = await api.get<DraftState>(`/cso-mapping/drafts/${token}/`)
+      applyDraft(data, token)
+    } catch {
+      writeStoredToken(null)
+      setResumePrompt(null)
+    }
+  }
+
+  const discardDraft = async () => {
+    const token = tokenRef.current ?? resumePrompt?.token ?? readStoredToken()
+    if (token) {
+      try {
+        await api.delete(`/cso-mapping/drafts/${token}/`)
+      } catch {
+        /* best effort */
+      }
+    }
+    tokenRef.current = null
+    writeStoredToken(null)
+    setResumePrompt(null)
+    setRestoredNote(false)
+    setAnswers({})
+    setStepIndex(0)
+    setAttemptId(newAttemptId())
+    setSaveStatus("idle")
+    scrollTop()
+  }
+
   const resetForAnother = () => {
+    tokenRef.current = null
+    writeStoredToken(null)
     setAnswers({})
     setErrors({})
     setSubmitError(null)
     setReceipt(null)
+    setRestoredNote(false)
+    setSaveStatus("idle")
     setStepIndex(0)
     setAttemptId(newAttemptId())
     scrollTop()
@@ -171,11 +334,16 @@ export function NativeQuestionnaire() {
     if (!schema) return
     setSubmitting(true)
     setSubmitError(null)
+    // Flush the latest state to the draft first so nothing is lost if submit fails.
+    await saveDraft()
+    const payload = { ...buildPayload(schema, answers), client_submission_id: attemptId }
+    const endpoint = tokenRef.current
+      ? `/cso-mapping/drafts/${tokenRef.current}/submit/`
+      : "/cso-mapping/submit/"
     try {
-      const { data } = await api.post<Receipt>("/cso-mapping/submit/", {
-        ...buildPayload(schema, answers),
-        client_submission_id: attemptId,
-      })
+      const { data } = await api.post<Receipt>(endpoint, payload)
+      writeStoredToken(null)
+      tokenRef.current = null
       setReceipt(data)
       scrollTop()
     } catch (err) {
@@ -225,6 +393,18 @@ export function NativeQuestionnaire() {
     )
   }
 
+  if (resumePrompt) {
+    return (
+      <div ref={topRef}>
+        <ResumePrompt
+          updatedAt={resumePrompt.updatedAt}
+          onResume={() => resumeSavedDraft(resumePrompt.token)}
+          onDiscard={discardDraft}
+        />
+      </div>
+    )
+  }
+
   if (receipt) {
     return (
       <div ref={topRef}>
@@ -240,7 +420,24 @@ export function NativeQuestionnaire() {
 
   return (
     <div ref={topRef} className="flex flex-col gap-4">
-      <ProgressBar current={safeIndex + 1} total={totalSteps} />
+      <div className="flex items-center justify-between gap-3">
+        <ProgressBar current={safeIndex + 1} total={totalSteps} />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <SaveStatusPill status={saveStatus} />
+        {tokenRef.current ? (
+          <DiscardButton onDiscard={discardDraft} />
+        ) : (
+          <ResumeCodeEntry onResume={resumeSavedDraft} />
+        )}
+      </div>
+
+      {restoredNote ? (
+        <div role="status" aria-live="polite" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">
+          Your saved response was restored. You can continue where you left off.
+        </div>
+      ) : null}
 
       {submitError ? (
         <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -349,24 +546,14 @@ export function NativeQuestionnaire() {
               Back
             </button>
 
-            {consentDeclined ? null : isLastFormStep && showReview ? (
+            {consentDeclined ? null : (
               <button
                 type="button"
                 onClick={goNext}
                 className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-colors"
                 style={{ backgroundColor: ACCENT }}
               >
-                Review answers
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={goNext}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-colors"
-                style={{ backgroundColor: ACCENT }}
-              >
-                Continue
+                {isLastFormStep && showReview ? "Review answers" : "Continue"}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </button>
             )}
@@ -386,7 +573,7 @@ function Card({ children }: { children: ReactNode }) {
 function ProgressBar({ current, total }: { current: number; total: number }) {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0
   return (
-    <div>
+    <div className="w-full">
       <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-500">
         <span>
           Step {current} of {total}
@@ -394,16 +581,136 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
         <span>{pct}%</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: ACCENT }}
-        />
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: ACCENT }} />
       </div>
     </div>
   )
 }
 
-/** Fix D: review every answer, grouped by section, with an Edit link per section. */
+function SaveStatusPill({ status }: { status: SaveStatus }) {
+  const map: Record<SaveStatus, { text: string; node: ReactNode } | null> = {
+    idle: null,
+    saving: { text: "Saving…", node: <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> },
+    saved: { text: "Draft saved", node: <Cloud className="h-3.5 w-3.5" aria-hidden="true" /> },
+    error: { text: "Could not save draft", node: <CloudOff className="h-3.5 w-3.5" aria-hidden="true" /> },
+  }
+  const entry = map[status]
+  return (
+    <div role="status" aria-live="polite" className="min-h-[1.25rem] text-xs">
+      {entry ? (
+        <span
+          className={`inline-flex items-center gap-1.5 ${
+            status === "error" ? "text-red-600" : "text-slate-500"
+          }`}
+        >
+          {entry.node}
+          {entry.text}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function DiscardButton({ onDiscard }: { onDiscard: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (window.confirm("Discard your saved response? This cannot be undone.")) onDiscard()
+      }}
+      className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-red-600"
+    >
+      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+      Discard saved response
+    </button>
+  )
+}
+
+function ResumeCodeEntry({ onResume }: { onResume: (token: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [code, setCode] = useState("")
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 text-xs font-medium text-[#356a8d] hover:text-[#2b5872]"
+      >
+        <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+        Continue a saved response
+      </button>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <label htmlFor="cso-resume-code" className="sr-only">
+        Resume code
+      </label>
+      <input
+        id="cso-resume-code"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        placeholder="Paste your resume code"
+        className="w-40 rounded border border-slate-300 px-2 py-1 text-xs"
+      />
+      <button
+        type="button"
+        onClick={() => code.trim() && onResume(code.trim())}
+        className="rounded bg-[#356a8d] px-2.5 py-1 text-xs font-semibold text-white"
+      >
+        Continue
+      </button>
+    </div>
+  )
+}
+
+function ResumePrompt({
+  updatedAt,
+  onResume,
+  onDiscard,
+}: {
+  updatedAt: string
+  onResume: () => void
+  onDiscard: () => void
+}) {
+  const when = new Date(updatedAt)
+  const whenText = Number.isNaN(when.getTime()) ? "" : ` from ${when.toLocaleString()}`
+  return (
+    <Card>
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <RotateCcw className="h-9 w-9" style={{ color: ACCENT }} aria-hidden="true" />
+        <h2 className="text-lg font-bold" style={{ color: ACCENT_DARK }}>
+          Continue your saved response?
+        </h2>
+        <p className="max-w-md text-sm leading-6 text-slate-600">
+          We found an unfinished response{whenText} on this device. You can continue where you left
+          off, or start a new response.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={onResume}
+            className="inline-flex min-h-[44px] items-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+            style={{ backgroundColor: ACCENT }}
+          >
+            Continue saved response
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Start a new response? Your saved response will be discarded."))
+                onDiscard()
+            }}
+            className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Start a new response
+          </button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 function ReviewStep({
   answers,
   steps,
@@ -436,18 +743,14 @@ function ReviewStep({
             .map((f) => ({
               field: f,
               value:
-                f.type === "select_one"
-                  ? choiceLabel(f, answers[f.name] ?? "")
-                  : (answers[f.name] ?? ""),
+                f.type === "select_one" ? choiceLabel(f, answers[f.name] ?? "") : (answers[f.name] ?? ""),
             }))
             .filter((e) => e.value !== "")
           if (entries.length === 0) return null
           return (
             <div key={section.name} className="rounded-xl border border-slate-200 p-4">
               <div className="mb-2 flex items-start justify-between gap-3">
-                <h3 className="text-sm font-semibold text-[#2b5872]">
-                  {section.label ?? "Details"}
-                </h3>
+                <h3 className="text-sm font-semibold text-[#2b5872]">{section.label ?? "Details"}</h3>
                 <button
                   type="button"
                   onClick={() => onEdit(index)}
@@ -498,7 +801,6 @@ function ReviewStep({
   )
 }
 
-/** Fix G: receipt with a public reference and approved BONASO support contact. */
 function SubmissionReceipt({ receipt, onAnother }: { receipt: Receipt; onAnother: () => void }) {
   const submitted = new Date(receipt.submitted_at)
   const submittedText = Number.isNaN(submitted.getTime())
@@ -577,7 +879,7 @@ function FieldControl({
   onChange: (value: string) => void
 }) {
   if (field.type === "note") {
-    if (field.name === "thank_you") return null // shown on the receipt screen
+    if (field.name === "thank_you") return null
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
         {field.label}
@@ -597,7 +899,6 @@ function FieldControl({
     </p>
   ) : null
 
-  // Radio group: use a fieldset/legend so the question is the group's accessible name.
   if (field.type === "select_one") {
     return (
       <fieldset id={`cso-field-${field.name}`} aria-describedby={describedBy}>
