@@ -8,6 +8,8 @@ schema.
 """
 from __future__ import annotations
 
+import uuid
+
 from django.core.validators import EmailValidator, ValidationError as DjangoValidationError
 from rest_framework import serializers
 
@@ -60,6 +62,18 @@ class PublicSubmissionSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"consent": "Consent is required to submit this questionnaire."}
             )
+
+        # Idempotency key (optional). One per questionnaire attempt; a repeat is
+        # de-duplicated in the view. Validate the shape early.
+        parsed_client_id = None
+        raw_client_id = ctx.get("client_submission_id", "")
+        if raw_client_id:
+            try:
+                parsed_client_id = uuid.UUID(raw_client_id)
+            except (ValueError, AttributeError, TypeError):
+                raise serializers.ValidationError(
+                    {"client_submission_id": "Invalid submission identifier."}
+                )
 
         errors: dict[str, str] = {}
         core: dict[str, object] = {}
@@ -118,6 +132,8 @@ class PublicSubmissionSerializer(serializers.Serializer):
 
         core["answers"] = answers
         core["form_version"] = schema.get("version", "")
+        if parsed_client_id is not None:
+            core["client_submission_id"] = parsed_client_id
         return core
 
     def create(self, validated_data):
@@ -135,6 +151,7 @@ class StaffSubmissionSerializer(serializers.ModelSerializer):
         model = CsoMappingSubmission
         fields = [
             "id",
+            "public_reference",
             "submitted_at",
             "consent",
             "respondent_type",
