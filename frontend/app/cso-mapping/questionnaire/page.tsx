@@ -3,13 +3,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
-import { QuestionnaireFrame } from "@/components/cso-mapping/questionnaire-frame"
-
-// Web-form URL for the survey, embedded so the questionnaire behaves exactly as
-// it does natively (form navigation, language, submit, geolocation). Kept in one
-// place so it can be updated if the form is republished under a new id. The page
-// around it stays SESIGO-branded on sesigo.org.bw.
-const QUESTIONNAIRE_EMBED_URL = "https://ee.kobotoolbox.org/x/bV765QEZ"
+import { NativeQuestionnaire } from "@/components/cso-mapping/native-questionnaire"
 
 export const metadata: Metadata = {
   title: "Questionnaire — Botswana Health Service CSO Mapping & Capacity Assessment",
@@ -18,11 +12,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
+/**
+ * The CSO Mapping questionnaire — a native, Sesigo-hosted form. Responses are
+ * stored in Sesigo's own database (no third-party form host), so personal data
+ * stays on in-country infrastructure (Data Protection Act, 2018).
+ */
 export default function CsoMappingQuestionnairePage() {
   return (
     <main className="flex min-h-[100dvh] flex-col bg-[#f4f6f8] text-slate-700">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-2 py-2.5 sm:px-4">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-2 py-2.5 sm:px-4">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <Link
               href="/cso-mapping"
@@ -60,14 +59,10 @@ export default function CsoMappingQuestionnairePage() {
       </header>
 
       <section
-        className="mx-auto w-full max-w-5xl flex-1 px-2 py-3 sm:px-4"
+        className="mx-auto w-full max-w-3xl flex-1 px-2 py-5 sm:px-4"
         aria-label="Botswana Health Service CSO Mapping and Capacity Assessment questionnaire"
       >
-        <QuestionnaireFrame
-          embedUrl={QUESTIONNAIRE_EMBED_URL}
-          title="Botswana Health Service CSO Mapping and Capacity Assessment"
-          heightCss="calc(100dvh - 5rem)"
-        />
+        <NativeQuestionnaire />
       </section>
     </main>
   )
