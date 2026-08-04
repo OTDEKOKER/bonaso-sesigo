@@ -31,6 +31,7 @@ import {
   Building,
   BookOpen,
   LifeBuoy,
+  ClipboardList,
 } from "lucide-react"
 import {
   Collapsible,
@@ -395,6 +396,14 @@ export function AppSidebar() {
             href="/system-status"
             icon={<ServerCog className="h-4 w-4" />}
             isActive={pathname === "/system-status"}
+          />
+        )}
+        {canViewSystemStatus && (
+          <NavItem
+            title="CSO Mapping"
+            href="/cso-mapping-submissions"
+            icon={<ClipboardList className="h-4 w-4" />}
+            isActive={pathname === "/cso-mapping-submissions"}
           />
         )}
         {isNavVisible("/settings") && (

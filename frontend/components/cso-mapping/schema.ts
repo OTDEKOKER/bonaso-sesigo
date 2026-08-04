@@ -113,12 +113,17 @@ export function buildPayload(schema: FormSchema, answers: Answers): Answers {
   return payload
 }
 
-/** The display-only note in the schema keyed by field name (e.g. no_consent). */
-export function findNote(schema: FormSchema, name: string): string | null {
+/** The label of any field (or note) in the schema, by field name. */
+export function fieldLabel(schema: FormSchema, name: string): string | null {
   for (const section of schema.sections) {
     for (const field of section.fields) {
       if (field.name === name) return field.label
     }
   }
   return null
+}
+
+/** The display-only note in the schema keyed by field name (e.g. no_consent). */
+export function findNote(schema: FormSchema, name: string): string | null {
+  return fieldLabel(schema, name)
 }
