@@ -12,7 +12,7 @@
         {
           "name": "consent",
           "type": "select_one",
-          "label": "Do you voluntarily consent to participate in this assessment?",
+          "label": "I have read and understood the information provided and voluntarily consent to participate in this assessment.",
           "hint": "Select No if you do not wish to continue.",
           "required": true,
           "multiline": false,
@@ -22,11 +22,11 @@
           "choices": [
             {
               "name": "yes",
-              "label": "Yes"
+              "label": "Yes, I consent"
             },
             {
               "name": "no",
-              "label": "No"
+              "label": "No, I do not consent"
             }
           ]
         }

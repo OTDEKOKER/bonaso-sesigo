@@ -71,13 +71,39 @@ export default function CsoMappingIntroPage() {
           <div className="mt-5 rounded-xl border border-[#d6e3ec] bg-[#eef4f8] px-4 py-3">
             <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#2b5872]">
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-              Confidentiality
+              Participation, Consent and Confidentiality
             </h2>
-            <p className="mt-1.5 text-justify text-sm leading-6 text-slate-600">
-              Participation is voluntary. Information collected through this questionnaire will be
-              used for the CSO Mapping and Capacity Assessment. Access to raw information will be
-              restricted to authorised project personnel.
-            </p>
+            <div className="mt-1.5 space-y-2 text-justify text-sm leading-6 text-slate-600">
+              <p>
+                Participation is voluntary. Information collected will be used for the Botswana
+                Health Service CSO Mapping and Capacity Assessment, including coordination, capacity
+                strengthening, service planning and development of a national Health Service CSO
+                Directory.
+              </p>
+              <p>
+                Selected organisational information may be included in the directory. Personal
+                contact information and raw questionnaire responses will be accessible only to
+                authorised project personnel and will not be published without approval.
+              </p>
+              <p>
+                You may decline to participate or stop before submitting the questionnaire. For
+                questions or requests concerning your information, contact BONASO at{" "}
+                <a
+                  href={`mailto:${SUPPORT_EMAIL}`}
+                  className="font-medium text-[#356a8d] underline underline-offset-2 hover:text-[#2b5872]"
+                >
+                  {SUPPORT_EMAIL}
+                </a>{" "}
+                or{" "}
+                <a
+                  href={`tel:${SUPPORT_PHONE.replace(/\s+/g, "")}`}
+                  className="font-medium text-[#356a8d] underline underline-offset-2 hover:text-[#2b5872]"
+                >
+                  {SUPPORT_PHONE}
+                </a>
+                .
+              </p>
+            </div>
           </div>
 
           <div className="mt-8">
