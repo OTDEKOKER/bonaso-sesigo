@@ -264,6 +264,18 @@ if not DEBUG and not TESTING:
 FILE_UPLOAD_MAX_MEMORY_SIZE = env_int('FILE_UPLOAD_MAX_MEMORY_SIZE', 5 * 1024 * 1024)
 DATA_UPLOAD_MAX_MEMORY_SIZE = env_int('DATA_UPLOAD_MAX_MEMORY_SIZE', 50 * 1024 * 1024)
 
+# CSO Mapping: how long an inactive questionnaire draft remains resumable before
+# it expires (server time) and is swept. Drafts hold personal data, so keep it
+# short. PRODUCTION MUST set CSO_MAPPING_DRAFT_TTL_DAYS explicitly — the
+# cso_mapping.checks system check errors when it is missing/invalid and DEBUG is
+# off. In DEBUG we fall back to 14 for convenience.
+_cso_draft_ttl_raw = os.getenv('CSO_MAPPING_DRAFT_TTL_DAYS', '').strip()
+CSO_MAPPING_DRAFT_TTL_DAYS = (
+    int(_cso_draft_ttl_raw)
+    if _cso_draft_ttl_raw.isdigit() and int(_cso_draft_ttl_raw) > 0
+    else 14
+)
+
 # Cache
 # ----------------------------------------------------------------------------
 # Throttle state (SEC-1) and the analytics response cache must be SHARED across
@@ -314,6 +326,10 @@ REST_FRAMEWORK = {
         # from one shared/NAT IP at a workshop; raise THROTTLE_CSO_MAPPING if a
         # large in-person session needs more headroom.
         'cso_mapping': os.getenv('THROTTLE_CSO_MAPPING', '60/hour'),
+        # Draft autosave/restore by resume token. Higher rate because a long form
+        # autosaves repeatedly; these act on one existing row (token = capability),
+        # so they are not a row-creation flood vector. Tune per shared-NAT needs.
+        'cso_mapping_draft': os.getenv('THROTTLE_CSO_MAPPING_DRAFT', '1000/hour'),
         # SEC-1 auth hardening. Keyed by client IP for anonymous endpoints
         # (login/refresh) and by user for authenticated ones (password reset).
         'login': os.getenv('THROTTLE_LOGIN', '10/minute'),

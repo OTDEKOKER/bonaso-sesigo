@@ -15,9 +15,10 @@ from __future__ import annotations
 import re
 from io import BytesIO
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
+from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
@@ -30,7 +31,7 @@ from rest_framework.views import APIView
 
 from audit.recording import record_audit_event
 
-from .models import CsoMappingSubmission
+from .models import CsoMappingDraft, CsoMappingSubmission
 from .permissions import IsAdminRole
 from .schema import (
     CORE_BOOL_FIELDS,
@@ -39,7 +40,11 @@ from .schema import (
     iter_answerable_fields,
     load_schema,
 )
-from .serializers import PublicSubmissionSerializer, StaffSubmissionSerializer
+from .serializers import (
+    DraftWriteSerializer,
+    PublicSubmissionSerializer,
+    StaffSubmissionSerializer,
+)
 
 # Characters Excel forbids in a worksheet title, plus the 31-char cap.
 _INVALID_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
@@ -75,6 +80,63 @@ def _submission_receipt(submission, *, created):
     }
 
 
+def _draft_state(draft, *, include_answers=False):
+    """Draft state for the client. Never includes the token (only its hash is stored)."""
+    state = {
+        "current_step": draft.current_step,
+        "form_version": draft.form_version,
+        "updated_at": draft.updated_at,
+        "expires_at": draft.expires_at,
+        "client_submission_id": (
+            str(draft.client_submission_id) if draft.client_submission_id else None
+        ),
+    }
+    if include_answers:
+        state["answers"] = draft.answers
+    return state
+
+
+def _active_draft(token):
+    """Resolve a non-expired, non-completed draft by its raw token, else None.
+
+    Lookup is by token *hash*, so the raw token is never stored or logged. Returns
+    None uniformly for unknown/expired/completed tokens so responses do not reveal
+    whether another person's token exists.
+    """
+    if not token:
+        return None
+    return CsoMappingDraft.objects.filter(
+        token_hash=CsoMappingDraft.hash_token(token),
+        expires_at__gte=timezone.now(),
+        completed_at__isnull=True,
+    ).first()
+
+
+def _create_or_replay_submission(serializer):
+    """Persist a submission idempotently on client_submission_id. Returns (obj, created)."""
+    client_id = serializer.validated_data.get("client_submission_id")
+    if client_id:
+        existing = CsoMappingSubmission.objects.filter(client_submission_id=client_id).first()
+        if existing:
+            return existing, False
+    try:
+        with transaction.atomic():
+            return serializer.save(), True
+    except IntegrityError:
+        existing = CsoMappingSubmission.objects.filter(client_submission_id=client_id).first()
+        if existing:
+            return existing, False
+        raise
+
+
+def _complete_draft(draft, submission):
+    """Mark a draft completed, link the submission, and clear its personal data."""
+    draft.completed_at = timezone.now()
+    draft.submission = submission
+    draft.answers = {}
+    draft.save(update_fields=["completed_at", "submission", "answers", "updated_at"])
+
+
 class FormSchemaView(APIView):
     """Public: the canonical form schema the frontend renders.
 
@@ -103,32 +165,118 @@ class SubmissionCreateView(APIView):
     def post(self, request):
         serializer = PublicSubmissionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        client_id = serializer.validated_data.get("client_submission_id")
-
-        # Idempotent replay: the same questionnaire attempt (client_submission_id)
-        # returns the original receipt instead of creating a second row.
-        if client_id:
-            existing = CsoMappingSubmission.objects.filter(
-                client_submission_id=client_id
-            ).first()
-            if existing:
-                return Response(
-                    _submission_receipt(existing, created=False), status=status.HTTP_200_OK
-                )
-        try:
-            submission = serializer.save()
-        except IntegrityError:
-            # A concurrent duplicate with the same id won the race — return theirs.
-            submission = CsoMappingSubmission.objects.filter(
-                client_submission_id=client_id
-            ).first()
-            if submission is None:
-                raise
-            return Response(
-                _submission_receipt(submission, created=False), status=status.HTTP_200_OK
-            )
+        submission, created = _create_or_replay_submission(serializer)
+        # If this submission came from a draft, mark that draft completed.
+        draft = _active_draft(str(request.data.get("resume_token", "")).strip())
+        if draft is not None:
+            _complete_draft(draft, submission)
         return Response(
-            _submission_receipt(submission, created=True), status=status.HTTP_201_CREATED
+            _submission_receipt(submission, created=created),
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class DraftCreateView(APIView):
+    """Public: create a resumable draft, returning its opaque resume token once.
+
+    Row-creation is bounded by the same per-IP scope as submit. Only the token's
+    hash is stored; the raw token is returned here and never again.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "cso_mapping"
+
+    def post(self, request):
+        serializer = DraftWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        raw_token = CsoMappingDraft.new_raw_token()
+        draft = serializer.save(token_hash=CsoMappingDraft.hash_token(raw_token))
+        state = _draft_state(draft)
+        state["resume_token"] = raw_token  # issued once; DB keeps only the hash
+        return Response(state, status=status.HTTP_201_CREATED)
+
+
+class DraftDetailView(APIView):
+    """Public: restore (GET), autosave (PUT), or discard (DELETE) a draft by token.
+
+    The token is the sole capability; lookup is by hash. Expired or completed
+    drafts return 404 uniformly (never revealing whether a token exists).
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "cso_mapping_draft"
+
+    def get(self, request, token):
+        draft = _active_draft(token)
+        if draft is None:
+            return Response(
+                {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND
+            )
+        return Response(_draft_state(draft, include_answers=True))
+
+    def put(self, request, token):
+        draft = _active_draft(token)
+        if draft is None:
+            return Response(
+                {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = DraftWriteSerializer(draft, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(_draft_state(draft))
+
+    def delete(self, request, token):
+        draft = _active_draft(token)
+        if draft is not None:
+            draft.delete()
+        # Uniform 204 whether or not the token existed.
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DraftSubmitView(APIView):
+    """Public: atomically convert a draft into a completed submission.
+
+    Full validation runs here (unlike draft autosave). Submission creation and the
+    draft's completion happen in one transaction. Idempotent on client_submission_id.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "cso_mapping"
+
+    def post(self, request, token):
+        draft = CsoMappingDraft.objects.filter(
+            token_hash=CsoMappingDraft.hash_token(token)
+        ).first()
+        if draft is None:
+            return Response(
+                {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND
+            )
+        # Already submitted: replay the original receipt (retry-safe, no duplicate).
+        if draft.completed_at is not None:
+            if draft.submission_id:
+                return Response(
+                    _submission_receipt(draft.submission, created=False),
+                    status=status.HTTP_200_OK,
+                )
+            return Response(
+                {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if draft.expires_at < timezone.now():
+            return Response(
+                {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = PublicSubmissionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            submission, created = _create_or_replay_submission(serializer)
+            _complete_draft(draft, submission)
+        return Response(
+            _submission_receipt(submission, created=created),
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
 

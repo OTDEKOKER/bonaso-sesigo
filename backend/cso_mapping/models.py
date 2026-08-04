@@ -12,6 +12,7 @@ timestamp — no IP address or device id is retained.
 """
 from __future__ import annotations
 
+import hashlib
 import secrets
 
 from django.db import models
@@ -90,3 +91,62 @@ class CsoMappingSubmission(models.Model):
     def __str__(self) -> str:
         who = self.responding_entity or self.respondent_name or "(unnamed)"
         return f"{who} — {self.get_respondent_type_display()}"
+
+
+class CsoMappingDraft(models.Model):
+    """A partial, resumable questionnaire draft, stored in Sesigo's own database.
+
+    Access is via an opaque resume token issued once at creation; the database
+    stores only a **SHA-256 hash** of that token, so a database reader never holds
+    a usable token (threat model: DB-read exposure / token enumeration). Holds only
+    in-progress answers + progress markers — deliberately NO IP address, device id
+    or user-agent (data minimisation).
+
+    Lifecycle: expires after ``settings.CSO_MAPPING_DRAFT_TTL_DAYS`` of inactivity
+    (server time); on submission it is marked completed, linked to the submission,
+    and its answers are cleared so personal data is not duplicated in the drafts
+    table.
+    """
+
+    # SHA-256 hex of the raw token. The raw token (secrets.token_urlsafe(32),
+    # ~256 bits) is returned to the client once and never stored.
+    token_hash = models.CharField(max_length=64, unique=True, editable=False)
+    # Ties a resumed draft to the same idempotent submission attempt.
+    client_submission_id = models.UUIDField(null=True, blank=True)
+    respondent_type = models.CharField(max_length=32, blank=True)
+    answers = models.JSONField(default=dict, blank=True)
+    current_step = models.PositiveIntegerField(default=0)
+    form_version = models.CharField(max_length=64, blank=True)
+
+    submission = models.ForeignKey(
+        "CsoMappingSubmission",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="drafts",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-updated_at"]
+        verbose_name = "CSO mapping draft"
+        indexes = [models.Index(fields=["expires_at"])]
+
+    @staticmethod
+    def new_raw_token() -> str:
+        return secrets.token_urlsafe(32)
+
+    @staticmethod
+    def hash_token(raw: str) -> str:
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    @property
+    def is_completed(self) -> bool:
+        return self.completed_at is not None
+
+    def __str__(self) -> str:
+        return f"draft {self.token_hash[:8]}… (step {self.current_step})"

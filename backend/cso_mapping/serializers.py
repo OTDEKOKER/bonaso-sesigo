@@ -8,20 +8,26 @@ schema.
 """
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import timedelta
 
+from django.conf import settings
 from django.core.validators import EmailValidator, ValidationError as DjangoValidationError
+from django.utils import timezone
 from rest_framework import serializers
 
-from .models import CsoMappingSubmission
+from .models import CsoMappingDraft, CsoMappingSubmission
 from .schema import (
     CORE_BOOL_FIELDS,
     CORE_TEXT_FIELDS,
     MAX_ANSWER_LENGTH,
+    MAX_DRAFT_BYTES,
     choice_names,
     field_is_active,
     iter_answerable_fields,
     load_schema,
+    strip_inactive_branch_answers,
 )
 
 # Max lengths for the CharField-backed core columns (must not exceed the model).
@@ -149,6 +155,7 @@ class StaffSubmissionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CsoMappingSubmission
+        # (draft serializer defined after this class)
         fields = [
             "id",
             "public_reference",
@@ -168,3 +175,62 @@ class StaffSubmissionSerializer(serializers.ModelSerializer):
             "form_version",
         ]
         read_only_fields = fields
+
+
+class DraftWriteSerializer(serializers.ModelSerializer):
+    """Create/update a resumable draft.
+
+    Draft saves are lenient about *required* fields (a draft is incomplete by
+    design) but still reject invalid choices and oversized values, ignore unknown
+    keys, and strip answers for the non-selected Annex branch. ``expires_at`` is
+    refreshed on every save from the configured TTL (server time).
+    """
+
+    answers = serializers.JSONField(required=False, default=dict)
+
+    class Meta:
+        model = CsoMappingDraft
+        fields = ["answers", "current_step", "form_version", "client_submission_id"]
+
+    def validate_answers(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Answers must be an object.")
+        if len(json.dumps(value)) > MAX_DRAFT_BYTES:
+            raise serializers.ValidationError("This draft is too large to save.")
+        schema = load_schema()
+        fields_by_name = {f["name"]: f for _s, f in iter_answerable_fields(schema)}
+        for name, raw in value.items():
+            field = fields_by_name.get(name)
+            if field is None:
+                continue  # unknown key — ignored (stripped on save), not an error
+            text = "" if raw is None else str(raw)
+            if len(text) > MAX_ANSWER_LENGTH or (
+                name in CORE_MAXLEN and len(text) > CORE_MAXLEN[name]
+            ):
+                raise serializers.ValidationError(f"'{name}' is too long.")
+            if (
+                field["type"] == "select_one"
+                and text
+                and text not in choice_names(schema, field.get("list", ""))
+            ):
+                raise serializers.ValidationError(f"Invalid selection for '{name}'.")
+        return value
+
+    def _apply(self, validated_data):
+        if "answers" in validated_data:
+            answers = strip_inactive_branch_answers(load_schema(), validated_data["answers"])
+            validated_data["answers"] = answers
+            validated_data["respondent_type"] = (answers.get("respondent_type") or "")[:32]
+        validated_data["expires_at"] = timezone.now() + timedelta(
+            days=settings.CSO_MAPPING_DRAFT_TTL_DAYS
+        )
+        return validated_data
+
+    def create(self, validated_data):
+        return CsoMappingDraft.objects.create(**self._apply(validated_data))
+
+    def update(self, instance, validated_data):
+        for key, value in self._apply(validated_data).items():
+            setattr(instance, key, value)
+        instance.save()
+        return instance

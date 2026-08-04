@@ -40,6 +40,9 @@ CORE_FIELDS = CORE_TEXT_FIELDS | CORE_BOOL_FIELDS
 # payloads on the public endpoint).
 MAX_ANSWER_LENGTH = 20000
 
+# Hard ceiling on a serialized draft answers blob (defence on the draft endpoint).
+MAX_DRAFT_BYTES = 200_000
+
 
 @lru_cache(maxsize=1)
 def load_schema() -> dict:
@@ -79,3 +82,24 @@ def iter_answerable_fields(schema: dict):
 
 def choice_names(schema: dict, list_name: str) -> set[str]:
     return {c["name"] for c in schema.get("choices", {}).get(list_name, [])}
+
+
+def strip_inactive_branch_answers(schema: dict, answers: dict) -> dict:
+    """Drop answers for questions not active under the draft's current answers.
+
+    Used when persisting a draft so a respondent who switches respondent type does
+    not retain the previous branch's Annex answers. Consent is assumed for the
+    branch evaluation (a draft with Annex answers has passed the consent gate);
+    ``consent``/``respondent_type`` are always preserved so progress is not lost.
+    """
+    if not isinstance(answers, dict):
+        return {}
+    ctx = dict(answers)
+    ctx.setdefault("consent", "yes")
+    active = {
+        field["name"]
+        for section, field in iter_answerable_fields(schema)
+        if field_is_active(section, field, ctx)
+    }
+    keep = active | {"consent", "respondent_type"}
+    return {k: v for k, v in answers.items() if k in keep}
