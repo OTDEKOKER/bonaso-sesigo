@@ -96,6 +96,15 @@ def _draft_state(draft, *, include_answers=False):
     return state
 
 
+# The draft resume token travels in this request header — never in the URL, query
+# string, body, logs, audit events or error messages.
+DRAFT_TOKEN_HEADER = "X-CSO-Draft-Token"
+
+
+def _request_draft_token(request):
+    return (request.headers.get(DRAFT_TOKEN_HEADER) or "").strip()
+
+
 def _active_draft(token):
     """Resolve a non-expired, non-completed draft by its raw token, else None.
 
@@ -198,26 +207,28 @@ class DraftCreateView(APIView):
 
 
 class DraftDetailView(APIView):
-    """Public: restore (GET), autosave (PUT), or discard (DELETE) a draft by token.
+    """Public: restore (GET), autosave (PUT), or discard (DELETE) the draft named
+    by the ``X-CSO-Draft-Token`` header.
 
-    The token is the sole capability; lookup is by hash. Expired or completed
-    drafts return 404 uniformly (never revealing whether a token exists).
+    The token is the sole capability and travels ONLY in the header (never the
+    URL). Lookup is by hash. Expired or completed drafts return 404 uniformly
+    (never revealing whether a token exists).
     """
 
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "cso_mapping_draft"
 
-    def get(self, request, token):
-        draft = _active_draft(token)
+    def get(self, request):
+        draft = _active_draft(_request_draft_token(request))
         if draft is None:
             return Response(
                 {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND
             )
         return Response(_draft_state(draft, include_answers=True))
 
-    def put(self, request, token):
-        draft = _active_draft(token)
+    def put(self, request):
+        draft = _active_draft(_request_draft_token(request))
         if draft is None:
             return Response(
                 {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND
@@ -227,8 +238,8 @@ class DraftDetailView(APIView):
         serializer.save()
         return Response(_draft_state(draft))
 
-    def delete(self, request, token):
-        draft = _active_draft(token)
+    def delete(self, request):
+        draft = _active_draft(_request_draft_token(request))
         if draft is not None:
             draft.delete()
         # Uniform 204 whether or not the token existed.
@@ -236,7 +247,7 @@ class DraftDetailView(APIView):
 
 
 class DraftSubmitView(APIView):
-    """Public: atomically convert a draft into a completed submission.
+    """Public: atomically convert the header-named draft into a completed submission.
 
     Full validation runs here (unlike draft autosave). Submission creation and the
     draft's completion happen in one transaction. Idempotent on client_submission_id.
@@ -246,10 +257,11 @@ class DraftSubmitView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "cso_mapping"
 
-    def post(self, request, token):
+    def post(self, request):
+        token = _request_draft_token(request)
         draft = CsoMappingDraft.objects.filter(
             token_hash=CsoMappingDraft.hash_token(token)
-        ).first()
+        ).first() if token else None
         if draft is None:
             return Response(
                 {"detail": "Draft not found or expired."}, status=status.HTTP_404_NOT_FOUND

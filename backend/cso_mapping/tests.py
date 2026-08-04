@@ -398,12 +398,17 @@ def _create_draft(client, answers=None, step=0, client_submission_id=None):
     return client.post(reverse("cso-mapping-draft-create"), body, format="json")
 
 
-def _detail_url(token):
-    return reverse("cso-mapping-draft-detail", kwargs={"token": token})
+def _detail_url():
+    return reverse("cso-mapping-draft-detail")
 
 
-def _submit_url(token):
-    return reverse("cso-mapping-draft-submit", kwargs={"token": token})
+def _submit_url():
+    return reverse("cso-mapping-draft-submit")
+
+
+def _tok(token):
+    # The draft token travels in the X-CSO-Draft-Token header, never the URL.
+    return {"HTTP_X_CSO_DRAFT_TOKEN": token}
 
 
 class DraftLifecycleTests(APITestCase):
@@ -416,6 +421,19 @@ class DraftLifecycleTests(APITestCase):
         self.assertGreater(len(resp.data["resume_token"]), 30)  # high-entropy token
         self.assertEqual(resp.data["current_step"], 1)
         self.assertIn("expires_at", resp.data)
+
+    def test_token_never_appears_in_url(self):
+        # Routes are token-free; the token is supplied via header only.
+        self.assertEqual(_detail_url(), "/api/cso-mapping/drafts/current/")
+        self.assertEqual(_submit_url(), "/api/cso-mapping/drafts/current/submit/")
+        token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
+        self.assertNotIn(token, _detail_url())
+        # Header-based retrieval works.
+        self.assertEqual(
+            self.client.get(_detail_url(), **_tok(token)).status_code, status.HTTP_200_OK
+        )
+        # No header -> uniform 404 (does not reveal existence).
+        self.assertEqual(self.client.get(_detail_url()).status_code, status.HTTP_404_NOT_FOUND)
 
     def test_raw_token_is_not_stored_only_its_hash(self):
         resp = _create_draft(self.client, {"consent": "yes"})
@@ -430,22 +448,23 @@ class DraftLifecycleTests(APITestCase):
     def test_update_and_retrieve(self):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         put = self.client.put(
-            _detail_url(token),
+            _detail_url(),
             {"answers": {"consent": "yes", "respondent_type": "cso"}, "current_step": 2},
             format="json",
+            **_tok(token),
         )
         self.assertEqual(put.status_code, status.HTTP_200_OK)
-        got = self.client.get(_detail_url(token))
+        got = self.client.get(_detail_url(), **_tok(token))
         self.assertEqual(got.status_code, status.HTTP_200_OK)
         self.assertEqual(got.data["current_step"], 2)
         self.assertEqual(got.data["answers"]["respondent_type"], "cso")
 
     def test_invalid_token_is_404(self):
         self.assertEqual(
-            self.client.get(_detail_url("nope")).status_code, status.HTTP_404_NOT_FOUND
+            self.client.get(_detail_url(), **_tok("nope")).status_code, status.HTTP_404_NOT_FOUND
         )
         self.assertEqual(
-            self.client.put(_detail_url("nope"), {"answers": {}}, format="json").status_code,
+            self.client.put(_detail_url(), {"answers": {}}, format="json", **_tok("nope")).status_code,
             status.HTTP_404_NOT_FOUND,
         )
 
@@ -453,22 +472,22 @@ class DraftLifecycleTests(APITestCase):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         CsoMappingDraft.objects.update(expires_at=timezone.now() - timedelta(minutes=1))
         self.assertEqual(
-            self.client.get(_detail_url(token)).status_code, status.HTTP_404_NOT_FOUND
+            self.client.get(_detail_url(), **_tok(token)).status_code, status.HTTP_404_NOT_FOUND
         )
 
     def test_deleted_token_is_404(self):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         self.assertEqual(
-            self.client.delete(_detail_url(token)).status_code, status.HTTP_204_NO_CONTENT
+            self.client.delete(_detail_url(), **_tok(token)).status_code, status.HTTP_204_NO_CONTENT
         )
         self.assertEqual(
-            self.client.get(_detail_url(token)).status_code, status.HTTP_404_NOT_FOUND
+            self.client.get(_detail_url(), **_tok(token)).status_code, status.HTTP_404_NOT_FOUND
         )
 
     def test_delete_unknown_token_still_204(self):
         # Does not reveal whether the token existed.
         self.assertEqual(
-            self.client.delete(_detail_url("nope")).status_code, status.HTTP_204_NO_CONTENT
+            self.client.delete(_detail_url(), **_tok("nope")).status_code, status.HTTP_204_NO_CONTENT
         )
 
     @override_settings(CSO_MAPPING_DRAFT_TTL_DAYS=1)
@@ -499,7 +518,10 @@ class DraftValidationTests(APITestCase):
 
     def _put(self, answers):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
-        return self.client.put(_detail_url(token), {"answers": answers}, format="json"), token
+        return (
+            self.client.put(_detail_url(), {"answers": answers}, format="json", **_tok(token)),
+            token,
+        )
 
     def test_required_fields_may_stay_incomplete(self):
         resp, _ = self._put({"consent": "yes", "respondent_type": "cso"})
@@ -516,28 +538,30 @@ class DraftValidationTests(APITestCase):
     def test_unknown_field_ignored(self):
         resp, token = self._put({"consent": "yes", "totally_unknown": "x"})
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        got = self.client.get(_detail_url(token))
+        got = self.client.get(_detail_url(), **_tok(token))
         self.assertNotIn("totally_unknown", got.data["answers"])
 
     def test_inactive_branch_answers_stripped(self):
         resp, token = self._put({"consent": "yes", "respondent_type": "cso", "annex3_a3_1a": "x"})
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        got = self.client.get(_detail_url(token))
+        got = self.client.get(_detail_url(), **_tok(token))
         self.assertNotIn("annex3_a3_1a", got.data["answers"])
 
     def test_respondent_type_change_removes_old_branch(self):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         self.client.put(
-            _detail_url(token),
+            _detail_url(),
             {"answers": {"consent": "yes", "respondent_type": "cso", "annex2_a2_1a": "x"}},
             format="json",
+            **_tok(token),
         )
         self.client.put(
-            _detail_url(token),
+            _detail_url(),
             {"answers": {"consent": "yes", "respondent_type": "coordinating_body"}},
             format="json",
+            **_tok(token),
         )
-        answers = self.client.get(_detail_url(token)).data["answers"]
+        answers = self.client.get(_detail_url(), **_tok(token)).data["answers"]
         self.assertNotIn("annex2_a2_1a", answers)
         self.assertEqual(answers["respondent_type"], "coordinating_body")
 
@@ -549,20 +573,21 @@ class DraftSubmitTests(APITestCase):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         # Missing required annex answers -> full validation fails; nothing created.
         resp = self.client.post(
-            _submit_url(token),
+            _submit_url(),
             {"consent": "yes", "respondent_type": "cso", "responding_entity": "X"},
             format="json",
+            **_tok(token),
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(CsoMappingSubmission.objects.count(), 0)
         # Draft is untouched (conversion is atomic).
-        self.assertEqual(self.client.get(_detail_url(token)).status_code, status.HTTP_200_OK)
+        self.assertEqual(self.client.get(_detail_url(), **_tok(token)).status_code, status.HTTP_200_OK)
 
     def test_conversion_creates_one_submission_and_completes_draft(self):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         payload = build_valid_payload("cso")
         payload["client_submission_id"] = str(uuid.uuid4())
-        resp = self.client.post(_submit_url(token), payload, format="json")
+        resp = self.client.post(_submit_url(), payload, format="json", **_tok(token))
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
         self.assertEqual(CsoMappingSubmission.objects.count(), 1)
         draft = CsoMappingDraft.objects.get()
@@ -570,14 +595,16 @@ class DraftSubmitTests(APITestCase):
         self.assertEqual(draft.submission, CsoMappingSubmission.objects.get())
         self.assertEqual(draft.answers, {})  # personal data cleared after conversion
         # A completed draft cannot be resumed.
-        self.assertEqual(self.client.get(_detail_url(token)).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(
+            self.client.get(_detail_url(), **_tok(token)).status_code, status.HTTP_404_NOT_FOUND
+        )
 
     def test_repeated_final_submit_returns_same_receipt_no_duplicate(self):
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         payload = build_valid_payload("cso")
         payload["client_submission_id"] = str(uuid.uuid4())
-        first = self.client.post(_submit_url(token), payload, format="json")
-        second = self.client.post(_submit_url(token), payload, format="json")
+        first = self.client.post(_submit_url(), payload, format="json", **_tok(token))
+        second = self.client.post(_submit_url(), payload, format="json", **_tok(token))
         self.assertEqual(first.status_code, status.HTTP_201_CREATED)
         self.assertEqual(second.status_code, status.HTTP_200_OK)
         self.assertEqual(first.data["reference"], second.data["reference"])
@@ -588,7 +615,7 @@ class DraftSubmitTests(APITestCase):
             token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
             payload = build_valid_payload("cso")
             payload["client_submission_id"] = str(uuid.uuid4())
-            self.client.post(_submit_url(token), payload, format="json")
+            self.client.post(_submit_url(), payload, format="json", **_tok(token))
         self.assertEqual(CsoMappingSubmission.objects.count(), 2)
 
     def test_public_draft_flow_writes_no_audit_events(self):
@@ -596,13 +623,14 @@ class DraftSubmitTests(APITestCase):
 
         token = _create_draft(self.client, {"consent": "yes"}).data["resume_token"]
         self.client.put(
-            _detail_url(token),
+            _detail_url(),
             {"answers": {"consent": "yes", "respondent_type": "cso"}},
             format="json",
+            **_tok(token),
         )
         payload = build_valid_payload("cso")
         payload["client_submission_id"] = str(uuid.uuid4())
-        self.client.post(_submit_url(token), payload, format="json")
+        self.client.post(_submit_url(), payload, format="json", **_tok(token))
         # No personal questionnaire data is written to the audit stream by the
         # public flow (audit records only admin views/exports).
         self.assertEqual(AuditEvent.objects.count(), 0)
@@ -647,3 +675,56 @@ class DraftConfigCheckTests(APITestCase):
                     os.environ.pop("CSO_MAPPING_DRAFT_TTL_DAYS", None)
                 else:
                     os.environ["CSO_MAPPING_DRAFT_TTL_DAYS"] = saved
+
+
+class CleanupScheduleTests(APITestCase):
+    """Section 2: scheduled cleanup — dry-run, failure exit, overlap protection."""
+
+    def test_dry_run_deletes_nothing(self):
+        draft = CsoMappingDraft.objects.create(
+            token_hash="h1", expires_at=timezone.now() - timedelta(days=2)
+        )
+        call_command("cleanup_cso_drafts", "--dry-run")
+        self.assertTrue(CsoMappingDraft.objects.filter(pk=draft.pk).exists())
+
+    def test_only_expired_deleted_active_and_completed_kept(self):
+        active = CsoMappingDraft.objects.create(
+            token_hash="a1", expires_at=timezone.now() + timedelta(days=1)
+        )
+        expired = CsoMappingDraft.objects.create(
+            token_hash="e1", expires_at=timezone.now() - timedelta(days=1)
+        )
+        sub = CsoMappingSubmission.objects.create(respondent_type="cso")
+        call_command("cleanup_cso_drafts")
+        self.assertTrue(CsoMappingDraft.objects.filter(pk=active.pk).exists())
+        self.assertFalse(CsoMappingDraft.objects.filter(pk=expired.pk).exists())
+        self.assertTrue(CsoMappingSubmission.objects.filter(pk=sub.pk).exists())
+
+    def test_failure_exits_non_zero_without_leaking_data(self):
+        from unittest.mock import patch
+
+        from django.core.management.base import CommandError
+
+        with patch("cso_mapping.models.CsoMappingDraft.objects") as manager:
+            manager.filter.side_effect = RuntimeError("db down: secret@example.com")
+            with self.assertRaises(CommandError) as ctx:
+                call_command("cleanup_cso_drafts")
+        # The raised message must not echo the underlying (potentially sensitive) text.
+        self.assertNotIn("secret@example.com", str(ctx.exception))
+
+    def test_cron_wrapper_uses_flock_and_logs_no_pii(self):
+        import os
+
+        from django.conf import settings
+
+        wrapper = os.path.join(
+            os.path.dirname(settings.BASE_DIR), "deploy", "cron", "cso-mapping-cleanup.sh"
+        )
+        with open(wrapper, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("flock", content)  # overlap protection
+        self.assertIn("cleanup_cso_drafts", content)
+        # No PII field identifiers are referenced (would only appear if values
+        # were being logged). Descriptive prose in comments is fine.
+        for pii in ("respondent_email", "respondent_name", "responding_entity", "token_hash"):
+            self.assertNotIn(pii, content)

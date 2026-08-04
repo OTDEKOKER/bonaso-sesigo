@@ -17,7 +17,7 @@ import {
   Trash2,
 } from "lucide-react"
 
-import { api } from "@/lib/api"
+import { api, fetchWithAuth } from "@/lib/api"
 import {
   type Answers,
   type Field,
@@ -66,6 +66,40 @@ interface DraftState {
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error"
+
+// Draft requests carry the resume token in the X-CSO-Draft-Token header — never
+// in the URL. Uses fetchWithAuth so it shares the app's base URL/timeout handling.
+async function draftFetch<T>(
+  path: string,
+  method: string,
+  opts: { token?: string; body?: unknown } = {},
+): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (opts.body !== undefined) headers["Content-Type"] = "application/json"
+  if (opts.token) headers["X-CSO-Draft-Token"] = opts.token
+  const res = await fetchWithAuth(path, {
+    method,
+    headers,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  })
+  if (!res.ok) {
+    let body: unknown = null
+    try {
+      body = await res.json()
+    } catch {
+      /* no JSON body */
+    }
+    const err = new Error(`Draft request failed (${res.status})`) as Error & {
+      status: number
+      errors?: unknown
+    }
+    err.status = res.status
+    err.errors = body
+    throw err
+  }
+  if (res.status === 204) return undefined as T
+  return (await res.json()) as T
+}
 
 function newAttemptId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID()
@@ -146,7 +180,9 @@ export function NativeQuestionnaire() {
         const stored = readStoredToken()
         if (stored) {
           try {
-            const { data: draft } = await api.get<DraftState>(`/cso-mapping/drafts/${stored}/`)
+            const draft = await draftFetch<DraftState>("/cso-mapping/drafts/current/", "GET", {
+              token: stored,
+            })
             if (active) setResumePrompt({ token: stored, updatedAt: draft.updated_at })
           } catch {
             writeStoredToken(null) // stale/expired token — forget it
@@ -200,11 +236,14 @@ export function NativeQuestionnaire() {
     }
     try {
       if (!tokenRef.current) {
-        const { data } = await api.post<DraftState>("/cso-mapping/drafts/", body)
+        const data = await draftFetch<DraftState>("/cso-mapping/drafts/", "POST", { body })
         tokenRef.current = data.resume_token ?? null
         writeStoredToken(tokenRef.current)
       } else {
-        await api.put(`/cso-mapping/drafts/${tokenRef.current}/`, body)
+        await draftFetch("/cso-mapping/drafts/current/", "PUT", {
+          token: tokenRef.current,
+          body,
+        })
       }
       if (mountedRef.current) setSaveStatus("saved")
     } catch (err) {
@@ -288,7 +327,7 @@ export function NativeQuestionnaire() {
 
   const resumeSavedDraft = async (token: string) => {
     try {
-      const { data } = await api.get<DraftState>(`/cso-mapping/drafts/${token}/`)
+      const data = await draftFetch<DraftState>("/cso-mapping/drafts/current/", "GET", { token })
       applyDraft(data, token)
     } catch {
       writeStoredToken(null)
@@ -300,7 +339,7 @@ export function NativeQuestionnaire() {
     const token = tokenRef.current ?? resumePrompt?.token ?? readStoredToken()
     if (token) {
       try {
-        await api.delete(`/cso-mapping/drafts/${token}/`)
+        await draftFetch("/cso-mapping/drafts/current/", "DELETE", { token })
       } catch {
         /* best effort */
       }
@@ -337,11 +376,13 @@ export function NativeQuestionnaire() {
     // Flush the latest state to the draft first so nothing is lost if submit fails.
     await saveDraft()
     const payload = { ...buildPayload(schema, answers), client_submission_id: attemptId }
-    const endpoint = tokenRef.current
-      ? `/cso-mapping/drafts/${tokenRef.current}/submit/`
-      : "/cso-mapping/submit/"
     try {
-      const { data } = await api.post<Receipt>(endpoint, payload)
+      const data = tokenRef.current
+        ? await draftFetch<Receipt>("/cso-mapping/drafts/current/submit/", "POST", {
+            token: tokenRef.current,
+            body: payload,
+          })
+        : (await api.post<Receipt>("/cso-mapping/submit/", payload)).data
       writeStoredToken(null)
       tokenRef.current = null
       setReceipt(data)
