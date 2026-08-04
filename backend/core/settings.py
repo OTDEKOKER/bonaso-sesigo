@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'system_status',
     'funder_reports',
     'support',
+    'cso_mapping',
 ]
 
 MIDDLEWARE = [
@@ -308,6 +309,11 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_THROTTLE_RATES': {
         'event_checkin': os.getenv('THROTTLE_EVENT_CHECKIN', '30/minute'),
+        # Public CSO-mapping questionnaire submit endpoint. Caps flooding of the
+        # unauthenticated write path. Set generously because many CSOs may submit
+        # from one shared/NAT IP at a workshop; raise THROTTLE_CSO_MAPPING if a
+        # large in-person session needs more headroom.
+        'cso_mapping': os.getenv('THROTTLE_CSO_MAPPING', '60/hour'),
         # SEC-1 auth hardening. Keyed by client IP for anonymous endpoints
         # (login/refresh) and by user for authenticated ones (password reset).
         'login': os.getenv('THROTTLE_LOGIN', '10/minute'),

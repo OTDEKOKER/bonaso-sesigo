@@ -42,6 +42,7 @@ urlpatterns = [
     path('api/uploads/', include('uploads.urls')),
     path('api/messages/', include('messaging.urls')),
     path('api/support/', include('support.urls')),
+    path('api/cso-mapping/', include('cso_mapping.urls')),  # public questionnaire + staff read
     path('api/audit/', include('audit.urls')),
     path('api/system/status/', SystemStatusView.as_view(), name='system_status'),
     path('api/system/status/', include('system_status.urls')),

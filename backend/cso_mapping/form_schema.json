@@ -1,0 +1,1402 @@
+{
+  "id_string": "bonaso_cso_mca_annex_2_3_4",
+  "version": "20260730_v9",
+  "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
+  "default_language": "English (en)",
+  "sections": [
+    {
+      "name": "__consent",
+      "label": null,
+      "relevant": null,
+      "fields": [
+        {
+          "name": "consent",
+          "type": "select_one",
+          "label": "Do you voluntarily consent to participate in this assessment?",
+          "hint": "Select No if you do not wish to continue.",
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "yes_no",
+          "choices": [
+            {
+              "name": "yes",
+              "label": "Yes"
+            },
+            {
+              "name": "no",
+              "label": "No"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "__no_consent",
+      "label": null,
+      "relevant": null,
+      "fields": [
+        {
+          "name": "no_consent",
+          "type": "note",
+          "label": "Thank you. The assessment cannot continue because consent was not provided.",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "relevant": {
+            "field": "consent",
+            "op": "eq",
+            "value": "no"
+          },
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "administrative_information",
+      "label": "Administrative information",
+      "relevant": {
+        "field": "consent",
+        "op": "eq",
+        "value": "yes"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "respondent_type",
+          "type": "select_one",
+          "label": "Which respondent category are you representing?",
+          "hint": "Choose the category that best matches the organisation or structure on whose behalf you are responding.",
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "respondent_type",
+          "choices": [
+            {
+              "name": "cso",
+              "label": "Health Service Civil Society Organisation"
+            },
+            {
+              "name": "coordinating_body",
+              "label": "Coordinating body, umbrella body or network"
+            },
+            {
+              "name": "strategic_structure",
+              "label": "DAC, DHMT, Government or other strategic-level structure"
+            }
+          ]
+        },
+        {
+          "name": "responding_entity",
+          "type": "text",
+          "label": "Name of the organisation, coordinating body or strategic structure",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "respondent_name",
+          "type": "text",
+          "label": "Name of respondent",
+          "hint": "Used for follow-up and verification.",
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "respondent_position",
+          "type": "text",
+          "label": "Position or role of respondent",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "respondent_phone",
+          "type": "text",
+          "label": "Telephone number",
+          "hint": "Optional contact for clarification.",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "respondent_email",
+          "type": "text",
+          "label": "Email address",
+          "hint": "Optional contact for clarification.",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "primary_district",
+          "type": "text",
+          "label": "Primary district or geographic area represented",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "__annex2_path_intro",
+      "label": null,
+      "relevant": null,
+      "fields": [
+        {
+          "name": "annex2_path_intro",
+          "type": "note",
+          "label": "Annex 2: Stakeholder Engagement/Data Collection Tool — Health Service CSO",
+          "hint": "Answer all questions about your own Civil Society Organisation.",
+          "required": false,
+          "multiline": false,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "eq",
+            "value": "cso"
+          },
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_domain_1",
+      "label": "Identifying different types of Health Service Civil Society Organisations in the different districts and roles they play in different capacities.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex2_a2_1a",
+          "type": "text",
+          "label": "What is the nature of your CSO? (NGO, Trust, CBO etc.) Please elaborate.",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_1b",
+          "type": "text",
+          "label": "What is the governance structure of your CSO?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_1c",
+          "type": "text",
+          "label": "What is your registration status?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_1d",
+          "type": "text",
+          "label": "When was your organisation registered?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_1e",
+          "type": "text",
+          "label": "What services do you provide?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_1f",
+          "type": "text",
+          "label": "What is the geographic coverage of your services?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_domain_2",
+      "label": "Assessing the nature and quality of civil society collaborations and networking between themselves, Government and Development Partners.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex2_a2_2a",
+          "type": "text",
+          "label": "How do you relate to Government, Development Partners and other CSOs in your service provision?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_2b",
+          "type": "text",
+          "label": "Who are your most immediate collaborators? What is the nature of your collaboration?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_2c",
+          "type": "text",
+          "label": "Do you share resources? If so, specify.",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_2d",
+          "type": "text",
+          "label": "How have these collaborations assisted you to improve the quality of your services and achievement of high impact?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_2e",
+          "type": "text",
+          "label": "What lessons have you learned from these collaborations?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_2f",
+          "type": "text",
+          "label": "What needs to be improved for greater complementarity and impact in service delivery?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_domain_3",
+      "label": "Documenting the resources available to CSOs across the various districts.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex2_a2_3a",
+          "type": "text",
+          "label": "What resources (finance, human, technological, etc.) do you have to support service delivery to your target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_3b",
+          "type": "text",
+          "label": "How adequate are these resources for efficient and effective service delivery towards national health goals and targets?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_3c",
+          "type": "text",
+          "label": "What strategies are in place to address the resource gaps?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_domain_4",
+      "label": "Assessing the extent to which Health Service CSOs are technically prepared to participate and contribute to the Primary Health Care Revitalisation agenda.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex2_a2_4a",
+          "type": "text",
+          "label": "How much do you know about the Primary Health Care Revitalisation Agenda?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_4b",
+          "type": "text",
+          "label": "To what extent are you prepared to provide services aimed at achieving the Primary Health Care Revitalisation Agenda objectives?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_4c",
+          "type": "text",
+          "label": "What capacities (human, technological, etc.) do you have to support service delivery to your target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_4d",
+          "type": "text",
+          "label": "What qualifications and skills exist within your organisation?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_4e",
+          "type": "text",
+          "label": "What systems are in place for efficient and effective service delivery to your target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_4f",
+          "type": "text",
+          "label": "How adequate are these capacities for efficient and effective service delivery, particularly human and technological resources?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_domain_5",
+      "label": "Establishing Health Service CSO capacity gaps that may hinder efficient and effective delivery of their Primary Health Care roles.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex2_a2_5a",
+          "type": "text",
+          "label": "What capacity gaps hinder your organisation from efficient and effective delivery of your roles in Primary Health Care?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_5b",
+          "type": "text",
+          "label": "How often do you monitor and evaluate your programmes?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_5c",
+          "type": "text",
+          "label": "What are your capacity gaps in the area of monitoring and evaluation?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_5d",
+          "type": "text",
+          "label": "What strategies are in place to address the capacity gaps in your organisation?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_domain_6",
+      "label": "Exploring development and growth capacities of Health Service CSOs as partners to Government in development.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex2_a2_6a",
+          "type": "text",
+          "label": "What strategies are in place for development and growth of your organisation for optimum complementarity to Government in development?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_6b",
+          "type": "text",
+          "label": "Do you have a Sustainability Plan?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_6c",
+          "type": "text",
+          "label": "What are your challenges to growth and sustainability?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_6d",
+          "type": "text",
+          "label": "What strategies are in place to address the challenges?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_domain_7",
+      "label": "Conclusions",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex2_a2_7a",
+          "type": "text",
+          "label": "Are there any insights, lessons and/or recommendations you would want to share in relation to positioning Health Service CSOs for optimum participation and contribution to the Primary Health Care Revitalisation Agenda in the country?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "__annex3_path_intro",
+      "label": null,
+      "relevant": null,
+      "fields": [
+        {
+          "name": "annex3_path_intro",
+          "type": "note",
+          "label": "Annex 3: Stakeholder Engagement/Data Collection Tool — Coordinating Bodies",
+          "hint": "Answer all questions from the perspective of your coordinating body, network, umbrella organisation or thematic group, focusing on member CSOs.",
+          "required": false,
+          "multiline": false,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "eq",
+            "value": "coordinating_body"
+          },
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex3_domain_1",
+      "label": "Identifying different types of Health Service Civil Society Organisations in the different districts and roles they play in different capacities.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "coordinating_body"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex3_a3_1a",
+          "type": "text",
+          "label": "What is the nature of your member CSOs? (NGO, Trust, CBO, etc.) Please elaborate.",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_1b",
+          "type": "text",
+          "label": "What are their governance structures?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_1c",
+          "type": "text",
+          "label": "What is their registration status?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_1d",
+          "type": "text",
+          "label": "What services do they provide?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_1e",
+          "type": "text",
+          "label": "What is the geographic coverage of their services?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_1f",
+          "type": "text",
+          "label": "What support do you provide them for quality health service delivery in their respective regions?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_1g",
+          "type": "text",
+          "label": "How do they report to you?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex3_domain_2",
+      "label": "Assessing the nature and quality of civil society collaborations and networking between themselves, Government and Development Partners.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "coordinating_body"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex3_a3_2a",
+          "type": "text",
+          "label": "How do they relate to Government, Development Partners and other CSOs in service provision?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_2b",
+          "type": "text",
+          "label": "Who are your most immediate collaborators? What is the nature of your collaboration?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_2c",
+          "type": "text",
+          "label": "Do they share resources? If so, specify.",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_2d",
+          "type": "text",
+          "label": "What lessons have you learned from these collaborations?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_2e",
+          "type": "text",
+          "label": "What needs to be improved for greater complementarity and impact in service delivery?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex3_domain_3",
+      "label": "Documenting the resources available to Health Service CSOs across the various districts.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "coordinating_body"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex3_a3_3a",
+          "type": "text",
+          "label": "What resources (finance, human, technological, etc.) do they have to support service delivery to their target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_3b",
+          "type": "text",
+          "label": "How adequate are these resources for efficient and effective service delivery to achieve the Primary Health Care Revitalisation objectives?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_3c",
+          "type": "text",
+          "label": "What strategies are in place to address the resource gaps?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex3_domain_4",
+      "label": "Assessing the extent to which Health Service CSOs are technically prepared to participate and contribute to the Primary Health Care Revitalisation agenda.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "coordinating_body"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex3_a3_4a",
+          "type": "text",
+          "label": "What specific interventions are your Health Service CSOs implementing?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_4b",
+          "type": "text",
+          "label": "How do they report?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_4c",
+          "type": "text",
+          "label": "What capacities (human, technological, etc.) do they have to support service delivery to their target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_4d",
+          "type": "text",
+          "label": "What qualifications and skills exist within their organisations?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_4e",
+          "type": "text",
+          "label": "What systems are in place for efficient and effective service delivery to their target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_4f",
+          "type": "text",
+          "label": "How adequate are these capacities for efficient and effective service delivery, particularly human and technological resources?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex3_domain_5",
+      "label": "Establishing Health Service CSO capacity gaps that may hinder efficient and effective delivery of their Primary Health Care roles.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "coordinating_body"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex3_a3_5a",
+          "type": "text",
+          "label": "What capacity gaps hinder your organisations from efficient and effective delivery of their roles in Primary Health Care?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_5b",
+          "type": "text",
+          "label": "How often do they monitor and evaluate their programmes?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_5c",
+          "type": "text",
+          "label": "What are their capacity gaps in the area of monitoring and evaluation?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_5d",
+          "type": "text",
+          "label": "What collective strategies are in place to address the capacity gaps?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex3_domain_6",
+      "label": "Exploring development and growth capacities of Health Service CSOs as partners to Government in development.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "coordinating_body"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex3_a3_6a",
+          "type": "text",
+          "label": "What strategies are in place for development and growth of your member organisations for optimum complementarity to Government in development?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_6b",
+          "type": "text",
+          "label": "Do they have Sustainability Plans?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_6c",
+          "type": "text",
+          "label": "What are their challenges to growth and sustainability?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_6d",
+          "type": "text",
+          "label": "What strategies are in place to address the challenges?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex3_domain_7",
+      "label": "Conclusions",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "coordinating_body"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex3_a3_7a",
+          "type": "text",
+          "label": "Are there any insights, lessons and/or recommendations you would want to share in relation to positioning Health Service CSOs for optimum participation and contribution to the Primary Health Care Revitalisation Agenda in the country?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "__annex4_path_intro",
+      "label": null,
+      "relevant": null,
+      "fields": [
+        {
+          "name": "annex4_path_intro",
+          "type": "note",
+          "label": "Annex 4: Stakeholder Engagement/Data Collection Tool — Other Strategic-Level Structures, DAC/DHMT, etc.",
+          "hint": "Answer all questions from the perspective of your DAC, DHMT, government body or other strategic-level structure.",
+          "required": false,
+          "multiline": false,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "eq",
+            "value": "strategic_structure"
+          },
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex4_domain_1",
+      "label": "Identifying different types of Health Service Civil Society Organisations in the different districts and roles they play in different capacities.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "strategic_structure"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex4_a4_1a",
+          "type": "text",
+          "label": "What is the nature of Health Service CSOs implementing health services? Please elaborate.",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_1b",
+          "type": "text",
+          "label": "What services do they provide?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_1c",
+          "type": "text",
+          "label": "What is the geographic coverage of their services?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_1d",
+          "type": "text",
+          "label": "What support do you provide them for quality health service delivery?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_1e",
+          "type": "text",
+          "label": "How do they report to you?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex4_domain_2",
+      "label": "Assessing the nature and quality of civil society collaborations and networking between themselves, Government and Development Partners.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "strategic_structure"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex4_a4_2a",
+          "type": "text",
+          "label": "How do they relate to Government, Development Partners and other CSOs in service provision?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_2b",
+          "type": "text",
+          "label": "Who are your most immediate collaborators? What is the nature of your collaboration?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_2c",
+          "type": "text",
+          "label": "What lessons have you learned from these collaborations?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_2d",
+          "type": "text",
+          "label": "What needs to be improved for greater complementarity and impact in service delivery?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex4_domain_3",
+      "label": "Documenting the resources available to Health Service CSOs across the various districts.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "strategic_structure"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex4_a4_3a",
+          "type": "text",
+          "label": "What resources (finance, human, technological, etc.) do they have to support service delivery to their target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_3b",
+          "type": "text",
+          "label": "How adequate are these resources for efficient and effective service delivery to achieve NSF III goals?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_3c",
+          "type": "text",
+          "label": "Do you provide them with any support to address the resource gaps? Please elaborate.",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex4_domain_4",
+      "label": "Assessing the extent to which Health Service CSOs are technically prepared to participate and contribute to the Primary Health Care Revitalisation agenda.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "strategic_structure"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex4_a4_4a",
+          "type": "text",
+          "label": "What specific interventions are the Health Service CSOs implementing?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_4b",
+          "type": "text",
+          "label": "How do they report?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_4c",
+          "type": "text",
+          "label": "What capacities (human, technological, etc.) do they have to support service delivery to their target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_4d",
+          "type": "text",
+          "label": "What qualifications and skills exist within their organisations?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_4e",
+          "type": "text",
+          "label": "What systems are in place for efficient and effective service delivery to their target beneficiaries?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_4f",
+          "type": "text",
+          "label": "How adequate are these capacities for efficient and effective service delivery, particularly human and technological resources?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex4_domain_5",
+      "label": "Establishing Health Service CSO capacity gaps that may hinder efficient and effective delivery of their Primary Health Care roles.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "strategic_structure"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex4_a4_5a",
+          "type": "text",
+          "label": "What capacity gaps hinder your organisations from efficient and effective delivery of their roles in Primary Health Care?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_5b",
+          "type": "text",
+          "label": "How often do they monitor and evaluate their programmes?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_5c",
+          "type": "text",
+          "label": "What are their capacity gaps in the area of monitoring and evaluation?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_5d",
+          "type": "text",
+          "label": "What collective strategies are in place to address the capacity gaps?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex4_domain_6",
+      "label": "Exploring development and growth capacities of Health Service CSOs as partners to Government in development.",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "strategic_structure"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex4_a4_6a",
+          "type": "text",
+          "label": "What are the Health Service CSOs' challenges to growth and sustainability?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex4_a4_6b",
+          "type": "text",
+          "label": "What opportunities exist for addressing the challenges?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex4_domain_7",
+      "label": "Conclusions",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "strategic_structure"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "annex4_a4_7a",
+          "type": "text",
+          "label": "Are there any insights, lessons and/or recommendations you would want to share in relation to positioning Health Service CSOs for optimum participation and contribution to the Primary Health Care Revitalisation Agenda in the country?",
+          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
+          "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "final_confirmation",
+      "label": "Final confirmation",
+      "relevant": {
+        "field": "consent",
+        "op": "eq",
+        "value": "yes"
+      },
+      "appearance": "field-list",
+      "fields": [
+        {
+          "name": "information_confirmed",
+          "type": "select_one",
+          "label": "Do you confirm that the information provided is accurate to the best of your knowledge?",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": {
+            "field": ".",
+            "op": "eq",
+            "value": "yes"
+          },
+          "list": "yes_no",
+          "choices": [
+            {
+              "name": "yes",
+              "label": "Yes"
+            },
+            {
+              "name": "no",
+              "label": "No"
+            }
+          ]
+        },
+        {
+          "name": "additional_comments",
+          "type": "text",
+          "label": "Additional comments, clarifications or supporting information",
+          "hint": null,
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "thank_you",
+          "type": "note",
+          "label": "Thank you for completing the BONASO Health Service CSO Mapping and Capacity Assessment.",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    }
+  ],
+  "choices": {
+    "yes_no": [
+      {
+        "name": "yes",
+        "label": "Yes"
+      },
+      {
+        "name": "no",
+        "label": "No"
+      }
+    ],
+    "respondent_type": [
+      {
+        "name": "cso",
+        "label": "Health Service Civil Society Organisation"
+      },
+      {
+        "name": "coordinating_body",
+        "label": "Coordinating body, umbrella body or network"
+      },
+      {
+        "name": "strategic_structure",
+        "label": "DAC, DHMT, Government or other strategic-level structure"
+      }
+    ]
+  }
+}
