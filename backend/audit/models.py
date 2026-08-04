@@ -23,6 +23,7 @@ class AuditEvent(models.Model):
         ('unflag', 'Unflag'),
         ('import', 'Import'),
         ('export', 'Export'),
+        ('view', 'View'),
         ('assign', 'Assign'),
         ('login', 'Login'),
         ('logout', 'Logout'),
