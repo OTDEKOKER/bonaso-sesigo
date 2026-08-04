@@ -12,10 +12,12 @@ Authorised-staff surface (admin role only — submissions hold personal data):
 """
 from __future__ import annotations
 
-import csv
+import re
+from io import BytesIO
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponse
+from openpyxl import Workbook
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
@@ -25,8 +27,21 @@ from rest_framework.views import APIView
 
 from .models import CsoMappingSubmission
 from .permissions import IsAdminRole
-from .schema import CORE_BOOL_FIELDS, CORE_TEXT_FIELDS, iter_answerable_fields, load_schema
+from .schema import (
+    CORE_BOOL_FIELDS,
+    CORE_TEXT_FIELDS,
+    field_is_active,
+    iter_answerable_fields,
+    load_schema,
+)
 from .serializers import PublicSubmissionSerializer, StaffSubmissionSerializer
+
+# Characters Excel forbids in a worksheet title, plus the 31-char cap.
+_INVALID_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
+
+
+def _safe_sheet_title(label: str) -> str:
+    return _INVALID_SHEET_CHARS.sub(" ", label).strip()[:31] or "Sheet"
 
 
 class FormSchemaView(APIView):
@@ -84,32 +99,66 @@ class SubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         }
         return Response({"total": qs.count(), "by_respondent_type": by_type})
 
+    # Short, Excel-safe worksheet titles per respondent category.
+    SHEET_TITLES = {
+        "cso": "Health Service CSOs",
+        "coordinating_body": "Coordinating Bodies",
+        "strategic_structure": "Strategic Structures",
+    }
+
     @action(detail=False, methods=["get"])
     def export(self, request):
-        """Flat CSV: one row per submission, one column per answerable field."""
+        """Excel workbook with one sheet per respondent category.
+
+        Each sheet carries only the questions relevant to that category (admin
+        fields + that annex + final confirmation), one row per submission. The
+        respondent-type filter is ignored (the workbook is split by category by
+        design); a ``search`` term, if given, is applied across all sheets.
+        """
         schema = load_schema()
-        columns = [
-            (field["name"], f"{field.get('label') or field['name']} [{field['name']}]")
-            for _section, field in iter_answerable_fields(schema)
-        ]
+        base = self.get_queryset()
+        search = request.query_params.get("search")
+        if search:
+            base = base.filter(
+                Q(responding_entity__icontains=search)
+                | Q(respondent_name__icontains=search)
+                | Q(primary_district__icontains=search)
+            )
 
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = (
-            'attachment; filename="cso-mapping-submissions.csv"'
+        wb = Workbook()
+        wb.remove(wb.active)  # drop the auto-created default sheet
+
+        for choice in schema.get("choices", {}).get("respondent_type", []):
+            rtype = choice["name"]
+            context = {"consent": "yes", "respondent_type": rtype}
+            columns = [
+                (field["name"], field.get("label") or field["name"])
+                for section, field in iter_answerable_fields(schema)
+                if field_is_active(section, field, context)
+            ]
+            ws = wb.create_sheet(
+                title=self.SHEET_TITLES.get(rtype) or _safe_sheet_title(choice["label"])
+            )
+            ws.append(["ID", "Submitted at"] + [label for _name, label in columns])
+            for sub in base.filter(respondent_type=rtype):
+                # openpyxl cannot write tz-aware datetimes; store as naive.
+                row = [sub.id, sub.submitted_at.replace(tzinfo=None)]
+                answers = sub.answers or {}
+                for name, _label in columns:
+                    if name in CORE_BOOL_FIELDS:
+                        row.append("Yes" if getattr(sub, name) else "No")
+                    elif name in CORE_TEXT_FIELDS:
+                        row.append(getattr(sub, name) or "")
+                    else:
+                        row.append(answers.get(name, ""))
+                ws.append(row)
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        writer = csv.writer(response)
-        writer.writerow(["ID", "Submitted at"] + [header for _name, header in columns])
-
-        for sub in self.filter_queryset(self.get_queryset()):
-            row = [sub.id, sub.submitted_at.isoformat()]
-            answers = sub.answers or {}
-            for name, _header in columns:
-                if name in CORE_BOOL_FIELDS:
-                    row.append("Yes" if getattr(sub, name) else "No")
-                elif name in CORE_TEXT_FIELDS:
-                    row.append(getattr(sub, name) or "")
-                else:
-                    row.append(answers.get(name, ""))
-            writer.writerow(row)
-
+        response["Content-Disposition"] = 'attachment; filename="cso-mapping-submissions.xlsx"'
         return response

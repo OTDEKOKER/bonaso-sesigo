@@ -124,14 +124,13 @@ export default function CsoMappingSubmissionsPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const blob = await csoMappingService.exportCsv({
-        respondent_type: typeFilter === ALL ? undefined : typeFilter,
+      const blob = await csoMappingService.exportWorkbook({
         search: search || undefined,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "cso-mapping-submissions.csv";
+      a.download = "cso-mapping-submissions.xlsx";
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -172,7 +171,7 @@ export default function CsoMappingSubmissionsPage() {
         actions={
           <Button onClick={handleExport} disabled={exporting || count === 0} variant="outline">
             {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Export CSV
+            Export Excel
           </Button>
         }
       />

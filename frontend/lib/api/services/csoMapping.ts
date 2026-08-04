@@ -62,14 +62,16 @@ export const csoMappingService = {
     return data;
   },
 
-  /** Download the submissions CSV (honours the current respondent_type/search filters). */
-  async exportCsv(filters?: CsoSubmissionFilters): Promise<Blob> {
+  /**
+   * Download the submissions as an Excel workbook — one sheet per respondent
+   * category. Honours the `search` term; the respondent-type split is inherent.
+   */
+  async exportWorkbook(filters?: CsoSubmissionFilters): Promise<Blob> {
     const params = new URLSearchParams();
-    if (filters?.respondent_type) params.set("respondent_type", filters.respondent_type);
     if (filters?.search) params.set("search", filters.search);
     const qs = params.toString() ? `?${params.toString()}` : "";
     // fetchWithAuth returns the raw Response (with the bearer token attached) so
-    // we can stream the CSV as a blob rather than parsing it as JSON.
+    // we can stream the .xlsx as a blob rather than parsing it as JSON.
     const response = await fetchWithAuth(`/cso-mapping/submissions/export/${qs}`);
     if (!response.ok) {
       throw normalizeApiError({

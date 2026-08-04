@@ -140,6 +140,22 @@ class StaffAccessTests(APITestCase):
 
         export_resp = self.client.get(reverse("cso-submissions-export"))
         self.assertEqual(export_resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(export_resp["Content-Type"], "text/csv")
-        body = export_resp.content.decode("utf-8")
-        self.assertIn("annex2_a2_1a", body)
+        self.assertEqual(
+            export_resp["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export_resp.content))
+        # One sheet per respondent category.
+        self.assertEqual(len(wb.sheetnames), 3)
+        cso_ws = wb["Health Service CSOs"]
+        # Header row + the single CSO submission.
+        self.assertEqual(cso_ws.max_row, 2)
+        # The sheet only carries that category's questions (labels, not codes).
+        headers = [cell.value for cell in cso_ws[1]]
+        self.assertTrue(any(h and "nature of your CSO" in h for h in headers))
+        # A category with no submissions still gets a header-only sheet.
+        self.assertEqual(wb["Coordinating Bodies"].max_row, 1)
