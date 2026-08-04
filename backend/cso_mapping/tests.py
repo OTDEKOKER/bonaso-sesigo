@@ -651,7 +651,7 @@ class DraftConfigCheckTests(APITestCase):
 
         from .checks import draft_ttl_configured
 
-        with override_settings(DEBUG=False):
+        with override_settings(DEBUG=False, TESTING=False):
             saved = os.environ.pop("CSO_MAPPING_DRAFT_TTL_DAYS", None)
             try:
                 errors = draft_ttl_configured(None)
@@ -665,7 +665,7 @@ class DraftConfigCheckTests(APITestCase):
 
         from .checks import draft_ttl_configured
 
-        with override_settings(DEBUG=False):
+        with override_settings(DEBUG=False, TESTING=False):
             saved = os.environ.get("CSO_MAPPING_DRAFT_TTL_DAYS")
             os.environ["CSO_MAPPING_DRAFT_TTL_DAYS"] = "30"
             try:
