@@ -9,8 +9,17 @@ import { usersService, type ModulePermissionRow } from "@/lib/api"
 
 type ModuleState = Record<string, { enabled: boolean; actions: Set<string> }>
 
+// Human labels for module/role keys whose default title-casing is wrong
+// (e.g. acronyms). Everything else falls back to underscores→spaces + title-case.
+const LABEL_OVERRIDES: Record<string, string> = {
+  cso_mapping: "CSO Mapping",
+}
+
 function prettyLabel(value: string): string {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  return (
+    LABEL_OVERRIDES[value] ??
+    value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  )
 }
 
 /**
