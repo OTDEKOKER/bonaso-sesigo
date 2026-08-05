@@ -1,6 +1,7 @@
 "use client"
 
 import React, { Suspense, useEffect, useState } from "react"
+import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { GraduationCap, Loader2, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -133,21 +134,25 @@ function LoginForm() {
 
   return (
     <main className="flex h-[100dvh] items-stretch justify-center overflow-hidden bg-[#0b2318] p-1.5 sm:p-3 md:p-4">
-      <section className="flex w-full max-w-[760px] flex-col overflow-y-auto rounded-2xl border border-white/10 bg-[#0e1f16] px-4 py-5 text-white shadow-2xl shadow-black/40 sm:px-6 sm:py-6 md:px-8 md:py-8">
+      <section className="flex w-full max-w-[760px] flex-col overflow-y-auto rounded-2xl border border-white/10 bg-[#0e1f16] px-4 py-4 text-white shadow-2xl shadow-black/40 sm:px-6 sm:py-5 md:px-8 md:py-6">
         <div className="flex flex-1 flex-col items-center justify-center">
           <div className="mx-auto flex w-full max-w-[420px] flex-col items-center text-center">
-            <p className="text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">Sesigo</p>
-            <p className="mt-2 text-xs font-medium uppercase tracking-[0.25em] text-white/45 sm:text-sm">
+            <p className="text-3xl font-extrabold leading-none tracking-tight sm:text-4xl">Sesigo</p>
+            <p className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.25em] text-white/45 sm:text-xs">
               Data Portal
             </p>
-            <div
-              className="mt-4 h-0 w-0 border-l-[36px] border-r-[36px] border-t-[64px] border-l-transparent border-r-transparent border-t-emerald-400 sm:border-l-[44px] sm:border-r-[44px] sm:border-t-[80px]"
-              aria-hidden="true"
+            <Image
+              src="/bonaso-logo.png"
+              alt="BONASO — Botswana Network of AIDS Services Organisations"
+              width={284}
+              height={372}
+              priority
+              className="mt-3 h-14 w-auto sm:h-16"
             />
-            <h1 className="mt-5 text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+            <h1 className="mt-3 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
               {mode === "training" ? "Training Login" : "Welcome!"}
             </h1>
-            <p className="mt-2 text-xs uppercase tracking-wide text-white/40">Powered by BONASO</p>
+            <p className="mt-1.5 text-[11px] uppercase tracking-wide text-white/40">Powered by BONASO</p>
           </div>
 
           {signoutNotice ? (
@@ -161,18 +166,18 @@ function LoginForm() {
 
           {mode === null ? (
             // ---- STEP 1: no mode chosen yet — show the two selection cards ----
-            <div className="mx-auto mt-8 w-full max-w-[560px] rounded-2xl border border-emerald-700/30 bg-emerald-900/40 p-5 sm:p-6">
-              <p className="mb-5 text-center text-xs font-semibold uppercase tracking-[0.15em] text-white/50">
+            <div className="mx-auto mt-6 w-full max-w-[560px] rounded-2xl border border-emerald-700/30 bg-emerald-900/40 p-4 sm:p-5">
+              <p className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.15em] text-white/50">
                 Select how you&apos;d like to continue
               </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => setMode("live")}
-                  className="group relative flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-6 py-8 text-center transition-all duration-200 hover:-translate-y-1 hover:border-emerald-400/50 hover:bg-emerald-400/10 hover:shadow-[0_0_30px_-14px_rgba(52,211,153,0.5)]"
+                  className="group relative flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-6 text-center transition-all duration-200 hover:-translate-y-1 hover:border-emerald-400/50 hover:bg-emerald-400/10 hover:shadow-[0_0_30px_-14px_rgba(52,211,153,0.5)]"
                 >
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10 transition-colors group-hover:bg-emerald-400/10 group-hover:ring-emerald-400/30">
-                    <ShieldCheck className="h-8 w-8 text-white transition-colors group-hover:text-emerald-300" />
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10 transition-colors group-hover:bg-emerald-400/10 group-hover:ring-emerald-400/30">
+                    <ShieldCheck className="h-7 w-7 text-white transition-colors group-hover:text-emerald-300" />
                   </span>
                   <div>
                     <p className="text-base font-semibold tracking-tight text-white">Sesigo Live System</p>
@@ -183,10 +188,10 @@ function LoginForm() {
                 <button
                   type="button"
                   onClick={() => setMode("training")}
-                  className="group relative flex flex-col items-center gap-4 rounded-2xl border border-amber-400/25 bg-amber-400/5 px-6 py-8 text-center transition-all duration-200 hover:-translate-y-1 hover:border-amber-400/50 hover:bg-amber-400/10 hover:shadow-[0_0_30px_-14px_rgba(251,191,36,0.5)]"
+                  className="group relative flex flex-col items-center gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/5 px-5 py-6 text-center transition-all duration-200 hover:-translate-y-1 hover:border-amber-400/50 hover:bg-amber-400/10 hover:shadow-[0_0_30px_-14px_rgba(251,191,36,0.5)]"
                 >
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-400/10 ring-1 ring-amber-300/30 transition-colors group-hover:bg-amber-400/20">
-                    <GraduationCap className="h-8 w-8 text-amber-300" />
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-400/10 ring-1 ring-amber-300/30 transition-colors group-hover:bg-amber-400/20">
+                    <GraduationCap className="h-7 w-7 text-amber-300" />
                   </span>
                   <div>
                     <p className="text-base font-semibold tracking-tight text-white">Sesigo Training Mode</p>
@@ -198,7 +203,7 @@ function LoginForm() {
           ) : (
             // ---- STEP 2: mode chosen — show which mode, a way to change it, then the form ----
             <>
-              <div className="mx-auto mt-6 w-full max-w-[420px]">
+              <div className="mx-auto mt-4 w-full max-w-[420px]">
                 <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2.5">
                   <span className="text-sm font-semibold tracking-tight">
                     {mode === "training" ? "Sesigo Training Mode" : "Sesigo Live System"}
@@ -219,7 +224,7 @@ function LoginForm() {
                 )}
               </div>
 
-              <form onSubmit={handleSubmit} className="mx-auto mt-5 w-full max-w-[420px] space-y-4 sm:space-y-5">
+              <form onSubmit={handleSubmit} className="mx-auto mt-4 w-full max-w-[420px] space-y-3 sm:space-y-4">
                 {error ? (
                   <div className="rounded-lg bg-red-100/95 px-3 py-2 text-sm font-medium text-red-900">
                     {error}
@@ -241,7 +246,7 @@ function LoginForm() {
                     onChange={(e) => setIdentifier(e.target.value)}
                     required
                     placeholder="Enter your username or email"
-                    className="h-11 rounded-lg border border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 focus-visible:ring-emerald-400/50 sm:h-12 sm:text-base"
+                    className="h-11 rounded-lg border border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 focus-visible:ring-emerald-400/50 sm:text-base"
                   />
                   <p className="text-xs leading-snug text-white/45">
                     Sign in with either your username or email address.
@@ -262,7 +267,7 @@ function LoginForm() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="h-11 rounded-lg border border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 focus-visible:ring-emerald-400/50 sm:h-12 sm:text-base"
+                    className="h-11 rounded-lg border border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 focus-visible:ring-emerald-400/50 sm:text-base"
                   />
                 </div>
 
@@ -270,7 +275,7 @@ function LoginForm() {
                   type="submit"
                   disabled={isLoading}
                   className={
-                    "mt-1 h-11 w-full rounded-lg text-base font-semibold tracking-tight hover:opacity-90 sm:h-12 sm:text-lg " +
+                    "mt-1 h-11 w-full rounded-lg text-base font-semibold tracking-tight hover:opacity-90 sm:text-lg " +
                     (mode === "training"
                       ? "bg-amber-400 text-[#1a1305] hover:bg-amber-300"
                       : "bg-emerald-400 text-[#04140d] hover:bg-emerald-300")
@@ -284,7 +289,7 @@ function LoginForm() {
           )}
         </div>
 
-        <p className="pt-4 text-center text-[11px] text-white/40">
+        <p className="pt-3 text-center text-[11px] text-white/40">
           © 2026 Sesigo Data Portal. Powered by BONASO.
         </p>
       </section>
