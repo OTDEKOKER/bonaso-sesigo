@@ -24,7 +24,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -32,7 +32,7 @@ from rest_framework.views import APIView
 from audit.recording import record_audit_event
 
 from .models import CsoMappingDraft, CsoMappingSchemaVersion, CsoMappingSubmission
-from .permissions import IsAdminRole
+from .permissions import CanUseCsoMapping
 from .schema import (
     CORE_BOOL_FIELDS,
     CORE_TEXT_FIELDS,
@@ -300,7 +300,7 @@ class SubmissionViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = CsoMappingSubmission.objects.all()
     serializer_class = StaffSubmissionSerializer
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated, CanUseCsoMapping]
     filterset_fields = ["respondent_type"]
     search_fields = ["responding_entity", "respondent_name", "primary_district"]
     ordering_fields = ["submitted_at", "respondent_type", "responding_entity"]
@@ -493,7 +493,7 @@ class CsoMappingSchemaAdminView(APIView):
     never touches the live form.
     """
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated, CanUseCsoMapping]
 
     def get(self, request):
         _ensure_schema_seed()
@@ -527,7 +527,7 @@ class CsoMappingSchemaAdminView(APIView):
 class CsoMappingSchemaHistoryView(APIView):
     """Admin-only: list saved schema versions (most recent first)."""
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated, CanUseCsoMapping]
 
     def get(self, request):
         _ensure_schema_seed()
@@ -538,7 +538,7 @@ class CsoMappingSchemaHistoryView(APIView):
 class CsoMappingSchemaActivateView(APIView):
     """Admin-only: roll back by re-activating a previous version (copied forward)."""
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated, CanUseCsoMapping]
 
     def post(self, request, pk):
         target = CsoMappingSchemaVersion.objects.filter(pk=pk).first()

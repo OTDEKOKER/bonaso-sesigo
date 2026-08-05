@@ -1,4 +1,37 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
+
+from users.module_permissions import resolve_user_module_permissions
+
+MODULE = "cso_mapping"
+
+
+def _required_action(request, view) -> str:
+    """Map the request to a CSO Mapping action: view / export / edit."""
+    if getattr(view, "action", None) == "export":
+        return "export"
+    if request.method in SAFE_METHODS:
+        return "view"
+    return "edit"
+
+
+class CanUseCsoMapping(BasePermission):
+    """Deny-by-default access to the CSO Mapping module (holds personal data).
+
+    Uses the same effective module map the frontend does
+    (``resolve_user_module_permissions``): administrators are granted everything;
+    every other user is denied unless an admin has explicitly assigned them the
+    ``cso_mapping`` module with the relevant action (view / export / edit).
+    ``cso_mapping`` is in no role default, so it is deny-by-default for non-admins.
+    """
+
+    message = "You do not have access to the CSO Mapping module."
+
+    def has_permission(self, request, view) -> bool:
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+        perms = resolve_user_module_permissions(user)
+        return _required_action(request, view) in perms.get(MODULE, [])
 
 
 class IsAdminRole(BasePermission):

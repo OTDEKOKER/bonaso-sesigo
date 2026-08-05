@@ -295,7 +295,7 @@ export function AppSidebar() {
   const { data: organizationTree } = useOrganizationTree()
   const { logout, user } = useAuth()
   const { isTrainingMode } = useSessionMode()
-  const { canView } = useModulePermissions()
+  const { canView, can } = useModulePermissions()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const canViewSystemStatus = user?.role === "admin"
   // A nav entry is visible when its route has no module gate, or the user may
@@ -386,7 +386,7 @@ export function AppSidebar() {
             subItems={item.children}
           />
         ))}
-        {canViewSystemStatus && (
+        {canView("cso_mapping") && (
           <NavItem
             title="CSO Mapping"
             href="/cso-mapping-submissions"
@@ -394,7 +394,9 @@ export function AppSidebar() {
             isActive={pathname?.startsWith("/cso-mapping") ?? false}
             subItems={[
               { title: "Submissions", href: "/cso-mapping-submissions" },
-              { title: "Questionnaire Editor", href: "/cso-mapping-form-editor" },
+              ...(can("cso_mapping", "edit")
+                ? [{ title: "Questionnaire Editor", href: "/cso-mapping-form-editor" }]
+                : []),
             ]}
           />
         )}

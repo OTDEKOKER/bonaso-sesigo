@@ -23,6 +23,8 @@ const MODULE_BY_PATH: Record<string, string> = {
   "/messages": "messages",
   "/announcements": "notifications",
   "/support": "support",
+  "/cso-mapping-submissions": "cso_mapping",
+  "/cso-mapping-form-editor": "cso_mapping",
   "/system-status": "system_status",
   // NOTE: /settings is intentionally NOT gated — it is the user's own profile /
   // password / appearance page that every role needs. No role default grants the

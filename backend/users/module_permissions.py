@@ -35,6 +35,10 @@ MODULE_ACTIONS: dict[str, list[str]] = {
     'social': ['view', 'create', 'edit', 'delete'],
     'flags': ['view', 'create', 'edit', 'resolve'],
     'support': ['view', 'create', 'edit', 'delete', 'assign', 'resolve'],
+    # CSO Mapping questionnaire: view/export submissions, edit the form.
+    # Not in any role default -> deny-by-default; admins always have it, and it is
+    # granted to other users only via an explicit assignment.
+    'cso_mapping': ['view', 'export', 'edit'],
     'system_status': ['view'],
     'settings': ['view', 'manage'],
     'training_mode': ['view'],

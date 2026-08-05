@@ -33,7 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { useAuth } from "@/lib/contexts/auth-context"
+import { useModulePermissions } from "@/lib/permissions/module-permissions"
 import { useToast } from "@/hooks/use-toast"
 import { csoMappingService, type SchemaVersion } from "@/lib/api/services/csoMapping"
 import type { Choice, Field, FormSchema, Section } from "@/components/cso-mapping/schema"
@@ -83,9 +83,9 @@ function edit(schema: FormSchema, fn: (draft: FormSchema) => void): FormSchema {
 }
 
 export default function CsoMappingFormEditorPage() {
-  const { user } = useAuth()
+  const { can } = useModulePermissions()
   const { toast } = useToast()
-  const isAdmin = user?.role === "admin"
+  const isAdmin = can("cso_mapping", "edit")
 
   const [schema, setSchema] = useState<FormSchema | null>(null)
   const [loading, setLoading] = useState(true)
@@ -168,9 +168,10 @@ export default function CsoMappingFormEditorPage() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
         <ShieldAlert className="h-10 w-10 text-muted-foreground" />
-        <p className="text-lg font-semibold">Administrators only</p>
+        <p className="text-lg font-semibold">No editor access</p>
         <p className="max-w-sm text-sm text-muted-foreground">
-          The questionnaire editor is restricted to administrators.
+          Editing the questionnaire requires the CSO Mapping module with edit
+          permission. Ask an administrator to grant it.
         </p>
       </div>
     )

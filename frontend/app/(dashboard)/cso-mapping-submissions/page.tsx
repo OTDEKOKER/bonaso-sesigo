@@ -31,7 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/lib/contexts/auth-context";
+import { useModulePermissions } from "@/lib/permissions/module-permissions";
 import { useToast } from "@/hooks/use-toast";
 import {
   csoMappingService,
@@ -60,9 +60,9 @@ function formatDate(value: string): string {
 }
 
 export default function CsoMappingSubmissionsPage() {
-  const { user } = useAuth();
+  const { canView } = useModulePermissions();
   const { toast } = useToast();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = canView("cso_mapping");
 
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [summary, setSummary] = useState<CsoSummary | null>(null);
@@ -155,7 +155,7 @@ export default function CsoMappingSubmissionsPage() {
             <ShieldAlert className="h-8 w-8 text-amber-500" />
             <p className="text-sm font-medium text-slate-700">Restricted</p>
             <p className="max-w-sm text-xs text-slate-500">
-              CSO Mapping submissions contain personal data and are available to administrators only.
+              CSO Mapping submissions contain personal data. Ask an administrator to grant you the CSO Mapping module.
             </p>
           </CardContent>
         </Card>
@@ -384,7 +384,7 @@ function SubmissionDialog({
                     {answered.map(({ field, value }) => (
                       <div key={field.name}>
                         <dt className="text-xs font-medium text-slate-500">{field.label}</dt>
-                        <dd className="mt-0.5 whitespace-pre-wrap text-sm text-slate-800">{value}</dd>
+                        <dd className="mt-0.5 whitespace-pre-wrap text-justify text-sm text-slate-800">{value}</dd>
                       </div>
                     ))}
                   </dl>
