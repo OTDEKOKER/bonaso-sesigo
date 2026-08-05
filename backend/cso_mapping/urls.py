@@ -2,6 +2,9 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    CsoMappingSchemaActivateView,
+    CsoMappingSchemaAdminView,
+    CsoMappingSchemaHistoryView,
     DraftCreateView,
     DraftDetailView,
     DraftSubmitView,
@@ -27,4 +30,16 @@ urlpatterns = [
     ),
     # Authorised staff (router: submissions/, submissions/<pk>/, /export/, /summary/)
     *router.urls,
+    # Admin-only form editor (edit the questionnaire without a code deploy).
+    path("admin/schema/", CsoMappingSchemaAdminView.as_view(), name="cso-mapping-schema-admin"),
+    path(
+        "admin/schema/history/",
+        CsoMappingSchemaHistoryView.as_view(),
+        name="cso-mapping-schema-history",
+    ),
+    path(
+        "admin/schema/history/<int:pk>/activate/",
+        CsoMappingSchemaActivateView.as_view(),
+        name="cso-mapping-schema-activate",
+    ),
 ]

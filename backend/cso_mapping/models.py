@@ -15,7 +15,9 @@ from __future__ import annotations
 import hashlib
 import secrets
 
+from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -150,3 +152,44 @@ class CsoMappingDraft(models.Model):
 
     def __str__(self) -> str:
         return f"draft {self.token_hash[:8]}… (step {self.current_step})"
+
+
+class CsoMappingSchemaVersion(models.Model):
+    """A saved version of the questionnaire schema, editable from the admin UI.
+
+    The schema began life as a bundled JSON file (``form_schema.json``); it now
+    lives here so authorised admins can change the questionnaire without a code
+    deploy. Exactly one row is ``is_active`` at a time (the version served to
+    respondents); superseded rows are kept as history for rollback. The bundled
+    file remains the seed for a fresh database and the fallback if no row exists,
+    so the live form can never be left blank.
+    """
+
+    schema = models.JSONField()
+    version_label = models.CharField(max_length=64, blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "CSO mapping schema version"
+        constraints = [
+            # At most one active version at any time.
+            models.UniqueConstraint(
+                fields=["is_active"],
+                condition=Q(is_active=True),
+                name="cso_mapping_one_active_schema",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = "active" if self.is_active else "history"
+        return f"CSO schema {self.version_label or self.pk} ({state})"

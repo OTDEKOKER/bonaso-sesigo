@@ -13,6 +13,7 @@ two places) when the XLSForm changes.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -45,9 +46,153 @@ MAX_DRAFT_BYTES = 200_000
 
 
 @lru_cache(maxsize=1)
-def load_schema() -> dict:
+def _bundled_schema() -> dict:
+    """The schema shipped in the image: seed for a fresh DB and last-resort fallback."""
     with SCHEMA_PATH.open("r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def load_schema() -> dict:
+    """Return the questionnaire schema currently served to respondents.
+
+    Source of truth is the active :class:`CsoMappingSchemaVersion` row, so admins
+    can edit the form without a code deploy. If no active row exists yet (fresh
+    database) or the DB is unreachable during a management command, fall back to
+    the bundled file so the form is never blank. Read per call (small payload) so
+    an edit applies immediately across all gunicorn workers.
+    """
+    try:
+        from .models import CsoMappingSchemaVersion
+
+        active = (
+            CsoMappingSchemaVersion.objects.filter(is_active=True)
+            .values_list("schema", flat=True)
+            .first()
+        )
+        if active:
+            return active
+    except Exception:  # DB not ready (migrate/checks) — use the bundled file.
+        pass
+    return _bundled_schema()
+
+
+# Field types the editor + renderer understand, and the relevance operators the
+# evaluator supports. Kept in sync with field_is_active / the frontend renderer.
+EDITABLE_FIELD_TYPES = {"text", "select_one", "note"}
+RELEVANCE_OPS = {"eq", "ne"}
+_FIELD_NAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+
+
+class SchemaValidationError(Exception):
+    """Raised when a proposed schema would be unusable/unsafe. Carries a list of
+    human-readable problems for the admin editor to display."""
+
+    def __init__(self, errors: list[str]):
+        self.errors = errors
+        super().__init__("; ".join(errors))
+
+
+def _check_condition(cond, field_names, where, errors):
+    if not cond:
+        return
+    if not isinstance(cond, dict):
+        errors.append(f"{where}: the show-if rule must be an object.")
+        return
+    if "raw" in cond:  # opaque expression we don't evaluate — leave as-is
+        return
+    ref = cond.get("field")
+    if ref != "." and ref not in field_names:
+        errors.append(f"{where}: show-if references an unknown question '{ref}'.")
+    if cond.get("op", "eq") not in RELEVANCE_OPS:
+        errors.append(f"{where}: show-if operator must be 'eq' or 'ne'.")
+    if "value" not in cond:
+        errors.append(f"{where}: show-if needs a value.")
+
+
+def validate_schema(data) -> None:
+    """Raise :class:`SchemaValidationError` if ``data`` is not a usable schema.
+
+    Guards the LIVE form against a bad admin edit: enforces structure, unique and
+    well-formed question names, known field types, valid choice-list references,
+    sane show-if rules, and the continued presence of the system fields the
+    submission pipeline depends on (consent, respondent_type, …).
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        raise SchemaValidationError(["The schema must be a JSON object."])
+
+    for key in ("id_string", "version", "title", "sections", "choices"):
+        if key not in data:
+            errors.append(f"Missing required top-level key: '{key}'.")
+
+    sections = data.get("sections")
+    choices = data.get("choices", {})
+    if not isinstance(sections, list) or not sections:
+        errors.append("'sections' must be a non-empty list.")
+        sections = []
+    if not isinstance(choices, dict):
+        errors.append("'choices' must be an object of named choice lists.")
+        choices = {}
+
+    # First pass: collect every field name so show-if references can be checked.
+    all_names: set[str] = set()
+    for sec in sections:
+        if isinstance(sec, dict):
+            for f in sec.get("fields") or []:
+                if isinstance(f, dict) and f.get("name"):
+                    all_names.add(f["name"])
+
+    seen: set[str] = set()
+    for si, sec in enumerate(sections):
+        if not isinstance(sec, dict):
+            errors.append(f"Section #{si + 1} must be an object.")
+            continue
+        sname = sec.get("name") or f"#{si + 1}"
+        fields = sec.get("fields")
+        if not isinstance(fields, list):
+            errors.append(f"Section '{sname}' must have a list of fields.")
+            continue
+        _check_condition(sec.get("relevant"), all_names, f"Section '{sname}'", errors)
+        for f in fields:
+            if not isinstance(f, dict):
+                errors.append(f"A field in section '{sname}' is not an object.")
+                continue
+            name = f.get("name")
+            ftype = f.get("type")
+            if not name or not isinstance(name, str) or not _FIELD_NAME_RE.match(name):
+                errors.append(
+                    f"Question name '{name}' is invalid — use letters, numbers and "
+                    "underscores, starting with a letter."
+                )
+            elif name in seen:
+                errors.append(f"Duplicate question name '{name}' (names must be unique).")
+            else:
+                seen.add(name)
+            if ftype not in EDITABLE_FIELD_TYPES:
+                errors.append(
+                    f"Question '{name}': type '{ftype}' is not allowed "
+                    "(text, select_one or note)."
+                )
+            if ftype != "note" and not f.get("label"):
+                errors.append(f"Question '{name}': a label is required.")
+            if ftype == "select_one":
+                lst = f.get("list")
+                if not lst or lst not in choices:
+                    errors.append(
+                        f"Question '{name}': a multiple-choice question needs a valid "
+                        "choice list."
+                    )
+            _check_condition(f.get("relevant"), all_names, f"Question '{name}'", errors)
+
+    missing = CORE_FIELDS - all_names
+    if missing:
+        errors.append(
+            "These system questions must remain in the form (removing them breaks "
+            "submission storage): " + ", ".join(sorted(missing)) + "."
+        )
+
+    if errors:
+        raise SchemaValidationError(errors)
 
 
 def cond_satisfied(cond: dict | None, data: dict) -> bool:

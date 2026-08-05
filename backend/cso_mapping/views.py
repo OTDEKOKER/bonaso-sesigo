@@ -31,14 +31,17 @@ from rest_framework.views import APIView
 
 from audit.recording import record_audit_event
 
-from .models import CsoMappingDraft, CsoMappingSubmission
+from .models import CsoMappingDraft, CsoMappingSchemaVersion, CsoMappingSubmission
 from .permissions import IsAdminRole
 from .schema import (
     CORE_BOOL_FIELDS,
     CORE_TEXT_FIELDS,
+    SchemaValidationError,
+    _bundled_schema,
     field_is_active,
     iter_answerable_fields,
     load_schema,
+    validate_schema,
 )
 from .serializers import (
     DraftWriteSerializer,
@@ -439,3 +442,125 @@ class SubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         for row in ws.iter_rows(min_row=2):
             for cell in row:
                 cell.alignment = wrap
+
+
+# ---------------------------------------------------------------------------
+# Form editor (admin-only): edit the questionnaire schema without a code deploy.
+# ---------------------------------------------------------------------------
+def _ensure_schema_seed() -> None:
+    """Seed the first DB version from the bundled file if the table is empty, so the
+    editor always has a version to load and the DB becomes the source of truth."""
+    if not CsoMappingSchemaVersion.objects.exists():
+        bundled = _bundled_schema()
+        CsoMappingSchemaVersion.objects.create(
+            schema=bundled,
+            version_label=str(bundled.get("version", ""))[:64],
+            note="Initial version (imported from the bundled form).",
+            is_active=True,
+        )
+
+
+def _version_summary(version) -> dict:
+    return {
+        "id": version.pk,
+        "version_label": version.version_label,
+        "note": version.note,
+        "is_active": version.is_active,
+        "created_at": version.created_at,
+        "created_by": getattr(version.created_by, "username", None),
+    }
+
+
+def _activate_new_version(schema, *, label, note, user):
+    """Deactivate the current active version and make `schema` the new active one."""
+    with transaction.atomic():
+        CsoMappingSchemaVersion.objects.filter(is_active=True).update(is_active=False)
+        return CsoMappingSchemaVersion.objects.create(
+            schema=schema,
+            version_label=str(label)[:64],
+            note=str(note)[:255],
+            is_active=True,
+            created_by=user if getattr(user, "is_authenticated", False) else None,
+        )
+
+
+class CsoMappingSchemaAdminView(APIView):
+    """Admin-only: read or replace the active questionnaire schema.
+
+    GET returns the live schema (same shape as the public endpoint). PUT accepts
+    ``{"schema": <schema>, "note": <optional str>}`` (or a bare schema), validates
+    it, and — only if valid — saves it as the new active version. A rejected edit
+    never touches the live form.
+    """
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        _ensure_schema_seed()
+        return Response(load_schema())
+
+    def put(self, request):
+        payload = request.data if isinstance(request.data, dict) else {}
+        schema = payload.get("schema", payload)
+        note = payload.get("note", "") if isinstance(payload, dict) else ""
+        try:
+            validate_schema(schema)
+        except SchemaValidationError as exc:
+            return Response({"errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
+        version = _activate_new_version(
+            schema,
+            label=schema.get("version", "") if isinstance(schema, dict) else "",
+            note=note,
+            user=request.user,
+        )
+        record_audit_event(
+            action="update",
+            request=request,
+            object_type="cso_schema",
+            object_id=str(version.pk),
+            description="Updated the CSO mapping questionnaire form",
+            metadata={"version": version.version_label},
+        )
+        return Response(load_schema())
+
+
+class CsoMappingSchemaHistoryView(APIView):
+    """Admin-only: list saved schema versions (most recent first)."""
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        _ensure_schema_seed()
+        versions = CsoMappingSchemaVersion.objects.select_related("created_by")[:50]
+        return Response([_version_summary(v) for v in versions])
+
+
+class CsoMappingSchemaActivateView(APIView):
+    """Admin-only: roll back by re-activating a previous version (copied forward)."""
+
+    permission_classes = [IsAdminRole]
+
+    def post(self, request, pk):
+        target = CsoMappingSchemaVersion.objects.filter(pk=pk).first()
+        if target is None:
+            return Response(
+                {"detail": "Version not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        try:
+            validate_schema(target.schema)
+        except SchemaValidationError as exc:
+            return Response({"errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
+        version = _activate_new_version(
+            target.schema,
+            label=target.version_label,
+            note=f"Rolled back to version #{target.pk}.",
+            user=request.user,
+        )
+        record_audit_event(
+            action="update",
+            request=request,
+            object_type="cso_schema",
+            object_id=str(version.pk),
+            description=f"Rolled back the CSO mapping form to version #{target.pk}",
+        )
+        return Response(load_schema())
