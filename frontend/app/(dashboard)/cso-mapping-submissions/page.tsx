@@ -254,14 +254,18 @@ export default function CsoMappingSubmissionsPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="font-medium text-slate-800">{row.responding_entity}</TableCell>
+                    <TableCell className="align-top font-medium text-slate-800">
+                      <span className="block max-w-[16rem] whitespace-normal break-words">{row.responding_entity}</span>
+                    </TableCell>
                     <TableCell>{row.respondent_name}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={TYPE_BADGE[row.respondent_type] ?? ""}>
                         {row.respondent_type_display}
                       </Badge>
                     </TableCell>
-                    <TableCell>{row.primary_district}</TableCell>
+                    <TableCell className="align-top">
+                      <span className="block max-w-[22rem] whitespace-normal break-words">{row.primary_district}</span>
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-sm text-slate-600">
                       {formatDate(row.submitted_at)}
                     </TableCell>
