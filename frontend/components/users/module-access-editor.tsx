@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, RotateCcw, Save } from "lucide-react"
+import { Ban, Loader2, RotateCcw, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
@@ -68,6 +68,18 @@ export function ModuleAccessEditor({ userId, role }: { userId: number; role: str
     toast({ title: `Loaded ${prettyLabel(role)} defaults`, description: "Review and Save to apply." })
   }
 
+  const clearAll = () => {
+    const next: ModuleState = {}
+    for (const moduleKey of Object.keys(catalog)) {
+      next[moduleKey] = { enabled: false, actions: new Set<string>() }
+    }
+    setState(next)
+    toast({
+      title: "Cleared all modules",
+      description: "Tick only what this user should have, then Save.",
+    })
+  }
+
   const toggleModule = (module: string, enabled: boolean) => {
     setState((current) => {
       const existing = current[module]?.actions ?? new Set<string>()
@@ -122,6 +134,10 @@ export function ModuleAccessEditor({ userId, role }: { userId: number; role: str
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={clearAll} disabled={loading || saving}>
+            <Ban className="mr-2 h-4 w-4" />
+            Clear all
+          </Button>
           <Button variant="outline" size="sm" onClick={loadRoleDefaults} disabled={loading || saving}>
             <RotateCcw className="mr-2 h-4 w-4" />
             Load {prettyLabel(role)} defaults

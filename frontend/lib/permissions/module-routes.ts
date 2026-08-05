@@ -20,6 +20,11 @@ const MODULE_BY_PATH: Record<string, string> = {
   "/uploads": "uploads",
   "/analysis": "analytics",
   "/reports": "reports",
+  // Funder reports are part of the Reports module.
+  "/funder-reports": "reports",
+  // Reporting-period windows are an M&E/admin control — gate with Targets
+  // (managers/admins have it; front-line data entry does not).
+  "/reporting-periods": "targets",
   "/messages": "messages",
   "/announcements": "notifications",
   "/support": "support",
