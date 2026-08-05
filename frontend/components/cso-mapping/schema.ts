@@ -55,7 +55,9 @@ export type Answers = Record<string, string>
 export function condSatisfied(cond: Cond | null | undefined, answers: Answers): boolean {
   if (!cond) return true
   if (cond.raw !== undefined) return true // unparsed expression — show by default
-  return String(answers[cond.field ?? ""] ?? "") === cond.value
+  const actual = String(answers[cond.field ?? ""] ?? "")
+  if (cond.op === "ne") return actual !== cond.value
+  return actual === cond.value
 }
 
 /** A field is active only when its section and its own relevance both hold. */

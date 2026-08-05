@@ -61,7 +61,10 @@ def cond_satisfied(cond: dict | None, data: dict) -> bool:
         return True
     if "raw" in cond:  # unexpected expression we couldn't parse — treat as shown
         return True
-    return str(data.get(cond["field"], "")) == cond["value"]
+    actual = str(data.get(cond["field"], ""))
+    if cond.get("op") == "ne":
+        return actual != cond["value"]
+    return actual == cond["value"]
 
 
 def field_is_active(section: dict, field: dict, data: dict) -> bool:

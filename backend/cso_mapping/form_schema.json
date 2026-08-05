@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260805_v10",
+  "version": "20260805_v11",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -155,7 +155,11 @@
           "hint": "Organisation registration number, if registered (e.g. CR12345).",
           "required": false,
           "multiline": false,
-          "relevant": null,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "ne",
+            "value": "strategic_structure"
+          },
           "constraint": null
         },
         {
@@ -165,7 +169,11 @@
           "hint": "If registered. Format: DD-MM-YYYY.",
           "required": false,
           "multiline": false,
-          "relevant": null,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "ne",
+            "value": "strategic_structure"
+          },
           "constraint": null
         },
         {
@@ -175,7 +183,11 @@
           "hint": null,
           "required": false,
           "multiline": true,
-          "relevant": null,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "ne",
+            "value": "strategic_structure"
+          },
           "constraint": null
         },
         {
@@ -185,7 +197,11 @@
           "hint": "Approximate number of years the organisation has been operating.",
           "required": false,
           "multiline": false,
-          "relevant": null,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "ne",
+            "value": "strategic_structure"
+          },
           "constraint": null
         },
         {
@@ -195,7 +211,11 @@
           "hint": "Total annual budget in Botswana Pula, if available.",
           "required": false,
           "multiline": false,
-          "relevant": null,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "ne",
+            "value": "strategic_structure"
+          },
           "constraint": null
         },
         {
@@ -205,7 +225,11 @@
           "hint": null,
           "required": false,
           "multiline": false,
-          "relevant": null,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "ne",
+            "value": "strategic_structure"
+          },
           "constraint": null
         },
         {
@@ -215,7 +239,11 @@
           "hint": null,
           "required": false,
           "multiline": false,
-          "relevant": null,
+          "relevant": {
+            "field": "respondent_type",
+            "op": "ne",
+            "value": "strategic_structure"
+          },
           "constraint": null
         }
       ]
