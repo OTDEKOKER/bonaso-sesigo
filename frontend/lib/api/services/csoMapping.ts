@@ -8,6 +8,21 @@
 import { api, fetchWithAuth, normalizeApiError, type PaginatedResponse } from "../client";
 import type { FormSchema } from "@/components/cso-mapping/schema";
 
+/** A saved version of the questionnaire form (admin form-editor history). */
+export interface SchemaVersion {
+  id: number;
+  version_label: string;
+  note: string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string | null;
+}
+
+/** Validation problems returned by the editor's save endpoint (HTTP 400). */
+export interface SchemaSaveError {
+  errors: string[];
+}
+
 export interface CsoSubmission {
   id: number;
   submitted_at: string;
@@ -59,6 +74,48 @@ export const csoMappingService = {
 
   async schema(): Promise<FormSchema> {
     const { data } = await api.get<FormSchema>("/cso-mapping/schema/");
+    return data;
+  },
+
+  // --- Admin form editor (admin role only) -------------------------------
+  /** The current editable schema (seeds from the bundled form on first call). */
+  async adminSchema(): Promise<FormSchema> {
+    const { data } = await api.get<FormSchema>("/cso-mapping/admin/schema/");
+    return data;
+  },
+
+  /**
+   * Save an edited schema as the new active version. Throws with a `.errors`
+   * string[] (from the 400 body) when the schema is rejected by validation.
+   */
+  async saveSchema(schema: FormSchema, note?: string): Promise<FormSchema> {
+    try {
+      const { data } = await api.put<FormSchema>("/cso-mapping/admin/schema/", {
+        schema,
+        note: note ?? "",
+      });
+      return data;
+    } catch (err: unknown) {
+      const errors = (err as { response?: { data?: SchemaSaveError } })?.response?.data?.errors;
+      if (Array.isArray(errors)) {
+        const e = new Error("Schema validation failed") as Error & { errors: string[] };
+        e.errors = errors;
+        throw e;
+      }
+      throw err;
+    }
+  },
+
+  async schemaHistory(): Promise<SchemaVersion[]> {
+    const { data } = await api.get<SchemaVersion[]>("/cso-mapping/admin/schema/history/");
+    return data;
+  },
+
+  async activateSchema(id: number): Promise<FormSchema> {
+    const { data } = await api.post<FormSchema>(
+      `/cso-mapping/admin/schema/history/${id}/activate/`,
+      {},
+    );
     return data;
   },
 
