@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260730_v9",
+  "version": "20260805_v10",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -144,6 +144,76 @@
           "label": "Primary district or geographic area represented",
           "hint": null,
           "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "registration_number",
+          "type": "text",
+          "label": "Registration number",
+          "hint": "Organisation registration number, if registered (e.g. CR12345).",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "date_of_registration",
+          "type": "text",
+          "label": "Date of registration",
+          "hint": "If registered. Format: DD-MM-YYYY.",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "physical_address",
+          "type": "text",
+          "label": "Physical address",
+          "hint": null,
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "years_in_operation",
+          "type": "text",
+          "label": "Number of years in operation",
+          "hint": "Approximate number of years the organisation has been operating.",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annual_budget_fy2627",
+          "type": "text",
+          "label": "Annual budget — FY 2026/27 (BWP)",
+          "hint": "Total annual budget in Botswana Pula, if available.",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annual_budget_fy2526",
+          "type": "text",
+          "label": "Annual budget — FY 2025/26 (BWP)",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annual_budget_fy2425",
+          "type": "text",
+          "label": "Annual budget — FY 2024/25 (BWP)",
+          "hint": null,
+          "required": false,
           "multiline": false,
           "relevant": null,
           "constraint": null
