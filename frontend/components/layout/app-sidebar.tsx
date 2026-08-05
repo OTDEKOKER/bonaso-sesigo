@@ -387,18 +387,6 @@ export function AppSidebar() {
             subItems={item.children}
           />
         ))}
-      </nav>
-
-      {/* Bottom section */}
-      <div className="border-t border-sidebar-border p-3">
-        {canViewSystemStatus && (
-          <NavItem
-            title="System Status"
-            href="/system-status"
-            icon={<ServerCog className="h-4 w-4" />}
-            isActive={pathname === "/system-status"}
-          />
-        )}
         {canViewSystemStatus && (
           <NavItem
             title="CSO Mapping"
@@ -413,6 +401,18 @@ export function AppSidebar() {
             href="/cso-mapping-form-editor"
             icon={<FilePenLine className="h-4 w-4" />}
             isActive={pathname === "/cso-mapping-form-editor"}
+          />
+        )}
+      </nav>
+
+      {/* Bottom section */}
+      <div className="border-t border-sidebar-border p-3">
+        {canViewSystemStatus && (
+          <NavItem
+            title="System Status"
+            href="/system-status"
+            icon={<ServerCog className="h-4 w-4" />}
+            isActive={pathname === "/system-status"}
           />
         )}
         {isNavVisible("/settings") && (
