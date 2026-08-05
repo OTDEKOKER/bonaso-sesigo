@@ -16,7 +16,7 @@ import { IdleLogout } from "@/components/auth/idle-logout"
 import { SessionModeProvider, useSessionMode } from "@/lib/contexts/session-mode-context"
 import { isTrainingMode, isSharedLiveRoute } from "@/lib/training-mode"
 import { useModulePermissions } from "@/lib/permissions/module-permissions"
-import { moduleForPath } from "@/lib/permissions/module-routes"
+import { firstAccessibleRoute, moduleForPath } from "@/lib/permissions/module-routes"
 import { NoAccessState } from "@/components/shared/ux-states"
 
 function TrainingModeBanner() {
@@ -291,15 +291,32 @@ function ModuleRouteGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const { canView } = useModulePermissions()
   const activeModule = moduleForPath(pathname)
-  if (activeModule && !canView(activeModule)) {
+  const denied = Boolean(activeModule && !canView(activeModule))
+  // Everyone is landed on /dashboard after login. A user restricted away from it
+  // (e.g. granted only the CSO Mapping module) would otherwise dead-end on
+  // "Access denied" — send them to their first accessible page instead.
+  const landing = firstAccessibleRoute(canView)
+  const isDefaultLanding =
+    pathname === "/dashboard" || pathname === "/training/dashboard"
+  useEffect(() => {
+    if (denied && isDefaultLanding && landing !== pathname) {
+      router.replace(landing)
+    }
+  }, [denied, isDefaultLanding, landing, pathname, router])
+
+  if (denied) {
+    // Redirecting the default landing away — render a brief placeholder.
+    if (isDefaultLanding) {
+      return <div className="min-h-[60vh] p-6 text-sm text-muted-foreground">Loading…</div>
+    }
     return (
       <div className="min-h-[60vh] p-6">
         <NoAccessState
           title="Access denied"
           description="You don't have permission to view this section. Contact an administrator if you believe this is a mistake."
           action={
-            <Button variant="outline" onClick={() => router.replace("/dashboard")}>
-              Go to Dashboard
+            <Button variant="outline" onClick={() => router.replace(landing)}>
+              Go to your home page
             </Button>
           }
         />

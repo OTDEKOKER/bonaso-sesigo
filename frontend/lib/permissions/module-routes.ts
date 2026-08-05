@@ -47,3 +47,34 @@ export function moduleForPath(path: string | null | undefined): string | null {
   )
   return match ? MODULE_BY_PATH[match] : null
 }
+
+// Preferred landing order for a user who cannot open /dashboard (e.g. a user
+// restricted to a single module such as CSO Mapping). The default post-login
+// route is /dashboard; if that is not viewable, send them to the first route
+// they can view instead of a dead-end "Access denied" screen.
+const LANDING_PRIORITY: string[] = [
+  "/dashboard",
+  "/cso-mapping-submissions",
+  "/organizations",
+  "/projects",
+  "/indicators",
+  "/targets",
+  "/respondents",
+  "/aggregates",
+  "/events",
+  "/social",
+  "/analysis",
+  "/reports",
+  "/uploads",
+  "/messages",
+  "/support",
+]
+
+/** The first route the user can view, falling back to /settings (never gated). */
+export function firstAccessibleRoute(canView: (module: string) => boolean): string {
+  for (const route of LANDING_PRIORITY) {
+    const module = MODULE_BY_PATH[route]
+    if (!module || canView(module)) return route
+  }
+  return "/settings"
+}
