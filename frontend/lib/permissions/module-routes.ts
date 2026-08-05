@@ -71,10 +71,10 @@ const LANDING_PRIORITY: string[] = [
 ]
 
 /** The first route the user can view, falling back to /settings (never gated). */
-export function firstAccessibleRoute(canView: (module: string) => boolean): string {
+export function firstAccessibleRoute(canView: (moduleName: string) => boolean): string {
   for (const route of LANDING_PRIORITY) {
-    const module = MODULE_BY_PATH[route]
-    if (!module || canView(module)) return route
+    const mod = MODULE_BY_PATH[route]
+    if (!mod || canView(mod)) return route
   }
   return "/settings"
 }
