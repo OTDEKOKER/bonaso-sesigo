@@ -32,7 +32,6 @@ import {
   BookOpen,
   LifeBuoy,
   ClipboardList,
-  FilePenLine,
 } from "lucide-react"
 import {
   Collapsible,
@@ -392,15 +391,11 @@ export function AppSidebar() {
             title="CSO Mapping"
             href="/cso-mapping-submissions"
             icon={<ClipboardList className="h-4 w-4" />}
-            isActive={pathname === "/cso-mapping-submissions"}
-          />
-        )}
-        {canViewSystemStatus && (
-          <NavItem
-            title="Questionnaire Editor"
-            href="/cso-mapping-form-editor"
-            icon={<FilePenLine className="h-4 w-4" />}
-            isActive={pathname === "/cso-mapping-form-editor"}
+            isActive={pathname?.startsWith("/cso-mapping") ?? false}
+            subItems={[
+              { title: "Submissions", href: "/cso-mapping-submissions" },
+              { title: "Questionnaire Editor", href: "/cso-mapping-form-editor" },
+            ]}
           />
         )}
       </nav>
