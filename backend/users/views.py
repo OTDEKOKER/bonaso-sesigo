@@ -363,7 +363,7 @@ class PasswordResetRequestCreateView(APIView):
 
     GENERIC_RESPONSE = {
         'detail': (
-            'If an account matches, an administrator has been notified and will '
+            'If an account matches, an administrator will review your request and '
             'reset your password. Please contact your supervisor if urgent.'
         )
     }
