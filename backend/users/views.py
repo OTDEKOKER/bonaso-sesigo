@@ -19,7 +19,10 @@ from users.permissions import HasModulePermission
 
 from django.db import transaction
 
-from .models import UserActivity, UserModulePermission, ConfidentialityAcknowledgement
+from .models import (
+    UserActivity, UserModulePermission, ConfidentialityAcknowledgement,
+    PasswordResetRequest,
+)
 from .module_permissions import (
     MODULE_ACTIONS,
     MODULES,
@@ -30,6 +33,8 @@ from .serializers import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     PasswordChangeSerializer, AdminResetPasswordSerializer, UserActivitySerializer,
     CurrentUserDashboardPreferencesSerializer,
+    PasswordResetRequestCreateSerializer, PasswordResetRequestSerializer,
+    PasswordResetApproveSerializer,
 )
 from audit.recording import record_audit_event
 
@@ -188,6 +193,10 @@ def current_user(request):
     # Mandatory confidentiality gate: the frontend blocks every protected page
     # until needs_acknowledgement is false for the current version.
     data['confidentiality'] = confidentiality_status(user)
+    # DPA password-expiry status. The frontend PasswordExpiryGate blocks every
+    # protected page while expired == true (like the confidentiality gate), and
+    # shows a soft banner within warn_days of expiry.
+    data['password_status'] = user.password_status()
     return Response(data)
 
 
@@ -287,6 +296,184 @@ class AdminResetPasswordView(APIView):
             return Response({'detail': 'Password reset successfully.'})
         except User.DoesNotExist:
             return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+def _client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    return xff.split(',')[0].strip() if xff else request.META.get('REMOTE_ADDR')
+
+
+class ChangePasswordView(APIView):
+    """Self-service password change (requires the current password).
+
+    Used both for routine changes and to clear an expired password (DPA policy):
+    on success ``password_changed_at`` is stamped by User.set_password, which
+    resets the expiry clock. Returns the fresh password_status so the frontend
+    gate can release immediately.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_change'
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        old_password = serializer.validated_data['old_password']
+        new_password = serializer.validated_data['new_password']
+
+        if not user.check_password(old_password):
+            return Response(
+                {'old_password': ['Current password is incorrect.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new_password == old_password:
+            return Response(
+                {'new_password': ['New password must be different from the current one.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)  # stamps password_changed_at
+        user.save(update_fields=['password', 'password_changed_at'])
+        UserActivity.objects.create(
+            user=user,
+            action='update',
+            model_name='User',
+            object_id=user.id,
+            description='Changed own password',
+            ip_address=_client_ip(request),
+        )
+        return Response({
+            'detail': 'Password changed successfully.',
+            'password_status': user.password_status(),
+        })
+
+
+class PasswordResetRequestCreateView(APIView):
+    """Public: a user who cannot sign in asks an admin to reset their password.
+
+    Anti-enumeration: always returns the same generic response whether or not the
+    identifier matches an account. Rate limited (``password_reset`` scope).
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_reset'
+
+    GENERIC_RESPONSE = {
+        'detail': (
+            'If an account matches, an administrator has been notified and will '
+            'reset your password. Please contact your supervisor if urgent.'
+        )
+    }
+
+    def post(self, request):
+        from django.db.models import Q
+
+        serializer = PasswordResetRequestCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        identifier = serializer.validated_data['identifier'].strip()
+        note = serializer.validated_data.get('note', '')
+
+        matched = User.objects.filter(
+            Q(username__iexact=identifier) | Q(email__iexact=identifier)
+        ).first()
+
+        # Do not create duplicate pending rows for the same account/identifier.
+        existing = PasswordResetRequest.objects.filter(
+            identifier__iexact=identifier, status='pending'
+        ).first()
+        if not existing:
+            PasswordResetRequest.objects.create(
+                identifier=identifier,
+                user=matched,
+                note=note,
+                ip_address=_client_ip(request),
+            )
+        return Response(self.GENERIC_RESPONSE)
+
+
+class PasswordResetRequestListView(generics.ListAPIView):
+    """Admin: pending (default) or all password-reset requests."""
+
+    serializer_class = PasswordResetRequestSerializer
+    permission_classes = [IsPortalAdmin]
+
+    def get_queryset(self):
+        qs = PasswordResetRequest.objects.select_related('user', 'resolved_by')
+        status_param = (self.request.query_params.get('status') or 'pending').strip().lower()
+        if status_param and status_param != 'all':
+            qs = qs.filter(status=status_param)
+        return qs
+
+
+class PasswordResetRequestApproveView(APIView):
+    """Admin approves a request by setting the matched account's new password."""
+
+    permission_classes = [IsPortalAdmin]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_reset'
+
+    def post(self, request, pk=None):
+        req = PasswordResetRequest.objects.filter(pk=pk).select_related('user').first()
+        if req is None:
+            return Response({'detail': 'Request not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if req.status != 'pending':
+            return Response(
+                {'detail': f'Request already {req.status}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if req.user is None:
+            return Response(
+                {'detail': 'No matching account for this request. Reject it instead.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PasswordResetApproveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = req.user
+        user.set_password(serializer.validated_data['new_password'])  # stamps clock
+        user.save(update_fields=['password', 'password_changed_at'])
+
+        req.status = 'approved'
+        req.resolved_at = timezone.now()
+        req.resolved_by = request.user
+        req.resolution_note = serializer.validated_data.get('resolution_note', '')
+        req.save(update_fields=['status', 'resolved_at', 'resolved_by', 'resolution_note'])
+
+        UserActivity.objects.create(
+            user=request.user,
+            action='update',
+            model_name='User',
+            object_id=user.id,
+            description=f'Approved password-reset request for {user.username}',
+            ip_address=_client_ip(request),
+        )
+        return Response({'detail': 'Password reset and request approved.'})
+
+
+class PasswordResetRequestRejectView(APIView):
+    """Admin rejects a request without changing any password."""
+
+    permission_classes = [IsPortalAdmin]
+
+    def post(self, request, pk=None):
+        req = PasswordResetRequest.objects.filter(pk=pk).first()
+        if req is None:
+            return Response({'detail': 'Request not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if req.status != 'pending':
+            return Response(
+                {'detail': f'Request already {req.status}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        req.status = 'rejected'
+        req.resolved_at = timezone.now()
+        req.resolved_by = request.user
+        req.resolution_note = (request.data.get('resolution_note') or '')[:1000]
+        req.save(update_fields=['status', 'resolved_at', 'resolved_by', 'resolution_note'])
+        return Response({'detail': 'Request rejected.'})
 
 
 # ---------------------------

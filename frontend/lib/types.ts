@@ -39,6 +39,16 @@ export interface User {
     required_version: string
     needs_acknowledgement: boolean
   }
+  // DPA password-expiry status (from /api/users/me/). The dashboard blocks every
+  // protected page while `expired` is true (PasswordExpiryGate), and shows a soft
+  // banner once within `warn_days` of `expires_at`.
+  password_status?: {
+    expiry_enabled: boolean
+    expired: boolean
+    expires_at: string | null
+    days_remaining: number | null
+    warn_days: number
+  }
 }
 
 export interface Profile extends User {

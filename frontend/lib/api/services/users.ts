@@ -68,6 +68,24 @@ export interface UserActivity {
   created_at: string;
 }
 
+/** A user's admin-approved password-reset request (DPA fallback flow). */
+export interface PasswordResetRequestRow {
+  id: number;
+  identifier: string;
+  user: number | null;
+  username: string | null;
+  user_email: string | null;
+  matched: boolean;
+  note: string;
+  status: 'pending' | 'approved' | 'rejected';
+  ip_address: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: number | null;
+  resolved_by_username: string | null;
+  resolution_note: string;
+}
+
 // ============================================================================
 // Users Service
 // ============================================================================
@@ -153,6 +171,45 @@ export const usersService = {
     await api.post(`/users/admin-reset-password/`, {
       user_id: userId,
       new_password: newPassword,
+    });
+  },
+
+  /**
+   * Admin: list password-reset requests (default: pending).
+   * Django endpoint: GET /api/users/password-reset-requests/?status=
+   */
+  async listPasswordResetRequests(
+    status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending'
+  ): Promise<PaginatedResponse<PasswordResetRequestRow>> {
+    const { data } = await api.get<PaginatedResponse<PasswordResetRequestRow>>(
+      `/users/password-reset-requests/`,
+      { status }
+    );
+    return data;
+  },
+
+  /**
+   * Admin: approve a request by setting the account's new password.
+   * Django endpoint: POST /api/users/password-reset-requests/:id/approve/
+   */
+  async approvePasswordResetRequest(
+    id: number,
+    newPassword: string,
+    resolutionNote = ''
+  ): Promise<void> {
+    await api.post(`/users/password-reset-requests/${id}/approve/`, {
+      new_password: newPassword,
+      resolution_note: resolutionNote,
+    });
+  },
+
+  /**
+   * Admin: reject a request without changing any password.
+   * Django endpoint: POST /api/users/password-reset-requests/:id/reject/
+   */
+  async rejectPasswordResetRequest(id: number, resolutionNote = ''): Promise<void> {
+    await api.post(`/users/password-reset-requests/${id}/reject/`, {
+      resolution_note: resolutionNote,
     });
   },
 

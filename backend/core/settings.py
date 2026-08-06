@@ -169,6 +169,15 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# Password expiry (DPA compliance). Passwords are considered expired this many
+# days after they were last changed; an expired user is forced to set a new one
+# before continuing (see users.User.is_password_expired / the /me password_status
+# payload and the frontend PasswordExpiryGate). Set to 0 to disable expiry
+# entirely. Users.User.set_password stamps password_changed_at on every change.
+PASSWORD_EXPIRY_DAYS = int(os.getenv('PASSWORD_EXPIRY_DAYS', '90'))
+# How many days before expiry the UI starts nudging the user to change it early.
+PASSWORD_EXPIRY_WARN_DAYS = int(os.getenv('PASSWORD_EXPIRY_WARN_DAYS', '14'))
+
 # Internationalization
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
@@ -335,6 +344,11 @@ REST_FRAMEWORK = {
         'login': os.getenv('THROTTLE_LOGIN', '10/minute'),
         'token_refresh': os.getenv('THROTTLE_TOKEN_REFRESH', '30/minute'),
         'password_reset': os.getenv('THROTTLE_PASSWORD_RESET', '5/hour'),
+        # Self-service change-password (DPA expiry gate). Authenticated + requires
+        # the current password, so brute-force risk is low; keep it lenient enough
+        # that a user mistyping their current password a few times at the forced
+        # expiry gate is not locked out for an hour (keyed by user).
+        'password_change': os.getenv('THROTTLE_PASSWORD_CHANGE', '20/hour'),
         # Encrypted backup generation is expensive (pg dump + tar + AES); cap it
         # per admin so an accidental or malicious loop can't hammer the server.
         'backup': os.getenv('THROTTLE_BACKUP', '6/hour'),

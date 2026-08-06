@@ -55,7 +55,9 @@ export interface PasswordChangeRequest {
 }
 
 export interface PasswordResetRequest {
-  email: string;
+  /** Username or email the account signs in with (anti-enumeration on the server). */
+  identifier: string;
+  note?: string;
 }
 
 export interface PasswordResetConfirm {
@@ -219,23 +221,32 @@ export const authService = {
   },
 
   /**
-   * Change password for logged in user (via Djoser)
-   * Django endpoint: POST /api/manage/users/set_password/
+   * Change the logged-in user's own password (verifies the current one). Also
+   * clears an expired password (DPA policy) — the server resets the expiry clock
+   * and returns the fresh password_status so the gate can release immediately.
+   * Django endpoint: POST /api/users/change-password/
    */
-  async changePassword(request: PasswordChangeRequest): Promise<void> {
-    await api.post('/manage/users/set_password/', {
-      current_password: request.old_password,
-      new_password: request.new_password,
-      re_new_password: request.confirm_password,
-    });
+  async changePassword(
+    request: PasswordChangeRequest
+  ): Promise<{ detail: string; password_status: User['password_status'] }> {
+    const { data } = await api.post<{
+      detail: string;
+      password_status: User['password_status'];
+    }>(`${USERS_BASE_PATH}/change-password/`, request);
+    return data;
   },
 
   /**
-   * Request password reset email (via Djoser)
-   * Django endpoint: POST /api/manage/users/reset_password/
+   * Public: a user who cannot sign in (forgotten/expired password) asks an admin
+   * to reset it. The server never reveals whether the account exists.
+   * Django endpoint: POST /api/users/password-reset-request/
    */
-  async requestPasswordReset(request: PasswordResetRequest): Promise<void> {
-    await api.post('/manage/users/reset_password/', request);
+  async requestPasswordReset(request: PasswordResetRequest): Promise<{ detail: string }> {
+    const { data } = await api.post<{ detail: string }>(
+      `${USERS_BASE_PATH}/password-reset-request/`,
+      request
+    );
+    return data;
   },
 
   /**

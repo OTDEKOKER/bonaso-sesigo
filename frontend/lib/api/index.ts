@@ -58,6 +58,7 @@ export type {
   UserPermissionOption,
   ModulePermissionRow,
   ModulePermissionsResponse,
+  PasswordResetRequestRow,
 } from './services/users';
 
 // Projects, Tasks & Deadlines

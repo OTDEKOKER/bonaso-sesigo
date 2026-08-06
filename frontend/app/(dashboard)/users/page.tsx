@@ -44,6 +44,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { OrganizationSelect } from "@/components/shared/organization-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserActivityPanel } from "@/components/users/user-activity-panel"
+import { PasswordResetRequestsPanel } from "@/components/users/password-reset-requests-panel"
 import {
   Table,
   TableBody,
@@ -719,6 +720,7 @@ export default function UsersPage() {
           <TabsList>
             <TabsTrigger value="directory">Directory</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="requests">Reset Requests</TabsTrigger>
           </TabsList>
         ) : null}
         <TabsContent value="directory" className="mt-0 space-y-6 focus-visible:outline-none">
@@ -1059,6 +1061,11 @@ export default function UsersPage() {
         {canViewActivity ? (
           <TabsContent value="activity" className="mt-0 focus-visible:outline-none">
             <UserActivityPanel />
+          </TabsContent>
+        ) : null}
+        {canViewActivity ? (
+          <TabsContent value="requests" className="mt-0 focus-visible:outline-none">
+            <PasswordResetRequestsPanel />
           </TabsContent>
         ) : null}
       </Tabs>

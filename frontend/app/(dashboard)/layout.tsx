@@ -7,9 +7,11 @@ import { AuthProvider, useAuth } from "@/lib/contexts/auth-context"
 import { isPlatformAdmin } from "@/lib/permissions"
 import { systemService } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { X } from "lucide-react"
+import { KeyRound, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ConfidentialityGate } from "@/components/auth/confidentiality-gate"
+import { PasswordExpiryGate } from "@/components/auth/password-expiry-gate"
+import { ChangePasswordDialog } from "@/components/auth/change-password-dialog"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { IdleLogout } from "@/components/auth/idle-logout"
@@ -79,6 +81,41 @@ function BackupReminderBanner() {
         Go to System Status
       </Link>
     </div>
+  )
+}
+
+function PasswordExpiryBanner() {
+  const { user } = useAuth()
+  const [changeOpen, setChangeOpen] = useState(false)
+  const ps = user?.password_status
+
+  // Only nudge before expiry: enabled, not yet expired (the gate handles that),
+  // and within the warning window. days_remaining can be 0 (expires today).
+  const show =
+    !!ps &&
+    ps.expiry_enabled &&
+    !ps.expired &&
+    typeof ps.days_remaining === "number" &&
+    ps.days_remaining <= (ps.warn_days ?? 14)
+
+  if (!show) return null
+  const days = ps!.days_remaining as number
+  const when = days <= 0 ? "today" : days === 1 ? "in 1 day" : `in ${days} days`
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3 bg-amber-400 px-4 py-2 text-sm font-semibold text-amber-900">
+        <KeyRound className="h-4 w-4" />
+        <span>Your password expires {when}. Change it now to avoid being locked out.</span>
+        <button
+          onClick={() => setChangeOpen(true)}
+          className="underline underline-offset-2 hover:opacity-80"
+        >
+          Change password
+        </button>
+      </div>
+      <ChangePasswordDialog open={changeOpen} onOpenChange={setChangeOpen} />
+    </>
   )
 }
 
@@ -154,6 +191,7 @@ function DashboardShell({
         />
         <TrainingModeBanner />
         <BackupReminderBanner />
+        <PasswordExpiryBanner />
         <main className="min-h-[calc(100vh-var(--app-header-height))] min-w-0 w-full max-w-full overflow-x-clip p-4 lg:p-6">
           {children}
         </main>
@@ -256,6 +294,13 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const needsAck = user?.confidentiality?.needs_acknowledgement === true
   if (needsAck || (ackUnknown && !hasRevalidated)) {
     return <ConfidentialityGate />
+  }
+
+  // Mandatory DPA password-expiry gate: block every protected page until the
+  // user sets a new password. Same in-place render as the confidentiality gate,
+  // so the shell and page children never mount while the password is expired.
+  if (user?.password_status?.expired) {
+    return <PasswordExpiryGate />
   }
 
   return (

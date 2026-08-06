@@ -4,7 +4,7 @@ from django.contrib.auth.models import Permission, Group
 from django.contrib.auth.password_validation import validate_password
 from organizations.access import is_organization_admin
 from projects.models import Project
-from .models import UserActivity
+from .models import UserActivity, PasswordResetRequest
 
 User = get_user_model()
 
@@ -189,3 +189,40 @@ class CurrentUserDashboardPreferencesSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['home_dashboard_preferences']
+
+
+class PasswordResetRequestCreateSerializer(serializers.Serializer):
+    """Public submit: a user asks an admin to reset their password."""
+
+    identifier = serializers.CharField(max_length=254, trim_whitespace=True)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+
+class PasswordResetRequestSerializer(serializers.ModelSerializer):
+    """Admin-facing view of a pending/handled reset request."""
+
+    username = serializers.CharField(source='user.username', read_only=True, default=None)
+    user_email = serializers.CharField(source='user.email', read_only=True, default=None)
+    resolved_by_username = serializers.CharField(
+        source='resolved_by.username', read_only=True, default=None
+    )
+    matched = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PasswordResetRequest
+        fields = [
+            'id', 'identifier', 'user', 'username', 'user_email', 'matched',
+            'note', 'status', 'ip_address', 'created_at',
+            'resolved_at', 'resolved_by', 'resolved_by_username', 'resolution_note',
+        ]
+        read_only_fields = fields
+
+    def get_matched(self, obj):
+        return obj.user_id is not None
+
+
+class PasswordResetApproveSerializer(serializers.Serializer):
+    """Admin approves a request by setting the account's new password."""
+
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+    resolution_note = serializers.CharField(required=False, allow_blank=True, max_length=1000)

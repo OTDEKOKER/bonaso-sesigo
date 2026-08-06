@@ -284,6 +284,13 @@ function LoginForm() {
                   {isLoading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
                   {mode === "training" ? "Enter Training Mode" : "Login"}
                 </Button>
+
+                <a
+                  href="/password-reset-request"
+                  className="block text-center text-xs font-medium text-white/50 underline-offset-2 hover:text-white hover:underline"
+                >
+                  Forgot your password? Request a reset
+                </a>
               </form>
             </>
           )}
