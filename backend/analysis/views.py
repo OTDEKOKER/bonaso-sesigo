@@ -36,7 +36,7 @@ from projects.scope import (
     filter_queryset_by_assigned_projects,
 )
 from .serializers import ReportSerializer, SavedQuerySerializer, ScheduledReportSerializer, CoordinatorTargetSerializer
-from .services.coordinator_rollups import get_coordinator_performance, performance_status as coordinator_performance_status, fiscal_quarter_range
+from .services.coordinator_rollups import get_coordinator_performance, performance_status as coordinator_performance_status, fiscal_quarter_range, compute_actuals_for_specs
 from .services.management_intelligence import build_coordinator_cards
 from .services.geography import build_geographic_coverage
 from audit.recording import record_audit_event
@@ -1405,13 +1405,17 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         )
         return response
 
-    @action(detail=False, methods=['get'], url_path='export-targets')
-    def export_targets(self, request):
-        """Pivoted CSV of assigned indicators with their quarterly targets:
-        one row per indicator, columns Q1..Q4. Respects the current filters
-        (project, coordinator, indicator, year). A Coordinator/Year column is
-        added only when that filter isn't pinned, so the file stays unambiguous.
-        Deprecated indicator twins are collapsed onto their canonical.
+    def _assigned_target_rows(self, request, *, with_achieved):
+        """Shared builder for the pivoted assigned-indicator exports.
+
+        Returns ``(rows, single_coord, single_year)``. Each row is a dict with
+        ``coordinator``/``indicator``/``year``, ``Q1``..``Q4`` targets and (when
+        ``with_achieved``) ``Q1_ach``..``Q4_ach`` — the per-quarter achieved value
+        from the SAME certified rollup engine the dashboard uses, so the file can
+        never disagree with the on-screen numbers. Emits EVERY indicator on the
+        coordinator's active workbook layout in workbook order, blank where no
+        target/data. Read-only — never modifies the workbook. Deprecated indicator
+        twins are collapsed onto their canonical.
         """
         params = request.query_params
         single_coord = bool((params.get('coordinator_id') or '').strip() and params.get('coordinator_id') != 'all')
@@ -1428,22 +1432,11 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                 'indicator': (canonical.name if canonical else '') or f'Indicator {canon_id}',
                 'year': t.year,
                 'Q1': '', 'Q2': '', 'Q3': '', 'Q4': '',
+                'Q1_ach': '', 'Q2_ach': '', 'Q3_ach': '', 'Q4_ach': '',
             })
             if t.quarter in ('Q1', 'Q2', 'Q3', 'Q4'):
                 row[t.quarter] = t.target_value
 
-        header = []
-        if not single_coord:
-            header.append('coordinator')
-        header.append('indicator')
-        if not single_year:
-            header.append('year')
-        header += ['Q1', 'Q2', 'Q3', 'Q4', 'Total']
-
-        # The workbook layout is the source of truth: emit EVERY indicator on the
-        # coordinator's active workbook (in workbook order), filling Q1..Q4 where a
-        # target exists and leaving them BLANK where not yet targeted. Read-only —
-        # never modifies the workbook. `pivot` above is reused as the target lookup.
         from projects.models import WorkbookLayout
         from organizations.access import request_mode_value
         from organizations.models import Organization
@@ -1491,12 +1484,73 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                             'Q2': tv['Q2'] if tv else '',
                             'Q3': tv['Q3'] if tv else '',
                             'Q4': tv['Q4'] if tv else '',
+                            'Q1_ach': '', 'Q2_ach': '', 'Q3_ach': '', 'Q4_ach': '',
+                            '_coord_id': coord_id, '_canon_id': canon_id,
                         })
             else:
                 # No workbook layout — fall back to whatever targets exist.
                 for (c, _cid, _y), r in pivot.items():
                     if c == coord_id:
-                        rows.append(r)
+                        rows.append({**r, '_coord_id': c, '_canon_id': _cid})
+
+        # Achieved for EVERY emitted row/quarter — including indicators that have
+        # no target yet — from the certified spec engine (same scope/overlap/
+        # canonical rules as the per-target rollup, so numbers stay identical).
+        if with_achieved and rows:
+            project_id = self._resolve_export_project_id(request, targets)
+            if project_id is not None:
+                specs = []
+                for row in rows:
+                    cid, canon, yr = row.get('_coord_id'), row.get('_canon_id'), row.get('year')
+                    if cid is None or canon is None or yr in ('', None):
+                        continue
+                    for q in ('Q1', 'Q2', 'Q3', 'Q4'):
+                        specs.append((project_id, cid, canon, yr, q))
+                achieved = compute_actuals_for_specs(specs)
+                for row in rows:
+                    cid, canon, yr = row.get('_coord_id'), row.get('_canon_id'), row.get('year')
+                    if cid is None or canon is None or yr in ('', None):
+                        continue
+                    for q in ('Q1', 'Q2', 'Q3', 'Q4'):
+                        row[f'{q}_ach'] = achieved.get((int(project_id), int(cid), int(canon), int(yr), q), 0.0)
+
+        for row in rows:  # drop internal lookup keys before returning
+            row.pop('_coord_id', None)
+            row.pop('_canon_id', None)
+        return rows, single_coord, single_year
+
+    def _resolve_export_project_id(self, request, targets):
+        """Single project scope for the achieved computation: the pinned
+        ``project_id`` filter, else the one distinct project among the filtered
+        targets, else the user's default project."""
+        raw = (request.query_params.get('project_id') or '').strip()
+        if raw and raw.lower() != 'all':
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                pass
+        project_ids = {t.project_id for t in targets if t.project_id}
+        if len(project_ids) == 1:
+            return next(iter(project_ids))
+        return get_default_project_id(request.user)
+
+    @action(detail=False, methods=['get'], url_path='export-targets')
+    def export_targets(self, request):
+        """Pivoted xlsx of assigned indicators with their quarterly targets:
+        one row per indicator, columns Q1..Q4. Respects the current filters
+        (project, coordinator, indicator, year). A Coordinator/Year column is
+        added only when that filter isn't pinned, so the file stays unambiguous.
+        Deprecated indicator twins are collapsed onto their canonical.
+        """
+        rows, single_coord, single_year = self._assigned_target_rows(request, with_achieved=False)
+
+        header = []
+        if not single_coord:
+            header.append('coordinator')
+        header.append('indicator')
+        if not single_year:
+            header.append('year')
+        header += ['Q1', 'Q2', 'Q3', 'Q4', 'Total']
 
         from io import BytesIO
         from openpyxl import Workbook
@@ -1540,6 +1594,83 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             action='export', request=request, object_type='coordinator_target',
             description=f'Exported {len(rows)} workbook-indicator target row(s) (xlsx, workbook order).',
             metadata={'count': len(rows), 'mode': 'workbook_indicator_quarters'},
+        )
+        return response
+
+    @action(detail=False, methods=['get'], url_path='export-targets-achieved')
+    def export_targets_achieved(self, request):
+        """Pivoted xlsx like ``export-targets`` but pairing each quarter's Target
+        with its Achieved (actual) value from the certified rollup engine, plus
+        year Total Target / Total Achieved / Achievement %. One row per workbook
+        indicator, workbook order; respects the same filters. Read-only.
+        """
+        rows, single_coord, single_year = self._assigned_target_rows(request, with_achieved=True)
+
+        # (key, display header). Quarter blocks interleave Target/Achieved.
+        columns = []
+        if not single_coord:
+            columns.append(('coordinator', 'Coordinator'))
+        columns.append(('indicator', 'Indicator'))
+        if not single_year:
+            columns.append(('year', 'Year'))
+        for q in ('Q1', 'Q2', 'Q3', 'Q4'):
+            columns.append((q, f'{q} Target'))
+            columns.append((f'{q}_ach', f'{q} Achieved'))
+        columns += [('total_target', 'Total Target'),
+                    ('total_achieved', 'Total Achieved'),
+                    ('achievement', 'Achievement %')]
+
+        from io import BytesIO
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Targets vs Achieved'
+        ws.append([disp for _key, disp in columns])
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+
+        def _num(value):
+            return float(value) if value not in ('', None) else None
+
+        for row in rows:
+            has_tgt = any(row.get(q) not in ('', None) for q in ('Q1', 'Q2', 'Q3', 'Q4'))
+            has_ach = any(row.get(f'{q}_ach') not in ('', None) for q in ('Q1', 'Q2', 'Q3', 'Q4'))
+            tgt_total = sum((_num(row.get(q)) or 0) for q in ('Q1', 'Q2', 'Q3', 'Q4'))
+            ach_total = sum((_num(row.get(f'{q}_ach')) or 0) for q in ('Q1', 'Q2', 'Q3', 'Q4'))
+            out = []
+            for key, _disp in columns:
+                if key in ('coordinator', 'indicator', 'year'):
+                    out.append(row.get(key, ''))
+                elif key == 'total_target':
+                    out.append(tgt_total if has_tgt else None)
+                elif key == 'total_achieved':
+                    out.append(ach_total if has_ach else None)
+                elif key == 'achievement':
+                    out.append(round(ach_total / tgt_total * 100, 1) if (has_tgt and tgt_total) else None)
+                else:  # per-quarter target or achieved
+                    out.append(_num(row.get(key)))
+            ws.append(out)
+
+        for idx, (key, _disp) in enumerate(columns, start=1):
+            width = 60 if key == 'indicator' else 28 if key == 'coordinator' else 8 if key == 'year' else 13
+            ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = width
+        ws.freeze_panes = 'A2'
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = 'attachment; filename="targets-and-achieved.xlsx"'
+
+        record_audit_event(
+            action='export', request=request, object_type='coordinator_target',
+            description=f'Exported {len(rows)} target-vs-achieved row(s) (xlsx, workbook order).',
+            metadata={'count': len(rows), 'mode': 'workbook_indicator_targets_achieved'},
         )
         return response
 

@@ -515,6 +515,29 @@ export function CoordinatorTargetsPage() {
     }
   };
 
+  const handleExportTargetsAchieved = async () => {
+    setExporting(true);
+    try {
+      const blob = await coordinatorTargetsService.exportTargetsWithAchieved(targetFilters);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "targets-and-achieved.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unable to export targets with achieved.",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -555,6 +578,21 @@ export function CoordinatorTargetsPage() {
                   <Download className="mr-2 h-4 w-4" />
                 )}
                 Download targets (Excel)
+              </Button>
+            ) : null}
+            {!coordinatorTargetsUnavailable ? (
+              <Button
+                variant="outline"
+                onClick={() => void handleExportTargetsAchieved()}
+                disabled={exporting || totalCount === 0}
+                title={totalCount === 0 ? "No targets to export" : "Excel: each quarter's target paired with achieved, plus year totals & achievement %"}
+              >
+                {exporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Download targets + achieved (Excel)
               </Button>
             ) : null}
             {canEditTargets ? (

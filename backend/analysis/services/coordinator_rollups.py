@@ -335,3 +335,88 @@ def get_coordinator_targets(targets) -> dict[int, dict]:
         target_id: {'target': payload['target_value']}
         for target_id, payload in compute_target_actuals(targets).items()
     }
+
+
+def compute_actuals_for_specs(specs) -> dict[tuple, float]:
+    """Achieved (actual) value for arbitrary
+    ``(project_id, coordinator_id, canonical_indicator_id, year, quarter)`` tuples
+    — independent of whether a ``CoordinatorTarget`` exists for them.
+
+    Uses the SAME coordinator-scope resolution, approved-aggregate source,
+    canonical-indicator match and period-overlap rule as
+    :func:`compute_target_actuals`, so the achieved numbers are identical to the
+    certified per-target engine. Intended for surfaces (e.g. the targets-vs-
+    achieved export) that need achieved for every assigned/workbook indicator,
+    including those not yet targeted.
+
+    Returns ``{(project_id, coordinator_id, canonical_id, year, quarter): actual}``
+    keyed by the normalised spec (ints; quarter upper-cased). Specs with a missing
+    project/coordinator/canonical are skipped.
+    """
+    specs = list(specs)
+    if not specs:
+        return {}
+
+    scope_cache: dict[tuple[int, int], set[int]] = {}
+
+    def scope_for(coordinator_id, project_id) -> set[int]:
+        key = (int(coordinator_id), int(project_id))
+        if key not in scope_cache:
+            scope_cache[key] = resolve_organization_scope_with_project_hierarchy(
+                int(coordinator_id), project_id=int(project_id)
+            ) or {int(coordinator_id)}
+        return scope_cache[key]
+
+    meta = []  # (out_key, project_id, scope, canonical_id, start, end)
+    all_org_ids: set[int] = set()
+    all_project_ids: set[int] = set()
+    min_start: date | None = None
+    max_end: date | None = None
+    seen_keys: set[tuple] = set()
+    for spec in specs:
+        project_id, coordinator_id, canonical_id, year, quarter = spec
+        if project_id is None or coordinator_id is None or canonical_id is None:
+            continue
+        out_key = (int(project_id), int(coordinator_id), int(canonical_id), int(year), str(quarter).upper())
+        if out_key in seen_keys:
+            continue
+        seen_keys.add(out_key)
+        scope = scope_for(coordinator_id, project_id)
+        start, end = fiscal_quarter_range(year, quarter)
+        meta.append((out_key, int(project_id), scope, int(canonical_id), start, end))
+        all_org_ids |= scope
+        all_project_ids.add(int(project_id))
+        min_start = start if min_start is None or start < min_start else min_start
+        max_end = end if max_end is None or end > max_end else max_end
+
+    # One aggregate query for the whole batch, indexed by (project, canonical) so
+    # each spec only scans its own rows.
+    by_pc: dict[tuple[int, int], list[tuple]] = {}
+    if all_org_ids and all_project_ids:
+        for aggregate in (
+            Aggregate.objects.filter(
+                status='approved',
+                project_id__in=all_project_ids,
+                organization_id__in=all_org_ids,
+                period_start__lte=max_end,
+                period_end__gte=min_start,
+            ).select_related('indicator')
+        ):
+            canon = aggregate.indicator.canonical_id if aggregate.indicator_id else None
+            if canon is None:
+                continue
+            by_pc.setdefault((aggregate.project_id, canon), []).append((
+                aggregate.organization_id,
+                aggregate.period_start,
+                aggregate.period_end,
+                aggregate_total(aggregate.value),
+            ))
+
+    results: dict[tuple, float] = {}
+    for (out_key, project_id, scope, canonical_id, start, end) in meta:
+        total_sum = 0.0
+        for (org_id, p_start, p_end, total) in by_pc.get((project_id, canonical_id), ()):  # overlap
+            if org_id in scope and p_start <= end and p_end >= start:
+                total_sum += total
+        results[out_key] = total_sum
+    return results
