@@ -472,11 +472,11 @@ export function CoordinatorTargetsPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const blob = await coordinatorTargetsService.exportCsv(targetFilters);
+      const { blob, filename } = await coordinatorTargetsService.exportCsv(targetFilters);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "coordinator-targets.csv";
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -495,11 +495,11 @@ export function CoordinatorTargetsPage() {
   const handleExportAssigned = async () => {
     setExporting(true);
     try {
-      const blob = await coordinatorTargetsService.exportAssignedTargetsCsv(targetFilters);
+      const { blob, filename } = await coordinatorTargetsService.exportAssignedTargetsCsv(targetFilters);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "assigned-indicator-targets.xlsx";
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -518,11 +518,11 @@ export function CoordinatorTargetsPage() {
   const handleExportTargetsAchieved = async () => {
     setExporting(true);
     try {
-      const blob = await coordinatorTargetsService.exportTargetsWithAchieved(targetFilters);
+      const { blob, filename } = await coordinatorTargetsService.exportTargetsWithAchieved(targetFilters);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "targets-and-achieved.xlsx";
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();

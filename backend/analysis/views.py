@@ -1341,8 +1341,11 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         dashboard. No rollup math is duplicated here. When the caller is viewing
         "All coordinators" the file mirrors the on-screen per-indicator rollup.
         """
+        download_name = self._export_filename(
+            self._single_coordinator_label(request), 'Coordinator Performance', 'csv',
+            year=self._single_year_label(request))
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="coordinator-targets.csv"'
+        response['Content-Disposition'] = f'attachment; filename="{download_name}"'
         writer = csv.writer(response)
         writer.writerow([
             'project', 'coordinator', 'indicator', 'year', 'quarter',
@@ -1534,6 +1537,49 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             return next(iter(project_ids))
         return get_default_project_id(request.user)
 
+    @staticmethod
+    def _single_coordinator_label(request):
+        """Coordinator/org name when exactly one coordinator is filtered, else ''
+        (i.e. the 'All coordinators' view). Used to label the export."""
+        cid = (request.query_params.get('coordinator_id') or '').strip()
+        if not cid or cid.lower() == 'all':
+            return ''
+        from organizations.models import Organization
+        org = Organization.objects.filter(id=cid).first()
+        return org.name if org else ''
+
+    @staticmethod
+    def _single_year_label(request):
+        """The pinned year filter (e.g. '2026'), else '' when 'all'/unset."""
+        y = (request.query_params.get('year') or '').strip()
+        return y if y and y.lower() != 'all' else ''
+
+    @staticmethod
+    def _export_filename(coord_label, report_word, ext, *, year=''):
+        """Descriptive, download-safe filename:
+        ``<Coordinator|All coordinators> - <report>[ - <year>].<ext>`` — strips
+        characters unsafe for a Content-Disposition header."""
+        import re
+        parts = [coord_label or 'All coordinators', report_word]
+        if year:
+            parts.append(str(year))
+        base = ' - '.join(parts)
+        safe = re.sub(r'[^A-Za-z0-9 _.-]', '', base).strip() or report_word.lower()
+        return f'{safe}.{ext}'
+
+    @staticmethod
+    def _xlsx_labels(coord_label, report_word, *, year=''):
+        """Return (sheet_title, title_row_text, download_filename) for an xlsx
+        export, labelled by coordinator/org name when a single coordinator is in
+        scope (else 'All coordinators') plus the year. Sheet title obeys Excel's
+        31-char / reserved-char limits."""
+        import re
+        scope = coord_label or 'All coordinators'
+        title_row = f'{scope} — {report_word}' + (f' — {year}' if year else '')
+        sheet = re.sub(r'[\\/?*\[\]:]', ' ', (coord_label or report_word)).strip()[:31] or report_word
+        filename = CoordinatorTargetViewSet._export_filename(coord_label, report_word, 'xlsx', year=year)
+        return sheet, title_row, filename
+
     @action(detail=False, methods=['get'], url_path='export-targets')
     def export_targets(self, request):
         """Pivoted xlsx of assigned indicators with their quarterly targets:
@@ -1556,11 +1602,20 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         from openpyxl import Workbook
         from openpyxl.styles import Font
 
+        coord_label = self._single_coordinator_label(request)
+        sheet_title, title_row_text, download_name = self._xlsx_labels(
+            coord_label, 'Targets', year=self._single_year_label(request))
+
         wb = Workbook()
         ws = wb.active
-        ws.title = 'Targets'
+        ws.title = sheet_title
+        # Row 1: coordinator/org label spanning the table; row 2: column headers.
+        ws.append([title_row_text])
+        if len(header) > 1:
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(header))
+        ws['A1'].font = Font(bold=True, size=13)
         ws.append([col.upper() if col in ('Q1', 'Q2', 'Q3', 'Q4') else col.title() for col in header])
-        for cell in ws[1]:
+        for cell in ws[2]:
             cell.font = Font(bold=True)
 
         def _cell(col, row):
@@ -1578,8 +1633,8 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         # Sensible column widths.
         widths = {'coordinator': 28, 'indicator': 60, 'year': 8, 'Q1': 12, 'Q2': 12, 'Q3': 12, 'Q4': 12, 'Total': 12}
         for idx, col in enumerate(header, start=1):
-            ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = widths.get(col, 14)
-        ws.freeze_panes = 'A2'
+            ws.column_dimensions[ws.cell(row=2, column=idx).column_letter].width = widths.get(col, 14)
+        ws.freeze_panes = 'A3'
 
         buffer = BytesIO()
         wb.save(buffer)
@@ -1588,7 +1643,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             buffer.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
-        response['Content-Disposition'] = 'attachment; filename="assigned-indicator-targets.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="{download_name}"'
 
         record_audit_event(
             action='export', request=request, object_type='coordinator_target',
@@ -1624,11 +1679,20 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         from openpyxl import Workbook
         from openpyxl.styles import Font
 
+        coord_label = self._single_coordinator_label(request)
+        sheet_title, title_row_text, download_name = self._xlsx_labels(
+            coord_label, 'Targets vs Achieved', year=self._single_year_label(request))
+
         wb = Workbook()
         ws = wb.active
-        ws.title = 'Targets vs Achieved'
+        ws.title = sheet_title
+        # Row 1: coordinator/org label spanning the table; row 2: column headers.
+        ws.append([title_row_text])
+        if len(columns) > 1:
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(columns))
+        ws['A1'].font = Font(bold=True, size=13)
         ws.append([disp for _key, disp in columns])
-        for cell in ws[1]:
+        for cell in ws[2]:
             cell.font = Font(bold=True)
 
         def _num(value):
@@ -1655,8 +1719,8 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
 
         for idx, (key, _disp) in enumerate(columns, start=1):
             width = 60 if key == 'indicator' else 28 if key == 'coordinator' else 8 if key == 'year' else 13
-            ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = width
-        ws.freeze_panes = 'A2'
+            ws.column_dimensions[ws.cell(row=2, column=idx).column_letter].width = width
+        ws.freeze_panes = 'A3'
 
         buffer = BytesIO()
         wb.save(buffer)
@@ -1665,7 +1729,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
             buffer.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
-        response['Content-Disposition'] = 'attachment; filename="targets-and-achieved.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="{download_name}"'
 
         record_audit_event(
             action='export', request=request, object_type='coordinator_target',

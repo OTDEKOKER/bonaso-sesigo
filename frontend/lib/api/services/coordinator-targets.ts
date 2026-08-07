@@ -1,5 +1,22 @@
 import { api, fetchWithAuth, normalizeApiError, type PaginatedResponse } from "../client";
 
+// Prefer the server's Content-Disposition filename (the backend labels single-
+// coordinator downloads with the org name) over a hard-coded fallback.
+function filenameFromResponse(response: Response, fallback: string): string {
+  const header = response.headers.get("content-disposition");
+  if (!header) return fallback;
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1]?.trim() || fallback;
+}
+
 export type CoordinatorTargetQuarter = "Q1" | "Q2" | "Q3" | "Q4";
 
 export interface CoordinatorTarget {
@@ -207,7 +224,9 @@ export const coordinatorTargetsService = {
 
   // Server-rendered CSV export. Uses the SAME rollup engine and the SAME scoped
   // queryset as the list endpoint, so the file always matches the dashboard.
-  async exportCsv(filters?: CoordinatorTargetFilters): Promise<Blob> {
+  async exportCsv(
+    filters?: CoordinatorTargetFilters,
+  ): Promise<{ blob: Blob; filename: string }> {
     const params = filters as Record<string, string> | undefined;
     const qs = params
       ? `?${new URLSearchParams(
@@ -228,12 +247,15 @@ export const coordinatorTargetsService = {
         fallbackMessage: "Failed to export coordinator targets",
       });
     }
-    return response.blob();
+    const filename = filenameFromResponse(response, "coordinator-targets.csv");
+    return { blob: await response.blob(), filename };
   },
 
   // Pivoted CSV: one row per assigned indicator, columns Q1..Q4 (plus a
   // coordinator/year column when that filter isn't pinned). Respects the same filters.
-  async exportAssignedTargetsCsv(filters?: CoordinatorTargetFilters): Promise<Blob> {
+  async exportAssignedTargetsCsv(
+    filters?: CoordinatorTargetFilters,
+  ): Promise<{ blob: Blob; filename: string }> {
     const params = filters as Record<string, string> | undefined;
     const qs = params
       ? `?${new URLSearchParams(
@@ -254,13 +276,16 @@ export const coordinatorTargetsService = {
         fallbackMessage: "Failed to export assigned indicator targets",
       });
     }
-    return response.blob();
+    const filename = filenameFromResponse(response, "assigned-indicator-targets.xlsx");
+    return { blob: await response.blob(), filename };
   },
 
   // Pivoted xlsx: one row per assigned indicator, pairing each quarter's target
   // with its achieved (actual) value from the certified rollup engine, plus year
   // totals and achievement %. Respects the same filters.
-  async exportTargetsWithAchieved(filters?: CoordinatorTargetFilters): Promise<Blob> {
+  async exportTargetsWithAchieved(
+    filters?: CoordinatorTargetFilters,
+  ): Promise<{ blob: Blob; filename: string }> {
     const params = filters as Record<string, string> | undefined;
     const qs = params
       ? `?${new URLSearchParams(
@@ -281,6 +306,7 @@ export const coordinatorTargetsService = {
         fallbackMessage: "Failed to export targets with achieved",
       });
     }
-    return response.blob();
+    const filename = filenameFromResponse(response, "targets-and-achieved.xlsx");
+    return { blob: await response.blob(), filename };
   },
 };
