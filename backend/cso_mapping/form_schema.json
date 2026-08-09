@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260805_v11",
+  "version": "20260806_v16",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -140,25 +140,173 @@
         },
         {
           "name": "primary_district",
-          "type": "text",
+          "type": "select_one",
           "label": "Primary district or geographic area represented",
+          "hint": "Select the primary local authority / health district of operation.",
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "district",
+          "choices": [
+            {
+              "name": "Bobirwa",
+              "label": "Bobirwa"
+            },
+            {
+              "name": "Boteti",
+              "label": "Boteti"
+            },
+            {
+              "name": "Charleshill",
+              "label": "Charleshill"
+            },
+            {
+              "name": "Chobe",
+              "label": "Chobe"
+            },
+            {
+              "name": "Ghanzi",
+              "label": "Ghanzi"
+            },
+            {
+              "name": "Goodhope",
+              "label": "Goodhope"
+            },
+            {
+              "name": "Greater Francistown",
+              "label": "Greater Francistown"
+            },
+            {
+              "name": "Greater Gaborone",
+              "label": "Greater Gaborone"
+            },
+            {
+              "name": "Jwaneng",
+              "label": "Jwaneng"
+            },
+            {
+              "name": "Kanye",
+              "label": "Kanye"
+            },
+            {
+              "name": "Kgalagadi North",
+              "label": "Kgalagadi North"
+            },
+            {
+              "name": "Kgalagadi South",
+              "label": "Kgalagadi South"
+            },
+            {
+              "name": "Kgatleng",
+              "label": "Kgatleng"
+            },
+            {
+              "name": "Letlhakeng",
+              "label": "Letlhakeng"
+            },
+            {
+              "name": "Lobatse",
+              "label": "Lobatse"
+            },
+            {
+              "name": "Mabutsane",
+              "label": "Mabutsane"
+            },
+            {
+              "name": "Mahalapye",
+              "label": "Mahalapye"
+            },
+            {
+              "name": "Mogoditshane-Thamaga",
+              "label": "Mogoditshane-Thamaga"
+            },
+            {
+              "name": "Molepolole",
+              "label": "Molepolole"
+            },
+            {
+              "name": "Moshupa",
+              "label": "Moshupa"
+            },
+            {
+              "name": "Ngami",
+              "label": "Ngami"
+            },
+            {
+              "name": "North East",
+              "label": "North East"
+            },
+            {
+              "name": "Okavango",
+              "label": "Okavango"
+            },
+            {
+              "name": "Palapye",
+              "label": "Palapye"
+            },
+            {
+              "name": "Phikwe",
+              "label": "Phikwe"
+            },
+            {
+              "name": "Ramotswa",
+              "label": "Ramotswa"
+            },
+            {
+              "name": "Serowe",
+              "label": "Serowe"
+            },
+            {
+              "name": "Tlokweng",
+              "label": "Tlokweng"
+            },
+            {
+              "name": "Tutume",
+              "label": "Tutume"
+            }
+          ]
+        },
+        {
+          "name": "registration_status",
+          "type": "select_one",
+          "label": "What is your organisation's registration status?",
           "hint": null,
           "required": true,
           "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "registration_status",
+          "choices": [
+            {
+              "name": "registered",
+              "label": "Registered"
+            },
+            {
+              "name": "registration_pending",
+              "label": "Registration pending"
+            },
+            {
+              "name": "not_registered",
+              "label": "Not registered"
+            },
+            {
+              "name": "unknown",
+              "label": "Not known"
+            }
+          ]
         },
         {
           "name": "registration_number",
           "type": "text",
           "label": "Registration number",
           "hint": "Organisation registration number, if registered (e.g. CR12345).",
-          "required": false,
+          "required": true,
           "multiline": false,
           "relevant": {
-            "field": "respondent_type",
-            "op": "ne",
-            "value": "strategic_structure"
+            "field": "registration_status",
+            "op": "eq",
+            "value": "registered"
           },
           "constraint": null
         },
@@ -170,9 +318,9 @@
           "required": false,
           "multiline": false,
           "relevant": {
-            "field": "respondent_type",
-            "op": "ne",
-            "value": "strategic_structure"
+            "field": "registration_status",
+            "op": "eq",
+            "value": "registered"
           },
           "constraint": null
         },
@@ -195,48 +343,6 @@
           "type": "text",
           "label": "Number of years in operation",
           "hint": "Approximate number of years the organisation has been operating.",
-          "required": false,
-          "multiline": false,
-          "relevant": {
-            "field": "respondent_type",
-            "op": "ne",
-            "value": "strategic_structure"
-          },
-          "constraint": null
-        },
-        {
-          "name": "annual_budget_fy2627",
-          "type": "text",
-          "label": "Annual budget — FY 2026/27 (BWP)",
-          "hint": "Total annual budget in Botswana Pula, if available.",
-          "required": false,
-          "multiline": false,
-          "relevant": {
-            "field": "respondent_type",
-            "op": "ne",
-            "value": "strategic_structure"
-          },
-          "constraint": null
-        },
-        {
-          "name": "annual_budget_fy2526",
-          "type": "text",
-          "label": "Annual budget — FY 2025/26 (BWP)",
-          "hint": null,
-          "required": false,
-          "multiline": false,
-          "relevant": {
-            "field": "respondent_type",
-            "op": "ne",
-            "value": "strategic_structure"
-          },
-          "constraint": null
-        },
-        {
-          "name": "annual_budget_fy2425",
-          "type": "text",
-          "label": "Annual budget — FY 2024/25 (BWP)",
-          "hint": null,
           "required": false,
           "multiline": false,
           "relevant": {
@@ -281,53 +387,240 @@
       "fields": [
         {
           "name": "annex2_a2_1a",
-          "type": "text",
-          "label": "What is the nature of your CSO? (NGO, Trust, CBO etc.) Please elaborate.",
+          "type": "select_one",
+          "label": "Nature/type of your organisation",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "organisation_nature",
+          "choices": [
+            {
+              "name": "ngo",
+              "label": "Non-Governmental Organisation (NGO)"
+            },
+            {
+              "name": "cbo",
+              "label": "Community-Based Organisation (CBO)"
+            },
+            {
+              "name": "fbo",
+              "label": "Faith-Based Organisation (FBO)"
+            },
+            {
+              "name": "trust",
+              "label": "Trust"
+            },
+            {
+              "name": "network",
+              "label": "Network, umbrella or coordinating body"
+            },
+            {
+              "name": "association",
+              "label": "Association"
+            },
+            {
+              "name": "foundation",
+              "label": "Foundation"
+            },
+            {
+              "name": "government",
+              "label": "Government or local-authority structure"
+            },
+            {
+              "name": "development_partner",
+              "label": "Development Partner"
+            },
+            {
+              "name": "private_sector",
+              "label": "Private-sector organisation"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex2_a2_1a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex2_a2_1a",
+            "op": "eq",
+            "value": "other"
+          }
         },
         {
           "name": "annex2_a2_1b",
-          "type": "text",
-          "label": "What is the governance structure of your CSO?",
+          "type": "select_multiple",
+          "label": "Which governance structures are in place?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "governance_elements",
+          "choices": [
+            {
+              "name": "board",
+              "label": "Board of directors/trustees"
+            },
+            {
+              "name": "management_committee",
+              "label": "Management or executive committee"
+            },
+            {
+              "name": "constitution",
+              "label": "Constitution or governing document"
+            },
+            {
+              "name": "policies",
+              "label": "Approved organisational policies"
+            },
+            {
+              "name": "annual_general_meeting",
+              "label": "Annual general meeting"
+            },
+            {
+              "name": "management_team",
+              "label": "Management team"
+            },
+            {
+              "name": "community_representation",
+              "label": "Community/beneficiary representation"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
         },
         {
-          "name": "annex2_a2_1c",
+          "name": "annex2_a2_1b_other",
           "type": "text",
-          "label": "What is your registration status?",
-          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
-          "required": true,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
-        },
-        {
-          "name": "annex2_a2_1d",
-          "type": "text",
-          "label": "When was your organisation registered?",
-          "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
-          "required": true,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex2_a2_1b",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex2_a2_1e",
-          "type": "text",
-          "label": "What services do you provide?",
+          "type": "select_multiple",
+          "label": "Which health or related services do you provide?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "health_services",
+          "choices": [
+            {
+              "name": "hiv_prevention",
+              "label": "HIV prevention and behaviour-change services"
+            },
+            {
+              "name": "hiv_testing",
+              "label": "HIV testing services"
+            },
+            {
+              "name": "art_care",
+              "label": "ART linkage, treatment, adherence and retention support"
+            },
+            {
+              "name": "prep_pep",
+              "label": "PrEP and PEP demand creation, referral or support"
+            },
+            {
+              "name": "tb",
+              "label": "Tuberculosis prevention, screening, referral or treatment support"
+            },
+            {
+              "name": "ncd",
+              "label": "Non-communicable disease prevention, screening or support"
+            },
+            {
+              "name": "mental_health",
+              "label": "Mental-health promotion, support or referral"
+            },
+            {
+              "name": "malaria",
+              "label": "Malaria prevention or support"
+            },
+            {
+              "name": "srhr",
+              "label": "Sexual and reproductive health and rights"
+            },
+            {
+              "name": "family_planning",
+              "label": "Family-planning services"
+            },
+            {
+              "name": "sti",
+              "label": "STI prevention, screening, referral or treatment support"
+            },
+            {
+              "name": "gbv",
+              "label": "Gender-based violence prevention and response"
+            },
+            {
+              "name": "ovc",
+              "label": "Orphans and vulnerable children services"
+            },
+            {
+              "name": "palliative_care",
+              "label": "Palliative care"
+            },
+            {
+              "name": "nutrition",
+              "label": "Nutrition services"
+            },
+            {
+              "name": "disability",
+              "label": "Disability-inclusive health or support services"
+            },
+            {
+              "name": "community_health",
+              "label": "Integrated community-based health services"
+            },
+            {
+              "name": "advocacy",
+              "label": "Health advocacy, rights and policy engagement"
+            },
+            {
+              "name": "social_protection",
+              "label": "Social protection and livelihood support"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex2_a2_1e_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex2_a2_1e",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex2_a2_1f",
@@ -338,6 +631,197 @@
           "multiline": true,
           "relevant": null,
           "constraint": null
+        },
+        {
+          "name": "target_populations",
+          "type": "select_multiple",
+          "label": "Which populations are primarily served?",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "target_populations",
+          "choices": [
+            {
+              "name": "general_population",
+              "label": "General population"
+            },
+            {
+              "name": "children",
+              "label": "Children"
+            },
+            {
+              "name": "adolescents_youth",
+              "label": "Adolescents and young people"
+            },
+            {
+              "name": "women_girls",
+              "label": "Women and girls"
+            },
+            {
+              "name": "men_boys",
+              "label": "Men and boys"
+            },
+            {
+              "name": "older_persons",
+              "label": "Older persons"
+            },
+            {
+              "name": "people_living_hiv",
+              "label": "People living with HIV"
+            },
+            {
+              "name": "key_populations",
+              "label": "Key populations"
+            },
+            {
+              "name": "people_disabilities",
+              "label": "People with disabilities"
+            },
+            {
+              "name": "rural_remote",
+              "label": "Rural or remote-area populations"
+            },
+            {
+              "name": "migrants_mobile",
+              "label": "Migrants or mobile populations"
+            },
+            {
+              "name": "vulnerable_households",
+              "label": "Vulnerable households"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "target_populations_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "target_populations",
+            "op": "selected",
+            "value": "other"
+          }
+        },
+        {
+          "name": "reporting_methods",
+          "type": "select_multiple",
+          "label": "How does your organisation report its activities and results?",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "reporting_methods",
+          "choices": [
+            {
+              "name": "paper_forms",
+              "label": "Paper forms/registers"
+            },
+            {
+              "name": "excel",
+              "label": "Excel workbooks"
+            },
+            {
+              "name": "email",
+              "label": "Email reports"
+            },
+            {
+              "name": "online_portal",
+              "label": "Online reporting portal"
+            },
+            {
+              "name": "mobile_app",
+              "label": "Mobile application"
+            },
+            {
+              "name": "dhis2",
+              "label": "DHIS2 or government health information system"
+            },
+            {
+              "name": "odk_kobo",
+              "label": "ODK, KoboToolbox or another digital survey tool"
+            },
+            {
+              "name": "narrative_reports",
+              "label": "Narrative reports"
+            },
+            {
+              "name": "verbal_meetings",
+              "label": "Verbal reporting or coordination meetings"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "reporting_methods_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "reporting_methods",
+            "op": "selected",
+            "value": "other"
+          }
+        },
+        {
+          "name": "reporting_frequency",
+          "type": "select_one",
+          "label": "How frequently does your organisation normally report?",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "reporting_frequency",
+          "choices": [
+            {
+              "name": "weekly",
+              "label": "Weekly"
+            },
+            {
+              "name": "monthly",
+              "label": "Monthly"
+            },
+            {
+              "name": "quarterly",
+              "label": "Quarterly"
+            },
+            {
+              "name": "semi_annual",
+              "label": "Semi-annually"
+            },
+            {
+              "name": "annual",
+              "label": "Annually"
+            },
+            {
+              "name": "project_specific",
+              "label": "According to project/funder requirements"
+            },
+            {
+              "name": "ad_hoc",
+              "label": "Ad hoc or irregular"
+            },
+            {
+              "name": "not_reporting",
+              "label": "Not currently reporting"
+            }
+          ]
         }
       ]
     },
@@ -410,6 +894,77 @@
           "multiline": true,
           "relevant": null,
           "constraint": null
+        },
+        {
+          "name": "cso_collaboration_types",
+          "type": "select_multiple",
+          "label": "What types of collaboration are currently in place?",
+          "hint": null,
+          "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "collaboration_types",
+          "choices": [
+            {
+              "name": "referrals",
+              "label": "Referral and counter-referral"
+            },
+            {
+              "name": "joint_planning",
+              "label": "Joint planning"
+            },
+            {
+              "name": "joint_implementation",
+              "label": "Joint programme implementation"
+            },
+            {
+              "name": "funding",
+              "label": "Funding or grants"
+            },
+            {
+              "name": "technical_assistance",
+              "label": "Technical assistance"
+            },
+            {
+              "name": "training",
+              "label": "Training and mentorship"
+            },
+            {
+              "name": "data_sharing",
+              "label": "Data and information sharing"
+            },
+            {
+              "name": "resource_sharing",
+              "label": "Sharing staff, facilities, transport or equipment"
+            },
+            {
+              "name": "advocacy",
+              "label": "Joint advocacy"
+            },
+            {
+              "name": "research",
+              "label": "Research or assessments"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "cso_collaboration_types_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "cso_collaboration_types",
+            "op": "selected",
+            "value": "other"
+          }
         }
       ]
     },
@@ -425,23 +980,111 @@
       "fields": [
         {
           "name": "annex2_a2_3a",
-          "type": "text",
-          "label": "What resources (finance, human, technological, etc.) do you have to support service delivery to your target beneficiaries?",
+          "type": "select_multiple",
+          "label": "Which resources are available to support your service delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "resource_types",
+          "choices": [
+            {
+              "name": "financial",
+              "label": "Financial resources"
+            },
+            {
+              "name": "paid_staff",
+              "label": "Paid staff"
+            },
+            {
+              "name": "volunteers",
+              "label": "Volunteers"
+            },
+            {
+              "name": "office_space",
+              "label": "Office space"
+            },
+            {
+              "name": "vehicles",
+              "label": "Vehicles or transport"
+            },
+            {
+              "name": "computers",
+              "label": "Computers"
+            },
+            {
+              "name": "tablets_phones",
+              "label": "Tablets or smartphones"
+            },
+            {
+              "name": "internet",
+              "label": "Reliable internet connectivity"
+            },
+            {
+              "name": "data_system",
+              "label": "Data-management system"
+            },
+            {
+              "name": "technical_expertise",
+              "label": "Technical expertise"
+            },
+            {
+              "name": "policies_procedures",
+              "label": "Policies and procedures"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex2_a2_3a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex2_a2_3a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex2_a2_3b",
-          "type": "text",
-          "label": "How adequate are these resources for efficient and effective service delivery towards national health goals and targets?",
+          "type": "select_one",
+          "label": "How adequate are these resources for effective service delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "adequacy",
+          "choices": [
+            {
+              "name": "not_available",
+              "label": "Not available"
+            },
+            {
+              "name": "very_inadequate",
+              "label": "Very inadequate"
+            },
+            {
+              "name": "inadequate",
+              "label": "Inadequate"
+            },
+            {
+              "name": "adequate",
+              "label": "Adequate"
+            },
+            {
+              "name": "very_adequate",
+              "label": "Very adequate"
+            }
+          ]
         },
         {
           "name": "annex2_a2_3c",
@@ -467,23 +1110,69 @@
       "fields": [
         {
           "name": "annex2_a2_4a",
-          "type": "text",
-          "label": "How much do you know about the Primary Health Care Revitalisation Agenda?",
+          "type": "select_one",
+          "label": "How would you rate your knowledge of the Primary Health Care Revitalisation Agenda?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "knowledge_level",
+          "choices": [
+            {
+              "name": "none",
+              "label": "No knowledge"
+            },
+            {
+              "name": "limited",
+              "label": "Limited knowledge"
+            },
+            {
+              "name": "basic",
+              "label": "Basic knowledge"
+            },
+            {
+              "name": "good",
+              "label": "Good knowledge"
+            },
+            {
+              "name": "advanced",
+              "label": "Advanced knowledge"
+            }
+          ]
         },
         {
           "name": "annex2_a2_4b",
-          "type": "text",
-          "label": "To what extent are you prepared to provide services aimed at achieving the Primary Health Care Revitalisation Agenda objectives?",
+          "type": "select_one",
+          "label": "To what extent is your organisation prepared to provide Primary Health Care services?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "preparedness",
+          "choices": [
+            {
+              "name": "not_prepared",
+              "label": "Not prepared"
+            },
+            {
+              "name": "minimally_prepared",
+              "label": "Minimally prepared"
+            },
+            {
+              "name": "partly_prepared",
+              "label": "Partly prepared"
+            },
+            {
+              "name": "well_prepared",
+              "label": "Well prepared"
+            },
+            {
+              "name": "fully_prepared",
+              "label": "Fully prepared"
+            }
+          ]
         },
         {
           "name": "annex2_a2_4c",
@@ -517,13 +1206,36 @@
         },
         {
           "name": "annex2_a2_4f",
-          "type": "text",
-          "label": "How adequate are these capacities for efficient and effective service delivery, particularly human and technological resources?",
+          "type": "select_one",
+          "label": "Overall, how adequate are your human and technological capacities?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "adequacy",
+          "choices": [
+            {
+              "name": "not_available",
+              "label": "Not available"
+            },
+            {
+              "name": "very_inadequate",
+              "label": "Very inadequate"
+            },
+            {
+              "name": "inadequate",
+              "label": "Inadequate"
+            },
+            {
+              "name": "adequate",
+              "label": "Adequate"
+            },
+            {
+              "name": "very_adequate",
+              "label": "Very adequate"
+            }
+          ]
         }
       ]
     },
@@ -539,13 +1251,94 @@
       "fields": [
         {
           "name": "annex2_a2_5a",
-          "type": "text",
-          "label": "What capacity gaps hinder your organisation from efficient and effective delivery of your roles in Primary Health Care?",
+          "type": "select_multiple",
+          "label": "Which capacity gaps hinder effective service delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "capacity_gaps",
+          "choices": [
+            {
+              "name": "governance",
+              "label": "Governance and leadership"
+            },
+            {
+              "name": "legal_compliance",
+              "label": "Registration or legal compliance"
+            },
+            {
+              "name": "financial_management",
+              "label": "Financial management"
+            },
+            {
+              "name": "fundraising",
+              "label": "Fundraising and resource mobilisation"
+            },
+            {
+              "name": "human_resources",
+              "label": "Human resources and staffing"
+            },
+            {
+              "name": "technical_skills",
+              "label": "Technical health-service skills"
+            },
+            {
+              "name": "programme_management",
+              "label": "Programme management"
+            },
+            {
+              "name": "monitoring_evaluation",
+              "label": "Monitoring and evaluation"
+            },
+            {
+              "name": "data_management",
+              "label": "Data management and reporting"
+            },
+            {
+              "name": "technology",
+              "label": "Technology, devices or connectivity"
+            },
+            {
+              "name": "infrastructure",
+              "label": "Office, transport or service-delivery infrastructure"
+            },
+            {
+              "name": "partnerships",
+              "label": "Partnerships and coordination"
+            },
+            {
+              "name": "quality_assurance",
+              "label": "Quality assurance"
+            },
+            {
+              "name": "safeguarding",
+              "label": "Safeguarding and ethical practice"
+            },
+            {
+              "name": "sustainability",
+              "label": "Organisational sustainability"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex2_a2_5a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex2_a2_5a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex2_a2_5b",
@@ -601,23 +1394,115 @@
         },
         {
           "name": "annex2_a2_6b",
-          "type": "text",
-          "label": "Do you have a Sustainability Plan?",
+          "type": "select_one",
+          "label": "Does your organisation have a sustainability plan?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "sustainability_status",
+          "choices": [
+            {
+              "name": "yes_approved",
+              "label": "Yes, approved and in use"
+            },
+            {
+              "name": "in_development",
+              "label": "Currently being developed"
+            },
+            {
+              "name": "informal",
+              "label": "Informal sustainability approach only"
+            },
+            {
+              "name": "no",
+              "label": "No sustainability plan"
+            }
+          ]
         },
         {
           "name": "annex2_a2_6c",
-          "type": "text",
-          "label": "What are your challenges to growth and sustainability?",
+          "type": "select_multiple",
+          "label": "What are the main challenges to growth and sustainability?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "sustainability_challenges",
+          "choices": [
+            {
+              "name": "funding",
+              "label": "Unstable or insufficient funding"
+            },
+            {
+              "name": "donor_dependency",
+              "label": "Dependence on one donor or project"
+            },
+            {
+              "name": "staff_retention",
+              "label": "Staff recruitment and retention"
+            },
+            {
+              "name": "volunteer_retention",
+              "label": "Volunteer retention"
+            },
+            {
+              "name": "governance",
+              "label": "Governance weaknesses"
+            },
+            {
+              "name": "financial_systems",
+              "label": "Financial-management weaknesses"
+            },
+            {
+              "name": "service_demand",
+              "label": "Changing community needs"
+            },
+            {
+              "name": "competition",
+              "label": "Competition for limited resources"
+            },
+            {
+              "name": "technology",
+              "label": "Technology and connectivity limitations"
+            },
+            {
+              "name": "infrastructure",
+              "label": "Office, transport or infrastructure limitations"
+            },
+            {
+              "name": "partnerships",
+              "label": "Weak partnerships or coordination"
+            },
+            {
+              "name": "policy_environment",
+              "label": "Policy or regulatory challenges"
+            },
+            {
+              "name": "succession",
+              "label": "Leadership succession challenges"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex2_a2_6c_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex2_a2_6c",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex2_a2_6d",
@@ -686,43 +1571,269 @@
       "fields": [
         {
           "name": "annex3_a3_1a",
-          "type": "text",
-          "label": "What is the nature of your member CSOs? (NGO, Trust, CBO, etc.) Please elaborate.",
+          "type": "select_multiple",
+          "label": "What types of member CSOs are represented?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "organisation_nature",
+          "choices": [
+            {
+              "name": "ngo",
+              "label": "Non-Governmental Organisation (NGO)"
+            },
+            {
+              "name": "cbo",
+              "label": "Community-Based Organisation (CBO)"
+            },
+            {
+              "name": "fbo",
+              "label": "Faith-Based Organisation (FBO)"
+            },
+            {
+              "name": "trust",
+              "label": "Trust"
+            },
+            {
+              "name": "network",
+              "label": "Network, umbrella or coordinating body"
+            },
+            {
+              "name": "association",
+              "label": "Association"
+            },
+            {
+              "name": "foundation",
+              "label": "Foundation"
+            },
+            {
+              "name": "government",
+              "label": "Government or local-authority structure"
+            },
+            {
+              "name": "development_partner",
+              "label": "Development Partner"
+            },
+            {
+              "name": "private_sector",
+              "label": "Private-sector organisation"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex3_a3_1a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex3_a3_1a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex3_a3_1b",
-          "type": "text",
-          "label": "What are their governance structures?",
+          "type": "select_multiple",
+          "label": "What governance structures do your member CSOs have?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "governance_elements",
+          "choices": [
+            {
+              "name": "board",
+              "label": "Board of directors/trustees"
+            },
+            {
+              "name": "management_committee",
+              "label": "Management or executive committee"
+            },
+            {
+              "name": "constitution",
+              "label": "Constitution or governing document"
+            },
+            {
+              "name": "policies",
+              "label": "Approved organisational policies"
+            },
+            {
+              "name": "annual_general_meeting",
+              "label": "Annual general meeting"
+            },
+            {
+              "name": "management_team",
+              "label": "Management team"
+            },
+            {
+              "name": "community_representation",
+              "label": "Community/beneficiary representation"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex3_a3_1b_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex3_a3_1b",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex3_a3_1c",
-          "type": "text",
-          "label": "What is their registration status?",
+          "type": "select_one",
+          "label": "What is the typical registration status of your member CSOs?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "registration_status",
+          "choices": [
+            {
+              "name": "registered",
+              "label": "Registered"
+            },
+            {
+              "name": "registration_pending",
+              "label": "Registration pending"
+            },
+            {
+              "name": "not_registered",
+              "label": "Not registered"
+            },
+            {
+              "name": "unknown",
+              "label": "Not known"
+            }
+          ]
         },
         {
           "name": "annex3_a3_1d",
-          "type": "text",
-          "label": "What services do they provide?",
+          "type": "select_multiple",
+          "label": "Which services are provided by member CSOs?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "health_services",
+          "choices": [
+            {
+              "name": "hiv_prevention",
+              "label": "HIV prevention and behaviour-change services"
+            },
+            {
+              "name": "hiv_testing",
+              "label": "HIV testing services"
+            },
+            {
+              "name": "art_care",
+              "label": "ART linkage, treatment, adherence and retention support"
+            },
+            {
+              "name": "prep_pep",
+              "label": "PrEP and PEP demand creation, referral or support"
+            },
+            {
+              "name": "tb",
+              "label": "Tuberculosis prevention, screening, referral or treatment support"
+            },
+            {
+              "name": "ncd",
+              "label": "Non-communicable disease prevention, screening or support"
+            },
+            {
+              "name": "mental_health",
+              "label": "Mental-health promotion, support or referral"
+            },
+            {
+              "name": "malaria",
+              "label": "Malaria prevention or support"
+            },
+            {
+              "name": "srhr",
+              "label": "Sexual and reproductive health and rights"
+            },
+            {
+              "name": "family_planning",
+              "label": "Family-planning services"
+            },
+            {
+              "name": "sti",
+              "label": "STI prevention, screening, referral or treatment support"
+            },
+            {
+              "name": "gbv",
+              "label": "Gender-based violence prevention and response"
+            },
+            {
+              "name": "ovc",
+              "label": "Orphans and vulnerable children services"
+            },
+            {
+              "name": "palliative_care",
+              "label": "Palliative care"
+            },
+            {
+              "name": "nutrition",
+              "label": "Nutrition services"
+            },
+            {
+              "name": "disability",
+              "label": "Disability-inclusive health or support services"
+            },
+            {
+              "name": "community_health",
+              "label": "Integrated community-based health services"
+            },
+            {
+              "name": "advocacy",
+              "label": "Health advocacy, rights and policy engagement"
+            },
+            {
+              "name": "social_protection",
+              "label": "Social protection and livelihood support"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex3_a3_1d_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex3_a3_1d",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex3_a3_1e",
@@ -736,13 +1847,78 @@
         },
         {
           "name": "annex3_a3_1f",
-          "type": "text",
-          "label": "What support do you provide them for quality health service delivery in their respective regions?",
+          "type": "select_multiple",
+          "label": "What support does the coordinating body provide to member CSOs?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "support_types",
+          "choices": [
+            {
+              "name": "governance_support",
+              "label": "Governance and policy support"
+            },
+            {
+              "name": "training",
+              "label": "Training and capacity building"
+            },
+            {
+              "name": "technical_assistance",
+              "label": "Technical assistance"
+            },
+            {
+              "name": "funding",
+              "label": "Funding or grant management"
+            },
+            {
+              "name": "monitoring_evaluation",
+              "label": "M&E and data support"
+            },
+            {
+              "name": "reporting",
+              "label": "Reporting support"
+            },
+            {
+              "name": "quality_assurance",
+              "label": "Quality assurance and supervision"
+            },
+            {
+              "name": "coordination",
+              "label": "Coordination and networking"
+            },
+            {
+              "name": "advocacy",
+              "label": "Advocacy and representation"
+            },
+            {
+              "name": "resource_mobilisation",
+              "label": "Resource mobilisation"
+            },
+            {
+              "name": "technology",
+              "label": "Technology or information systems"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex3_a3_1f_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex3_a3_1f",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex3_a3_1g",
@@ -830,23 +2006,111 @@
       "fields": [
         {
           "name": "annex3_a3_3a",
-          "type": "text",
-          "label": "What resources (finance, human, technological, etc.) do they have to support service delivery to their target beneficiaries?",
+          "type": "select_multiple",
+          "label": "Which resources are generally available to member CSOs?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "resource_types",
+          "choices": [
+            {
+              "name": "financial",
+              "label": "Financial resources"
+            },
+            {
+              "name": "paid_staff",
+              "label": "Paid staff"
+            },
+            {
+              "name": "volunteers",
+              "label": "Volunteers"
+            },
+            {
+              "name": "office_space",
+              "label": "Office space"
+            },
+            {
+              "name": "vehicles",
+              "label": "Vehicles or transport"
+            },
+            {
+              "name": "computers",
+              "label": "Computers"
+            },
+            {
+              "name": "tablets_phones",
+              "label": "Tablets or smartphones"
+            },
+            {
+              "name": "internet",
+              "label": "Reliable internet connectivity"
+            },
+            {
+              "name": "data_system",
+              "label": "Data-management system"
+            },
+            {
+              "name": "technical_expertise",
+              "label": "Technical expertise"
+            },
+            {
+              "name": "policies_procedures",
+              "label": "Policies and procedures"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex3_a3_3a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex3_a3_3a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex3_a3_3b",
-          "type": "text",
-          "label": "How adequate are these resources for efficient and effective service delivery to achieve the Primary Health Care Revitalisation objectives?",
+          "type": "select_one",
+          "label": "How adequate are member-CSO resources for effective service delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "adequacy",
+          "choices": [
+            {
+              "name": "not_available",
+              "label": "Not available"
+            },
+            {
+              "name": "very_inadequate",
+              "label": "Very inadequate"
+            },
+            {
+              "name": "inadequate",
+              "label": "Inadequate"
+            },
+            {
+              "name": "adequate",
+              "label": "Adequate"
+            },
+            {
+              "name": "very_adequate",
+              "label": "Very adequate"
+            }
+          ]
         },
         {
           "name": "annex3_a3_3c",
@@ -922,13 +2186,36 @@
         },
         {
           "name": "annex3_a3_4f",
-          "type": "text",
-          "label": "How adequate are these capacities for efficient and effective service delivery, particularly human and technological resources?",
+          "type": "select_one",
+          "label": "How adequate are member CSOs' human and technological capacities?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "adequacy",
+          "choices": [
+            {
+              "name": "not_available",
+              "label": "Not available"
+            },
+            {
+              "name": "very_inadequate",
+              "label": "Very inadequate"
+            },
+            {
+              "name": "inadequate",
+              "label": "Inadequate"
+            },
+            {
+              "name": "adequate",
+              "label": "Adequate"
+            },
+            {
+              "name": "very_adequate",
+              "label": "Very adequate"
+            }
+          ]
         }
       ]
     },
@@ -944,13 +2231,94 @@
       "fields": [
         {
           "name": "annex3_a3_5a",
-          "type": "text",
-          "label": "What capacity gaps hinder your organisations from efficient and effective delivery of their roles in Primary Health Care?",
+          "type": "select_multiple",
+          "label": "Which capacity gaps hinder member CSOs from effective delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "capacity_gaps",
+          "choices": [
+            {
+              "name": "governance",
+              "label": "Governance and leadership"
+            },
+            {
+              "name": "legal_compliance",
+              "label": "Registration or legal compliance"
+            },
+            {
+              "name": "financial_management",
+              "label": "Financial management"
+            },
+            {
+              "name": "fundraising",
+              "label": "Fundraising and resource mobilisation"
+            },
+            {
+              "name": "human_resources",
+              "label": "Human resources and staffing"
+            },
+            {
+              "name": "technical_skills",
+              "label": "Technical health-service skills"
+            },
+            {
+              "name": "programme_management",
+              "label": "Programme management"
+            },
+            {
+              "name": "monitoring_evaluation",
+              "label": "Monitoring and evaluation"
+            },
+            {
+              "name": "data_management",
+              "label": "Data management and reporting"
+            },
+            {
+              "name": "technology",
+              "label": "Technology, devices or connectivity"
+            },
+            {
+              "name": "infrastructure",
+              "label": "Office, transport or service-delivery infrastructure"
+            },
+            {
+              "name": "partnerships",
+              "label": "Partnerships and coordination"
+            },
+            {
+              "name": "quality_assurance",
+              "label": "Quality assurance"
+            },
+            {
+              "name": "safeguarding",
+              "label": "Safeguarding and ethical practice"
+            },
+            {
+              "name": "sustainability",
+              "label": "Organisational sustainability"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex3_a3_5a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex3_a3_5a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex3_a3_5b",
@@ -1006,23 +2374,123 @@
         },
         {
           "name": "annex3_a3_6b",
-          "type": "text",
-          "label": "Do they have Sustainability Plans?",
+          "type": "select_one",
+          "label": "To what extent do member organisations have sustainability plans?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "sustainability_prevalence",
+          "choices": [
+            {
+              "name": "all",
+              "label": "All or almost all"
+            },
+            {
+              "name": "most",
+              "label": "Most"
+            },
+            {
+              "name": "some",
+              "label": "Some"
+            },
+            {
+              "name": "few",
+              "label": "Few"
+            },
+            {
+              "name": "none",
+              "label": "None"
+            },
+            {
+              "name": "unknown",
+              "label": "Not known"
+            }
+          ]
         },
         {
           "name": "annex3_a3_6c",
-          "type": "text",
-          "label": "What are their challenges to growth and sustainability?",
+          "type": "select_multiple",
+          "label": "What are the main growth and sustainability challenges for member CSOs?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "sustainability_challenges",
+          "choices": [
+            {
+              "name": "funding",
+              "label": "Unstable or insufficient funding"
+            },
+            {
+              "name": "donor_dependency",
+              "label": "Dependence on one donor or project"
+            },
+            {
+              "name": "staff_retention",
+              "label": "Staff recruitment and retention"
+            },
+            {
+              "name": "volunteer_retention",
+              "label": "Volunteer retention"
+            },
+            {
+              "name": "governance",
+              "label": "Governance weaknesses"
+            },
+            {
+              "name": "financial_systems",
+              "label": "Financial-management weaknesses"
+            },
+            {
+              "name": "service_demand",
+              "label": "Changing community needs"
+            },
+            {
+              "name": "competition",
+              "label": "Competition for limited resources"
+            },
+            {
+              "name": "technology",
+              "label": "Technology and connectivity limitations"
+            },
+            {
+              "name": "infrastructure",
+              "label": "Office, transport or infrastructure limitations"
+            },
+            {
+              "name": "partnerships",
+              "label": "Weak partnerships or coordination"
+            },
+            {
+              "name": "policy_environment",
+              "label": "Policy or regulatory challenges"
+            },
+            {
+              "name": "succession",
+              "label": "Leadership succession challenges"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex3_a3_6c_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex3_a3_6c",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex3_a3_6d",
@@ -1091,23 +2559,181 @@
       "fields": [
         {
           "name": "annex4_a4_1a",
-          "type": "text",
-          "label": "What is the nature of Health Service CSOs implementing health services? Please elaborate.",
+          "type": "select_multiple",
+          "label": "What types of health-service CSOs operate in your area?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "organisation_nature",
+          "choices": [
+            {
+              "name": "ngo",
+              "label": "Non-Governmental Organisation (NGO)"
+            },
+            {
+              "name": "cbo",
+              "label": "Community-Based Organisation (CBO)"
+            },
+            {
+              "name": "fbo",
+              "label": "Faith-Based Organisation (FBO)"
+            },
+            {
+              "name": "trust",
+              "label": "Trust"
+            },
+            {
+              "name": "network",
+              "label": "Network, umbrella or coordinating body"
+            },
+            {
+              "name": "association",
+              "label": "Association"
+            },
+            {
+              "name": "foundation",
+              "label": "Foundation"
+            },
+            {
+              "name": "government",
+              "label": "Government or local-authority structure"
+            },
+            {
+              "name": "development_partner",
+              "label": "Development Partner"
+            },
+            {
+              "name": "private_sector",
+              "label": "Private-sector organisation"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex4_a4_1a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex4_a4_1a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex4_a4_1b",
-          "type": "text",
-          "label": "What services do they provide?",
+          "type": "select_multiple",
+          "label": "Which services do these CSOs provide?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "health_services",
+          "choices": [
+            {
+              "name": "hiv_prevention",
+              "label": "HIV prevention and behaviour-change services"
+            },
+            {
+              "name": "hiv_testing",
+              "label": "HIV testing services"
+            },
+            {
+              "name": "art_care",
+              "label": "ART linkage, treatment, adherence and retention support"
+            },
+            {
+              "name": "prep_pep",
+              "label": "PrEP and PEP demand creation, referral or support"
+            },
+            {
+              "name": "tb",
+              "label": "Tuberculosis prevention, screening, referral or treatment support"
+            },
+            {
+              "name": "ncd",
+              "label": "Non-communicable disease prevention, screening or support"
+            },
+            {
+              "name": "mental_health",
+              "label": "Mental-health promotion, support or referral"
+            },
+            {
+              "name": "malaria",
+              "label": "Malaria prevention or support"
+            },
+            {
+              "name": "srhr",
+              "label": "Sexual and reproductive health and rights"
+            },
+            {
+              "name": "family_planning",
+              "label": "Family-planning services"
+            },
+            {
+              "name": "sti",
+              "label": "STI prevention, screening, referral or treatment support"
+            },
+            {
+              "name": "gbv",
+              "label": "Gender-based violence prevention and response"
+            },
+            {
+              "name": "ovc",
+              "label": "Orphans and vulnerable children services"
+            },
+            {
+              "name": "palliative_care",
+              "label": "Palliative care"
+            },
+            {
+              "name": "nutrition",
+              "label": "Nutrition services"
+            },
+            {
+              "name": "disability",
+              "label": "Disability-inclusive health or support services"
+            },
+            {
+              "name": "community_health",
+              "label": "Integrated community-based health services"
+            },
+            {
+              "name": "advocacy",
+              "label": "Health advocacy, rights and policy engagement"
+            },
+            {
+              "name": "social_protection",
+              "label": "Social protection and livelihood support"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex4_a4_1b_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex4_a4_1b",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex4_a4_1c",
@@ -1121,13 +2747,78 @@
         },
         {
           "name": "annex4_a4_1d",
-          "type": "text",
-          "label": "What support do you provide them for quality health service delivery?",
+          "type": "select_multiple",
+          "label": "What support does your structure provide to CSOs?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "support_types",
+          "choices": [
+            {
+              "name": "governance_support",
+              "label": "Governance and policy support"
+            },
+            {
+              "name": "training",
+              "label": "Training and capacity building"
+            },
+            {
+              "name": "technical_assistance",
+              "label": "Technical assistance"
+            },
+            {
+              "name": "funding",
+              "label": "Funding or grant management"
+            },
+            {
+              "name": "monitoring_evaluation",
+              "label": "M&E and data support"
+            },
+            {
+              "name": "reporting",
+              "label": "Reporting support"
+            },
+            {
+              "name": "quality_assurance",
+              "label": "Quality assurance and supervision"
+            },
+            {
+              "name": "coordination",
+              "label": "Coordination and networking"
+            },
+            {
+              "name": "advocacy",
+              "label": "Advocacy and representation"
+            },
+            {
+              "name": "resource_mobilisation",
+              "label": "Resource mobilisation"
+            },
+            {
+              "name": "technology",
+              "label": "Technology or information systems"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex4_a4_1d_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex4_a4_1d",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex4_a4_1e",
@@ -1205,23 +2896,111 @@
       "fields": [
         {
           "name": "annex4_a4_3a",
-          "type": "text",
-          "label": "What resources (finance, human, technological, etc.) do they have to support service delivery to their target beneficiaries?",
+          "type": "select_multiple",
+          "label": "Which resources are generally available to CSOs in your area?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "resource_types",
+          "choices": [
+            {
+              "name": "financial",
+              "label": "Financial resources"
+            },
+            {
+              "name": "paid_staff",
+              "label": "Paid staff"
+            },
+            {
+              "name": "volunteers",
+              "label": "Volunteers"
+            },
+            {
+              "name": "office_space",
+              "label": "Office space"
+            },
+            {
+              "name": "vehicles",
+              "label": "Vehicles or transport"
+            },
+            {
+              "name": "computers",
+              "label": "Computers"
+            },
+            {
+              "name": "tablets_phones",
+              "label": "Tablets or smartphones"
+            },
+            {
+              "name": "internet",
+              "label": "Reliable internet connectivity"
+            },
+            {
+              "name": "data_system",
+              "label": "Data-management system"
+            },
+            {
+              "name": "technical_expertise",
+              "label": "Technical expertise"
+            },
+            {
+              "name": "policies_procedures",
+              "label": "Policies and procedures"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex4_a4_3a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex4_a4_3a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex4_a4_3b",
-          "type": "text",
-          "label": "How adequate are these resources for efficient and effective service delivery to achieve NSF III goals?",
+          "type": "select_one",
+          "label": "How adequate are these resources for effective service delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "adequacy",
+          "choices": [
+            {
+              "name": "not_available",
+              "label": "Not available"
+            },
+            {
+              "name": "very_inadequate",
+              "label": "Very inadequate"
+            },
+            {
+              "name": "inadequate",
+              "label": "Inadequate"
+            },
+            {
+              "name": "adequate",
+              "label": "Adequate"
+            },
+            {
+              "name": "very_adequate",
+              "label": "Very adequate"
+            }
+          ]
         },
         {
           "name": "annex4_a4_3c",
@@ -1297,13 +3076,36 @@
         },
         {
           "name": "annex4_a4_4f",
-          "type": "text",
-          "label": "How adequate are these capacities for efficient and effective service delivery, particularly human and technological resources?",
+          "type": "select_one",
+          "label": "How adequate are CSOs' human and technological capacities?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "adequacy",
+          "choices": [
+            {
+              "name": "not_available",
+              "label": "Not available"
+            },
+            {
+              "name": "very_inadequate",
+              "label": "Very inadequate"
+            },
+            {
+              "name": "inadequate",
+              "label": "Inadequate"
+            },
+            {
+              "name": "adequate",
+              "label": "Adequate"
+            },
+            {
+              "name": "very_adequate",
+              "label": "Very adequate"
+            }
+          ]
         }
       ]
     },
@@ -1319,13 +3121,94 @@
       "fields": [
         {
           "name": "annex4_a4_5a",
-          "type": "text",
-          "label": "What capacity gaps hinder your organisations from efficient and effective delivery of their roles in Primary Health Care?",
+          "type": "select_multiple",
+          "label": "Which capacity gaps hinder CSOs from effective delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "capacity_gaps",
+          "choices": [
+            {
+              "name": "governance",
+              "label": "Governance and leadership"
+            },
+            {
+              "name": "legal_compliance",
+              "label": "Registration or legal compliance"
+            },
+            {
+              "name": "financial_management",
+              "label": "Financial management"
+            },
+            {
+              "name": "fundraising",
+              "label": "Fundraising and resource mobilisation"
+            },
+            {
+              "name": "human_resources",
+              "label": "Human resources and staffing"
+            },
+            {
+              "name": "technical_skills",
+              "label": "Technical health-service skills"
+            },
+            {
+              "name": "programme_management",
+              "label": "Programme management"
+            },
+            {
+              "name": "monitoring_evaluation",
+              "label": "Monitoring and evaluation"
+            },
+            {
+              "name": "data_management",
+              "label": "Data management and reporting"
+            },
+            {
+              "name": "technology",
+              "label": "Technology, devices or connectivity"
+            },
+            {
+              "name": "infrastructure",
+              "label": "Office, transport or service-delivery infrastructure"
+            },
+            {
+              "name": "partnerships",
+              "label": "Partnerships and coordination"
+            },
+            {
+              "name": "quality_assurance",
+              "label": "Quality assurance"
+            },
+            {
+              "name": "safeguarding",
+              "label": "Safeguarding and ethical practice"
+            },
+            {
+              "name": "sustainability",
+              "label": "Organisational sustainability"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex4_a4_5a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex4_a4_5a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex4_a4_5b",
@@ -1371,13 +3254,86 @@
       "fields": [
         {
           "name": "annex4_a4_6a",
-          "type": "text",
-          "label": "What are the Health Service CSOs' challenges to growth and sustainability?",
+          "type": "select_multiple",
+          "label": "What are the main CSO growth and sustainability challenges?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "list": "sustainability_challenges",
+          "choices": [
+            {
+              "name": "funding",
+              "label": "Unstable or insufficient funding"
+            },
+            {
+              "name": "donor_dependency",
+              "label": "Dependence on one donor or project"
+            },
+            {
+              "name": "staff_retention",
+              "label": "Staff recruitment and retention"
+            },
+            {
+              "name": "volunteer_retention",
+              "label": "Volunteer retention"
+            },
+            {
+              "name": "governance",
+              "label": "Governance weaknesses"
+            },
+            {
+              "name": "financial_systems",
+              "label": "Financial-management weaknesses"
+            },
+            {
+              "name": "service_demand",
+              "label": "Changing community needs"
+            },
+            {
+              "name": "competition",
+              "label": "Competition for limited resources"
+            },
+            {
+              "name": "technology",
+              "label": "Technology and connectivity limitations"
+            },
+            {
+              "name": "infrastructure",
+              "label": "Office, transport or infrastructure limitations"
+            },
+            {
+              "name": "partnerships",
+              "label": "Weak partnerships or coordination"
+            },
+            {
+              "name": "policy_environment",
+              "label": "Policy or regulatory challenges"
+            },
+            {
+              "name": "succession",
+              "label": "Leadership succession challenges"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex4_a4_6a_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "constraint": null,
+          "relevant": {
+            "field": "annex4_a4_6a",
+            "op": "selected",
+            "value": "other"
+          }
         },
         {
           "name": "annex4_a4_6b",
@@ -1494,6 +3450,1056 @@
       {
         "name": "strategic_structure",
         "label": "DAC, DHMT, Government or other strategic-level structure"
+      }
+    ],
+    "yes_no_unsure": [
+      {
+        "name": "yes",
+        "label": "Yes"
+      },
+      {
+        "name": "no",
+        "label": "No"
+      },
+      {
+        "name": "unsure",
+        "label": "Not sure"
+      }
+    ],
+    "organisation_nature": [
+      {
+        "name": "ngo",
+        "label": "Non-Governmental Organisation (NGO)"
+      },
+      {
+        "name": "cbo",
+        "label": "Community-Based Organisation (CBO)"
+      },
+      {
+        "name": "fbo",
+        "label": "Faith-Based Organisation (FBO)"
+      },
+      {
+        "name": "trust",
+        "label": "Trust"
+      },
+      {
+        "name": "network",
+        "label": "Network, umbrella or coordinating body"
+      },
+      {
+        "name": "association",
+        "label": "Association"
+      },
+      {
+        "name": "foundation",
+        "label": "Foundation"
+      },
+      {
+        "name": "government",
+        "label": "Government or local-authority structure"
+      },
+      {
+        "name": "development_partner",
+        "label": "Development Partner"
+      },
+      {
+        "name": "private_sector",
+        "label": "Private-sector organisation"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "registration_status": [
+      {
+        "name": "registered",
+        "label": "Registered"
+      },
+      {
+        "name": "registration_pending",
+        "label": "Registration pending"
+      },
+      {
+        "name": "not_registered",
+        "label": "Not registered"
+      },
+      {
+        "name": "unknown",
+        "label": "Not known"
+      }
+    ],
+    "governance_elements": [
+      {
+        "name": "board",
+        "label": "Board of directors/trustees"
+      },
+      {
+        "name": "management_committee",
+        "label": "Management or executive committee"
+      },
+      {
+        "name": "constitution",
+        "label": "Constitution or governing document"
+      },
+      {
+        "name": "policies",
+        "label": "Approved organisational policies"
+      },
+      {
+        "name": "annual_general_meeting",
+        "label": "Annual general meeting"
+      },
+      {
+        "name": "management_team",
+        "label": "Management team"
+      },
+      {
+        "name": "community_representation",
+        "label": "Community/beneficiary representation"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "district": [
+      {
+        "name": "Bobirwa",
+        "label": "Bobirwa"
+      },
+      {
+        "name": "Boteti",
+        "label": "Boteti"
+      },
+      {
+        "name": "Charleshill",
+        "label": "Charleshill"
+      },
+      {
+        "name": "Chobe",
+        "label": "Chobe"
+      },
+      {
+        "name": "Ghanzi",
+        "label": "Ghanzi"
+      },
+      {
+        "name": "Goodhope",
+        "label": "Goodhope"
+      },
+      {
+        "name": "Greater Francistown",
+        "label": "Greater Francistown"
+      },
+      {
+        "name": "Greater Gaborone",
+        "label": "Greater Gaborone"
+      },
+      {
+        "name": "Jwaneng",
+        "label": "Jwaneng"
+      },
+      {
+        "name": "Kanye",
+        "label": "Kanye"
+      },
+      {
+        "name": "Kgalagadi North",
+        "label": "Kgalagadi North"
+      },
+      {
+        "name": "Kgalagadi South",
+        "label": "Kgalagadi South"
+      },
+      {
+        "name": "Kgatleng",
+        "label": "Kgatleng"
+      },
+      {
+        "name": "Letlhakeng",
+        "label": "Letlhakeng"
+      },
+      {
+        "name": "Lobatse",
+        "label": "Lobatse"
+      },
+      {
+        "name": "Mabutsane",
+        "label": "Mabutsane"
+      },
+      {
+        "name": "Mahalapye",
+        "label": "Mahalapye"
+      },
+      {
+        "name": "Mogoditshane-Thamaga",
+        "label": "Mogoditshane-Thamaga"
+      },
+      {
+        "name": "Molepolole",
+        "label": "Molepolole"
+      },
+      {
+        "name": "Moshupa",
+        "label": "Moshupa"
+      },
+      {
+        "name": "Ngami",
+        "label": "Ngami"
+      },
+      {
+        "name": "North East",
+        "label": "North East"
+      },
+      {
+        "name": "Okavango",
+        "label": "Okavango"
+      },
+      {
+        "name": "Palapye",
+        "label": "Palapye"
+      },
+      {
+        "name": "Phikwe",
+        "label": "Phikwe"
+      },
+      {
+        "name": "Ramotswa",
+        "label": "Ramotswa"
+      },
+      {
+        "name": "Serowe",
+        "label": "Serowe"
+      },
+      {
+        "name": "Tlokweng",
+        "label": "Tlokweng"
+      },
+      {
+        "name": "Tutume",
+        "label": "Tutume"
+      }
+    ],
+    "coverage_level": [
+      {
+        "name": "locality",
+        "label": "Single village, ward or locality"
+      },
+      {
+        "name": "district",
+        "label": "One district"
+      },
+      {
+        "name": "multi_district",
+        "label": "More than one district"
+      },
+      {
+        "name": "national",
+        "label": "National coverage"
+      },
+      {
+        "name": "cross_border",
+        "label": "Cross-border or regional coverage"
+      }
+    ],
+    "health_services": [
+      {
+        "name": "hiv_prevention",
+        "label": "HIV prevention and behaviour-change services"
+      },
+      {
+        "name": "hiv_testing",
+        "label": "HIV testing services"
+      },
+      {
+        "name": "art_care",
+        "label": "ART linkage, treatment, adherence and retention support"
+      },
+      {
+        "name": "prep_pep",
+        "label": "PrEP and PEP demand creation, referral or support"
+      },
+      {
+        "name": "tb",
+        "label": "Tuberculosis prevention, screening, referral or treatment support"
+      },
+      {
+        "name": "ncd",
+        "label": "Non-communicable disease prevention, screening or support"
+      },
+      {
+        "name": "mental_health",
+        "label": "Mental-health promotion, support or referral"
+      },
+      {
+        "name": "malaria",
+        "label": "Malaria prevention or support"
+      },
+      {
+        "name": "srhr",
+        "label": "Sexual and reproductive health and rights"
+      },
+      {
+        "name": "family_planning",
+        "label": "Family-planning services"
+      },
+      {
+        "name": "sti",
+        "label": "STI prevention, screening, referral or treatment support"
+      },
+      {
+        "name": "gbv",
+        "label": "Gender-based violence prevention and response"
+      },
+      {
+        "name": "ovc",
+        "label": "Orphans and vulnerable children services"
+      },
+      {
+        "name": "palliative_care",
+        "label": "Palliative care"
+      },
+      {
+        "name": "nutrition",
+        "label": "Nutrition services"
+      },
+      {
+        "name": "disability",
+        "label": "Disability-inclusive health or support services"
+      },
+      {
+        "name": "community_health",
+        "label": "Integrated community-based health services"
+      },
+      {
+        "name": "advocacy",
+        "label": "Health advocacy, rights and policy engagement"
+      },
+      {
+        "name": "social_protection",
+        "label": "Social protection and livelihood support"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "target_populations": [
+      {
+        "name": "general_population",
+        "label": "General population"
+      },
+      {
+        "name": "children",
+        "label": "Children"
+      },
+      {
+        "name": "adolescents_youth",
+        "label": "Adolescents and young people"
+      },
+      {
+        "name": "women_girls",
+        "label": "Women and girls"
+      },
+      {
+        "name": "men_boys",
+        "label": "Men and boys"
+      },
+      {
+        "name": "older_persons",
+        "label": "Older persons"
+      },
+      {
+        "name": "people_living_hiv",
+        "label": "People living with HIV"
+      },
+      {
+        "name": "key_populations",
+        "label": "Key populations"
+      },
+      {
+        "name": "people_disabilities",
+        "label": "People with disabilities"
+      },
+      {
+        "name": "rural_remote",
+        "label": "Rural or remote-area populations"
+      },
+      {
+        "name": "migrants_mobile",
+        "label": "Migrants or mobile populations"
+      },
+      {
+        "name": "vulnerable_households",
+        "label": "Vulnerable households"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "reporting_methods": [
+      {
+        "name": "paper_forms",
+        "label": "Paper forms/registers"
+      },
+      {
+        "name": "excel",
+        "label": "Excel workbooks"
+      },
+      {
+        "name": "email",
+        "label": "Email reports"
+      },
+      {
+        "name": "online_portal",
+        "label": "Online reporting portal"
+      },
+      {
+        "name": "mobile_app",
+        "label": "Mobile application"
+      },
+      {
+        "name": "dhis2",
+        "label": "DHIS2 or government health information system"
+      },
+      {
+        "name": "odk_kobo",
+        "label": "ODK, KoboToolbox or another digital survey tool"
+      },
+      {
+        "name": "narrative_reports",
+        "label": "Narrative reports"
+      },
+      {
+        "name": "verbal_meetings",
+        "label": "Verbal reporting or coordination meetings"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "reporting_frequency": [
+      {
+        "name": "weekly",
+        "label": "Weekly"
+      },
+      {
+        "name": "monthly",
+        "label": "Monthly"
+      },
+      {
+        "name": "quarterly",
+        "label": "Quarterly"
+      },
+      {
+        "name": "semi_annual",
+        "label": "Semi-annually"
+      },
+      {
+        "name": "annual",
+        "label": "Annually"
+      },
+      {
+        "name": "project_specific",
+        "label": "According to project/funder requirements"
+      },
+      {
+        "name": "ad_hoc",
+        "label": "Ad hoc or irregular"
+      },
+      {
+        "name": "not_reporting",
+        "label": "Not currently reporting"
+      }
+    ],
+    "beneficiaries_records": [
+      {
+        "name": "paper_registers",
+        "label": "Paper registers"
+      },
+      {
+        "name": "excel_database",
+        "label": "Excel or spreadsheet database"
+      },
+      {
+        "name": "electronic_mis",
+        "label": "Electronic management information system"
+      },
+      {
+        "name": "case_management",
+        "label": "Electronic case-management system"
+      },
+      {
+        "name": "mobile_data_tool",
+        "label": "Mobile data-collection tool"
+      },
+      {
+        "name": "no_system",
+        "label": "No formal system"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "collaboration_types": [
+      {
+        "name": "referrals",
+        "label": "Referral and counter-referral"
+      },
+      {
+        "name": "joint_planning",
+        "label": "Joint planning"
+      },
+      {
+        "name": "joint_implementation",
+        "label": "Joint programme implementation"
+      },
+      {
+        "name": "funding",
+        "label": "Funding or grants"
+      },
+      {
+        "name": "technical_assistance",
+        "label": "Technical assistance"
+      },
+      {
+        "name": "training",
+        "label": "Training and mentorship"
+      },
+      {
+        "name": "data_sharing",
+        "label": "Data and information sharing"
+      },
+      {
+        "name": "resource_sharing",
+        "label": "Sharing staff, facilities, transport or equipment"
+      },
+      {
+        "name": "advocacy",
+        "label": "Joint advocacy"
+      },
+      {
+        "name": "research",
+        "label": "Research or assessments"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "resource_types": [
+      {
+        "name": "financial",
+        "label": "Financial resources"
+      },
+      {
+        "name": "paid_staff",
+        "label": "Paid staff"
+      },
+      {
+        "name": "volunteers",
+        "label": "Volunteers"
+      },
+      {
+        "name": "office_space",
+        "label": "Office space"
+      },
+      {
+        "name": "vehicles",
+        "label": "Vehicles or transport"
+      },
+      {
+        "name": "computers",
+        "label": "Computers"
+      },
+      {
+        "name": "tablets_phones",
+        "label": "Tablets or smartphones"
+      },
+      {
+        "name": "internet",
+        "label": "Reliable internet connectivity"
+      },
+      {
+        "name": "data_system",
+        "label": "Data-management system"
+      },
+      {
+        "name": "technical_expertise",
+        "label": "Technical expertise"
+      },
+      {
+        "name": "policies_procedures",
+        "label": "Policies and procedures"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "adequacy": [
+      {
+        "name": "not_available",
+        "label": "Not available"
+      },
+      {
+        "name": "very_inadequate",
+        "label": "Very inadequate"
+      },
+      {
+        "name": "inadequate",
+        "label": "Inadequate"
+      },
+      {
+        "name": "adequate",
+        "label": "Adequate"
+      },
+      {
+        "name": "very_adequate",
+        "label": "Very adequate"
+      }
+    ],
+    "knowledge_level": [
+      {
+        "name": "none",
+        "label": "No knowledge"
+      },
+      {
+        "name": "limited",
+        "label": "Limited knowledge"
+      },
+      {
+        "name": "basic",
+        "label": "Basic knowledge"
+      },
+      {
+        "name": "good",
+        "label": "Good knowledge"
+      },
+      {
+        "name": "advanced",
+        "label": "Advanced knowledge"
+      }
+    ],
+    "preparedness": [
+      {
+        "name": "not_prepared",
+        "label": "Not prepared"
+      },
+      {
+        "name": "minimally_prepared",
+        "label": "Minimally prepared"
+      },
+      {
+        "name": "partly_prepared",
+        "label": "Partly prepared"
+      },
+      {
+        "name": "well_prepared",
+        "label": "Well prepared"
+      },
+      {
+        "name": "fully_prepared",
+        "label": "Fully prepared"
+      }
+    ],
+    "organisational_systems": [
+      {
+        "name": "governance",
+        "label": "Governance and oversight"
+      },
+      {
+        "name": "financial_management",
+        "label": "Financial-management controls"
+      },
+      {
+        "name": "human_resources",
+        "label": "Human-resource management"
+      },
+      {
+        "name": "programme_management",
+        "label": "Programme planning and management"
+      },
+      {
+        "name": "service_protocols",
+        "label": "Service-delivery protocols"
+      },
+      {
+        "name": "referral_system",
+        "label": "Referral and counter-referral system"
+      },
+      {
+        "name": "monitoring_evaluation",
+        "label": "Monitoring and evaluation system"
+      },
+      {
+        "name": "data_protection",
+        "label": "Data-protection and confidentiality procedures"
+      },
+      {
+        "name": "risk_management",
+        "label": "Risk-management procedures"
+      },
+      {
+        "name": "quality_assurance",
+        "label": "Quality-assurance procedures"
+      },
+      {
+        "name": "safeguarding",
+        "label": "Safeguarding procedures"
+      },
+      {
+        "name": "procurement",
+        "label": "Procurement and asset-management procedures"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "capacity_gaps": [
+      {
+        "name": "governance",
+        "label": "Governance and leadership"
+      },
+      {
+        "name": "legal_compliance",
+        "label": "Registration or legal compliance"
+      },
+      {
+        "name": "financial_management",
+        "label": "Financial management"
+      },
+      {
+        "name": "fundraising",
+        "label": "Fundraising and resource mobilisation"
+      },
+      {
+        "name": "human_resources",
+        "label": "Human resources and staffing"
+      },
+      {
+        "name": "technical_skills",
+        "label": "Technical health-service skills"
+      },
+      {
+        "name": "programme_management",
+        "label": "Programme management"
+      },
+      {
+        "name": "monitoring_evaluation",
+        "label": "Monitoring and evaluation"
+      },
+      {
+        "name": "data_management",
+        "label": "Data management and reporting"
+      },
+      {
+        "name": "technology",
+        "label": "Technology, devices or connectivity"
+      },
+      {
+        "name": "infrastructure",
+        "label": "Office, transport or service-delivery infrastructure"
+      },
+      {
+        "name": "partnerships",
+        "label": "Partnerships and coordination"
+      },
+      {
+        "name": "quality_assurance",
+        "label": "Quality assurance"
+      },
+      {
+        "name": "safeguarding",
+        "label": "Safeguarding and ethical practice"
+      },
+      {
+        "name": "sustainability",
+        "label": "Organisational sustainability"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "me_frequency": [
+      {
+        "name": "continuous",
+        "label": "Continuous/routine monitoring"
+      },
+      {
+        "name": "monthly",
+        "label": "Monthly"
+      },
+      {
+        "name": "quarterly",
+        "label": "Quarterly"
+      },
+      {
+        "name": "semi_annual",
+        "label": "Semi-annually"
+      },
+      {
+        "name": "annual",
+        "label": "Annually"
+      },
+      {
+        "name": "project_end",
+        "label": "Only at project completion"
+      },
+      {
+        "name": "irregular",
+        "label": "Irregularly"
+      },
+      {
+        "name": "never",
+        "label": "Never"
+      }
+    ],
+    "me_gaps": [
+      {
+        "name": "me_staff",
+        "label": "Insufficient M&E staff"
+      },
+      {
+        "name": "me_skills",
+        "label": "Limited M&E skills"
+      },
+      {
+        "name": "indicators",
+        "label": "Weak indicator definitions"
+      },
+      {
+        "name": "tools",
+        "label": "Inadequate data-collection tools"
+      },
+      {
+        "name": "data_quality",
+        "label": "Data-quality challenges"
+      },
+      {
+        "name": "analysis",
+        "label": "Limited data-analysis capacity"
+      },
+      {
+        "name": "visualisation",
+        "label": "Limited dashboard or visualisation capacity"
+      },
+      {
+        "name": "report_writing",
+        "label": "Report-writing challenges"
+      },
+      {
+        "name": "data_use",
+        "label": "Limited use of data for decisions"
+      },
+      {
+        "name": "devices",
+        "label": "Insufficient devices or connectivity"
+      },
+      {
+        "name": "database",
+        "label": "No suitable database or information system"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "sustainability_status": [
+      {
+        "name": "yes_approved",
+        "label": "Yes, approved and in use"
+      },
+      {
+        "name": "in_development",
+        "label": "Currently being developed"
+      },
+      {
+        "name": "informal",
+        "label": "Informal sustainability approach only"
+      },
+      {
+        "name": "no",
+        "label": "No sustainability plan"
+      }
+    ],
+    "sustainability_prevalence": [
+      {
+        "name": "all",
+        "label": "All or almost all"
+      },
+      {
+        "name": "most",
+        "label": "Most"
+      },
+      {
+        "name": "some",
+        "label": "Some"
+      },
+      {
+        "name": "few",
+        "label": "Few"
+      },
+      {
+        "name": "none",
+        "label": "None"
+      },
+      {
+        "name": "unknown",
+        "label": "Not known"
+      }
+    ],
+    "sustainability_challenges": [
+      {
+        "name": "funding",
+        "label": "Unstable or insufficient funding"
+      },
+      {
+        "name": "donor_dependency",
+        "label": "Dependence on one donor or project"
+      },
+      {
+        "name": "staff_retention",
+        "label": "Staff recruitment and retention"
+      },
+      {
+        "name": "volunteer_retention",
+        "label": "Volunteer retention"
+      },
+      {
+        "name": "governance",
+        "label": "Governance weaknesses"
+      },
+      {
+        "name": "financial_systems",
+        "label": "Financial-management weaknesses"
+      },
+      {
+        "name": "service_demand",
+        "label": "Changing community needs"
+      },
+      {
+        "name": "competition",
+        "label": "Competition for limited resources"
+      },
+      {
+        "name": "technology",
+        "label": "Technology and connectivity limitations"
+      },
+      {
+        "name": "infrastructure",
+        "label": "Office, transport or infrastructure limitations"
+      },
+      {
+        "name": "partnerships",
+        "label": "Weak partnerships or coordination"
+      },
+      {
+        "name": "policy_environment",
+        "label": "Policy or regulatory challenges"
+      },
+      {
+        "name": "succession",
+        "label": "Leadership succession challenges"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "support_types": [
+      {
+        "name": "governance_support",
+        "label": "Governance and policy support"
+      },
+      {
+        "name": "training",
+        "label": "Training and capacity building"
+      },
+      {
+        "name": "technical_assistance",
+        "label": "Technical assistance"
+      },
+      {
+        "name": "funding",
+        "label": "Funding or grant management"
+      },
+      {
+        "name": "monitoring_evaluation",
+        "label": "M&E and data support"
+      },
+      {
+        "name": "reporting",
+        "label": "Reporting support"
+      },
+      {
+        "name": "quality_assurance",
+        "label": "Quality assurance and supervision"
+      },
+      {
+        "name": "coordination",
+        "label": "Coordination and networking"
+      },
+      {
+        "name": "advocacy",
+        "label": "Advocacy and representation"
+      },
+      {
+        "name": "resource_mobilisation",
+        "label": "Resource mobilisation"
+      },
+      {
+        "name": "technology",
+        "label": "Technology or information systems"
+      },
+      {
+        "name": "other",
+        "label": "Other"
+      }
+    ],
+    "strategic_structure_type": [
+      {
+        "name": "dac",
+        "label": "District AIDS Coordinator or related district coordination structure"
+      },
+      {
+        "name": "dhmt",
+        "label": "District Health Management Team"
+      },
+      {
+        "name": "local_authority",
+        "label": "Local authority or council"
+      },
+      {
+        "name": "government_ministry",
+        "label": "Government ministry or department"
+      },
+      {
+        "name": "technical_reference_group",
+        "label": "Technical Reference Group"
+      },
+      {
+        "name": "development_partner",
+        "label": "Development Partner"
+      },
+      {
+        "name": "business_private_sector",
+        "label": "Business or private-sector structure"
+      },
+      {
+        "name": "academic_research",
+        "label": "Academic or research institution"
+      },
+      {
+        "name": "other",
+        "label": "Other"
       }
     ]
   }

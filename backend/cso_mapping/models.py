@@ -48,6 +48,22 @@ class CsoMappingSubmission(models.Model):
     respondent_email = models.EmailField(blank=True)
     primary_district = models.CharField(max_length=255, blank=True)
 
+    # Physical GPS location of the organisation's office, captured on the device
+    # via the browser Geolocation API (never typed by the respondent). All fields
+    # are nullable so existing submissions — and any future one saved before the
+    # required-location rollout — remain valid. Coordinates are validated on the
+    # server (range + Botswana extent) before they reach these columns.
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location_accuracy = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    location_captured_at = models.DateTimeField(null=True, blank=True)
+    location_capture_method = models.CharField(max_length=30, blank=True, default="")
+    # A valid coordinate that falls outside Botswana's geographic extent is still
+    # stored (never silently altered) but flagged for administrative review rather
+    # than guessed/replaced. Border-area points inside the extent are not flagged.
+    location_flagged = models.BooleanField(default=False)
+    location_flag_reason = models.CharField(max_length=120, blank=True, default="")
+
     # Final confirmation.
     information_confirmed = models.BooleanField(default=False)
     additional_comments = models.TextField(blank=True)

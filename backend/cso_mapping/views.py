@@ -12,6 +12,7 @@ Authorised-staff surface (admin role only — submissions hold personal data):
 """
 from __future__ import annotations
 
+import json
 import re
 from io import BytesIO
 
@@ -38,6 +39,9 @@ from .schema import (
     CORE_TEXT_FIELDS,
     SchemaValidationError,
     _bundled_schema,
+    choice_label,
+    comment_prefix,
+    display_answer,
     field_is_active,
     iter_answerable_fields,
     load_schema,
@@ -380,7 +384,7 @@ class SubmissionViewSet(viewsets.ReadOnlyModelViewSet):
             rtype = choice["name"]
             context = {"consent": "yes", "respondent_type": rtype}
             columns = [
-                (field["name"], field.get("label") or field["name"])
+                (field, field.get("label") or field["name"])
                 for section, field in iter_answerable_fields(schema)
                 if field_is_active(section, field, context)
             ]
@@ -394,13 +398,27 @@ class SubmissionViewSet(viewsets.ReadOnlyModelViewSet):
                 submitted = sub.submitted_at.replace(tzinfo=None) if sub.submitted_at else None
                 row = [sub.public_reference or "", submitted]
                 answers = sub.answers or {}
-                for name, _label in columns:
+                for field, _label in columns:
+                    name = field["name"]
                     if name in CORE_BOOL_FIELDS:
-                        row.append("Yes" if getattr(sub, name) else "No")
+                        cell = "Yes" if getattr(sub, name) else "No"
                     elif name in CORE_TEXT_FIELDS:
-                        row.append(_excel_safe(getattr(sub, name) or ""))
+                        cell = getattr(sub, name) or ""
                     else:
-                        row.append(_excel_safe(answers.get(name, "")))
+                        # Multi-select joins its labels; select_one is labelled too.
+                        cell = display_answer(schema, field, answers.get(name, ""))
+                    # Append the optional per-option respondent comments.
+                    if field["type"] in ("select_one", "select_multiple"):
+                        prefix = comment_prefix(name)
+                        notes = [
+                            f"{choice_label(schema, field.get('list', ''), k[len(prefix):])}: {v}"
+                            for k, v in answers.items()
+                            if k.startswith(prefix) and v
+                        ]
+                        if notes:
+                            joined = "; ".join(notes)
+                            cell = f"{cell} — {joined}" if cell else joined
+                    row.append(_excel_safe(cell))
                 ws.append(row)
                 total_rows += 1
             self._style_sheet(ws, len(headers))
@@ -442,6 +460,224 @@ class SubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         for row in ws.iter_rows(min_row=2):
             for cell in row:
                 cell.alignment = wrap
+
+
+# ---------------------------------------------------------------------------
+# CSO location map (authorised staff): minimal, non-confidential location feed
+# powering the Botswana map, plus Excel / GeoJSON exports of the same data.
+# ---------------------------------------------------------------------------
+# The date stamp used in export filenames (YYYY-MM-DD, server date).
+def _today_stamp() -> str:
+    return timezone.localdate().isoformat()
+
+
+def _org_type_label(schema: dict, answers: dict, respondent_type: str) -> str:
+    """The responding entity's own organisation type, mapped to the shared
+    ``organisation_nature`` labels used by the map legend/filters.
+
+    Source of truth is the direct "Nature/type of your organisation" question
+    (``annex2_a2_1a``, asked of individual CSOs). Coordinating/strategic
+    respondents answer about their *members*, not themselves, so their own type
+    is derived from ``respondent_type`` instead. Falls back to "" (client shows
+    "Other"/"Not provided") — never guessed.
+    """
+    nature = (answers or {}).get("annex2_a2_1a")
+    if nature:
+        return choice_label(schema, "organisation_nature", nature)
+    if respondent_type == "coordinating_body":
+        return "Network, umbrella or coordinating body"
+    if respondent_type == "strategic_structure":
+        return "Government or local-authority structure"
+    return ""
+
+
+def _map_location_rows():
+    """Rows for the map: only records with BOTH coordinates present.
+
+    Returns the fields the map needs — id, CSO name, organisation type, district,
+    village/town, physical address, latitude, longitude — and NOTHING else.
+    Personal data (phones, emails, respondent names), services, target
+    populations and other free-text answers are deliberately never selected here.
+    Organisation type + physical address are read from the submission's answers
+    (no extra questionnaire fields, no schema/DB change).
+    """
+    schema = load_schema()
+    qs = (
+        CsoMappingSubmission.objects.filter(
+            latitude__isnull=False, longitude__isnull=False
+        )
+        .order_by("responding_entity", "id")
+        .values(
+            "id",
+            "responding_entity",
+            "primary_district",
+            "respondent_type",
+            "answers",
+            "latitude",
+            "longitude",
+        )
+    )
+    rows = []
+    for r in qs:
+        answers = r["answers"] or {}
+        rows.append(
+            {
+                "id": r["id"],
+                "cso_name": (r["responding_entity"] or "").strip(),
+                "organisation_type": _org_type_label(
+                    schema, answers, r["respondent_type"]
+                ),
+                "district": (r["primary_district"] or "").strip(),
+                # No dedicated village/town field exists in the current form, so
+                # this is intentionally blank ("Not provided" on the client). It
+                # is never guessed from address/name.
+                "village_town": "",
+                "physical_address": str(answers.get("physical_address", "") or "").strip(),
+                "latitude": float(r["latitude"]),
+                "longitude": float(r["longitude"]),
+            }
+        )
+    return rows
+
+
+class CsoLocationListView(APIView):
+    """Authorised staff: read-only JSON of mapped CSO locations for the map.
+
+    Deny-by-default (``CanUseCsoMapping``): never a public endpoint. Excludes any
+    record without valid coordinates and returns only map-safe fields.
+    """
+
+    permission_classes = [IsAuthenticated, CanUseCsoMapping]
+
+    def get(self, request):
+        rows = _map_location_rows()
+        record_audit_event(
+            action="view",
+            request=request,
+            object_type="cso_location_map",
+            description="Viewed the CSO locations map data",
+            metadata={"returned": len(rows)},
+        )
+        return Response(rows)
+
+
+class CsoLocationExcelExportView(APIView):
+    """Authorised staff: Excel (.xlsx) of mapped CSO locations (export action)."""
+
+    permission_classes = [IsAuthenticated, CanUseCsoMapping]
+    # Signals CanUseCsoMapping to require the 'export' action (not just 'view').
+    action = "export"
+
+    COLUMNS = [
+        "CSO Name",
+        "Organisation Type",
+        "District",
+        "Village/Town",
+        "Physical Address",
+        "Latitude",
+        "Longitude",
+    ]
+
+    def get(self, request):
+        rows = _map_location_rows()
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "CSO Locations"
+        ws.append(self.COLUMNS)
+        for row in rows:
+            ws.append(
+                [
+                    _excel_safe(row["cso_name"]),
+                    _excel_safe(row["organisation_type"]),
+                    _excel_safe(row["district"]),
+                    _excel_safe(row["village_town"]),
+                    _excel_safe(row["physical_address"]),
+                    row["latitude"],
+                    row["longitude"],
+                ]
+            )
+        # Formatting: bold + frozen header, filters, widths, numeric lat/lng.
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(self.COLUMNS))}{ws.max_row}"
+        widths = [40, 28, 22, 22, 40, 14, 14]
+        for idx, width in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = width
+        # Latitude/Longitude are the last two columns.
+        lat_col = len(self.COLUMNS) - 1
+        for (lat_cell, lng_cell) in ws.iter_rows(
+            min_row=2, min_col=lat_col, max_col=lat_col + 1
+        ):
+            lat_cell.number_format = "0.000000"
+            lng_cell.number_format = "0.000000"
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        record_audit_event(
+            action="export",
+            request=request,
+            object_type="cso_location_map",
+            description="Exported CSO map locations to Excel",
+            metadata={"records": len(rows)},
+        )
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="sesigo-cso-locations-botswana-{_today_stamp()}.xlsx"'
+        )
+        return response
+
+
+class CsoLocationGeoJSONExportView(APIView):
+    """Authorised staff: a valid GeoJSON FeatureCollection of CSO points.
+
+    Coordinates are ``[longitude, latitude]`` (GeoJSON order). Only map-safe
+    properties are included — never confidential questionnaire fields.
+    """
+
+    permission_classes = [IsAuthenticated, CanUseCsoMapping]
+    action = "export"
+
+    def get(self, request):
+        rows = _map_location_rows()
+        features = [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    # GeoJSON is [longitude, latitude] — do not reverse.
+                    "coordinates": [row["longitude"], row["latitude"]],
+                },
+                "properties": {
+                    "cso_name": row["cso_name"],
+                    "organisation_type": row["organisation_type"],
+                    "district": row["district"],
+                    "village_town": row["village_town"],
+                    "physical_address": row["physical_address"],
+                },
+            }
+            for row in rows
+        ]
+        collection = {"type": "FeatureCollection", "features": features}
+        record_audit_event(
+            action="export",
+            request=request,
+            object_type="cso_location_map",
+            description="Exported CSO map locations to GeoJSON",
+            metadata={"records": len(rows)},
+        )
+        response = HttpResponse(
+            json.dumps(collection),
+            content_type="application/geo+json",
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="sesigo-cso-locations-botswana-{_today_stamp()}.geojson"'
+        )
+        return response
 
 
 # ---------------------------------------------------------------------------

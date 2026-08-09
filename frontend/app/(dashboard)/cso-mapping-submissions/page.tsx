@@ -41,7 +41,9 @@ import {
 import {
   type Field,
   type FormSchema,
+  answerComments,
   condSatisfied,
+  displayAnswer,
   type Answers,
 } from "@/components/cso-mapping/schema";
 
@@ -357,7 +359,7 @@ function SubmissionDialog({
       information_confirmed: submission.information_confirmed ? "Yes" : "No",
     };
     if (field.name in map) return map[field.name];
-    return submission.answers?.[field.name] ?? "";
+    return displayAnswer(field, submission.answers?.[field.name]);
   };
 
   return (
@@ -376,7 +378,11 @@ function SubmissionDialog({
             .map((section) => {
               const answered = section.fields
                 .filter((f) => f.type !== "note")
-                .map((f) => ({ field: f, value: coreValue(f) }))
+                .map((f) => ({
+                  field: f,
+                  value: coreValue(f),
+                  comments: answerComments(f, submission.answers ?? {}),
+                }))
                 .filter((entry) => entry.value !== "");
               if (answered.length === 0) return null;
               return (
@@ -385,10 +391,18 @@ function SubmissionDialog({
                     <h3 className="mb-2 text-sm font-semibold text-[#2b5872]">{section.label}</h3>
                   ) : null}
                   <dl className="space-y-3">
-                    {answered.map(({ field, value }) => (
+                    {answered.map(({ field, value, comments }) => (
                       <div key={field.name}>
                         <dt className="text-xs font-medium text-slate-500">{field.label}</dt>
                         <dd className="mt-0.5 whitespace-pre-wrap text-justify text-sm text-slate-800">{value}</dd>
+                        {comments.map((c) => (
+                          <dd
+                            key={c.label}
+                            className="mt-0.5 whitespace-pre-wrap text-xs italic text-slate-500"
+                          >
+                            Comment ({c.label}): {c.text}
+                          </dd>
+                        ))}
                       </div>
                     ))}
                   </dl>

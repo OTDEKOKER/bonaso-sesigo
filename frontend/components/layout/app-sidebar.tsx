@@ -394,6 +394,7 @@ export function AppSidebar() {
             isActive={pathname?.startsWith("/cso-mapping") ?? false}
             subItems={[
               { title: "Submissions", href: "/cso-mapping-submissions" },
+              { title: "Map", href: "/cso-mapping-map" },
               ...(can("cso_mapping", "edit")
                 ? [{ title: "Questionnaire Editor", href: "/cso-mapping-form-editor" }]
                 : []),

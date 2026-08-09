@@ -66,6 +66,12 @@ export const SHARED_ROUTE_PREFIXES = [
   "/announcements",
   "/search",
   "/training",
+  // CSO Mapping is a live-only module (real submissions + locations); it has no
+  // training mirror, so its dashboard routes stay on their live path in Training
+  // Mode instead of being rewritten to a non-existent /training/* page.
+  "/cso-mapping-submissions",
+  "/cso-mapping-map",
+  "/cso-mapping-form-editor",
 ] as const;
 
 /** True when `path` is (or is under) a shared, non-training-scoped route. */

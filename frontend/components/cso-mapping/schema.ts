@@ -49,13 +49,26 @@ export interface FormSchema {
   choices: Record<string, Choice[]>
 }
 
-export type Answers = Record<string, string>
+// A single-choice / text answer is a string; a multi-select answer is a list of
+// choice names. Both live in the same answers map.
+export type AnswerValue = string | string[]
+export type Answers = Record<string, AnswerValue>
+
+/** Selected options of a (possibly multi-select) answer, as a string list. */
+export function asList(value: AnswerValue | undefined): string[] {
+  if (Array.isArray(value)) return value
+  return value != null && value !== "" ? [value] : []
+}
 
 /** Evaluate a relevance/constraint condition against current answers. */
 export function condSatisfied(cond: Cond | null | undefined, answers: Answers): boolean {
   if (!cond) return true
   if (cond.raw !== undefined) return true // unparsed expression — show by default
-  const actual = String(answers[cond.field ?? ""] ?? "")
+  const raw = answers[cond.field ?? ""]
+  if (cond.op === "selected") {
+    return asList(raw).map(String).includes(cond.value ?? "")
+  }
+  const actual = Array.isArray(raw) ? raw.map(String).join(", ") : String(raw ?? "")
   if (cond.op === "ne") return actual !== cond.value
   return actual === cond.value
 }
@@ -80,6 +93,12 @@ export function validateStep(section: Section, answers: Answers): Record<string,
   for (const field of section.fields) {
     if (field.type === "note") continue
     if (!fieldIsActive(section, field, answers)) continue
+    if (field.type === "select_multiple") {
+      if (field.required && asList(answers[field.name]).length === 0) {
+        errors[field.name] = "Please select at least one option."
+      }
+      continue
+    }
     const value = String(answers[field.name] ?? "").trim()
     if (field.required && !value) {
       errors[field.name] = "This field is required."
@@ -109,10 +128,54 @@ export function buildPayload(schema: FormSchema, answers: Answers): Answers {
       if (field.type === "note") continue
       if (!fieldIsActive(section, field, answers)) continue
       const value = answers[field.name]
-      if (value !== undefined && value !== "") payload[field.name] = value
+      if (value === undefined) continue
+      if (Array.isArray(value)) {
+        if (value.length > 0) payload[field.name] = value
+      } else if (value !== "") {
+        payload[field.name] = value
+      }
     }
   }
   return payload
+}
+
+// Each SELECTED option may carry an OPTIONAL free-text comment, stored under
+// "<field>__comment__<option>" (a convention shared with the backend).
+export const COMMENT_SEP = "__comment__"
+export function commentKey(field: string, option: string): string {
+  return `${field}${COMMENT_SEP}${option}`
+}
+export function commentPrefix(field: string): string {
+  return `${field}${COMMENT_SEP}`
+}
+// Comments are offered on substantive choice questions, not the consent/final gates.
+const NO_COMMENT_FIELDS = new Set(["consent", "information_confirmed"])
+export function supportsComment(field: Field): boolean {
+  return (
+    (field.type === "select_one" || field.type === "select_multiple") &&
+    !NO_COMMENT_FIELDS.has(field.name)
+  )
+}
+
+/** The set per-option comments for a field, as {label, text} pairs (for display). */
+export function answerComments(field: Field, answers: Answers): { label: string; text: string }[] {
+  const prefix = commentPrefix(field.name)
+  const labelOf = (name: string) => field.choices?.find((c) => c.name === name)?.label ?? name
+  const out: { label: string; text: string }[] = []
+  for (const [k, v] of Object.entries(answers)) {
+    if (k.startsWith(prefix) && typeof v === "string" && v.trim()) {
+      out.push({ label: labelOf(k.slice(prefix.length)), text: v })
+    }
+  }
+  return out
+}
+
+/** A display string for a stored answer: multi-select joined, choice codes labelled. */
+export function displayAnswer(field: Field, value: AnswerValue | undefined): string {
+  const label = (name: string) => field.choices?.find((c) => c.name === name)?.label ?? name
+  if (field.type === "select_multiple") return asList(value).map(label).join(", ")
+  if (field.type === "select_one") return label(typeof value === "string" ? value : "")
+  return typeof value === "string" ? value : ""
 }
 
 /** The label of any field (or note) in the schema, by field name. */
@@ -128,4 +191,45 @@ export function fieldLabel(schema: FormSchema, name: string): string | null {
 /** The display-only note in the schema keyed by field name (e.g. no_consent). */
 export function findNote(schema: FormSchema, name: string): string | null {
   return fieldLabel(schema, name)
+}
+
+// ── Office GPS location ──────────────────────────────────────────────────────
+// The location is captured by a dedicated widget (browser Geolocation API), not
+// as a schema field. Its values live in `answers` under these reserved keys so
+// they persist across sections and draft saves. `cso_office_location` is the
+// synthetic error key the backend/UI use for the required-location message.
+export const LOCATION_ERROR_KEY = "cso_office_location"
+export const LOCATION_FIELDS = [
+  "latitude",
+  "longitude",
+  "location_accuracy",
+  "location_captured_at",
+  "location_capture_method",
+] as const
+
+/** True when both coordinates are present and are finite, in valid range. */
+export function hasValidLocation(answers: Answers): boolean {
+  const latRaw = answers.latitude
+  const lngRaw = answers.longitude
+  if (typeof latRaw !== "string" || typeof lngRaw !== "string" || !latRaw || !lngRaw) return false
+  const lat = Number(latRaw)
+  const lng = Number(lngRaw)
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  )
+}
+
+/** Just the set location keys, for merging into the submit payload. */
+export function locationPayload(answers: Answers): Answers {
+  const out: Answers = {}
+  for (const key of LOCATION_FIELDS) {
+    const value = answers[key]
+    if (typeof value === "string" && value !== "") out[key] = value
+  }
+  return out
 }

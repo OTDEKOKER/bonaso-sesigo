@@ -37,13 +37,28 @@ export interface CsoSubmission {
   primary_district: string;
   information_confirmed: boolean;
   additional_comments: string;
-  answers: Record<string, string>;
+  // Multi-select answers are stored as string lists; everything else as strings.
+  answers: Record<string, string | string[]>;
   form_version: string;
 }
 
 export interface CsoSummary {
   total: number;
   by_respondent_type: Record<string, number>;
+}
+
+/** One mapped CSO location — only map-safe fields (no personal/questionnaire data). */
+export interface CsoLocation {
+  id: number;
+  cso_name: string;
+  /** Labelled organisation type (from the org's nature question); "" if unknown. */
+  organisation_type: string;
+  district: string;
+  /** No dedicated village/town field exists in the form yet — "" for now. */
+  village_town: string;
+  physical_address: string;
+  latitude: number;
+  longitude: number;
 }
 
 export interface CsoSubmissionFilters {
@@ -117,6 +132,39 @@ export const csoMappingService = {
       {},
     );
     return data;
+  },
+
+  // --- CSO location map (authorised staff) -------------------------------
+  /** Map-safe CSO locations (records with valid coordinates only). */
+  async locations(): Promise<CsoLocation[]> {
+    const { data } = await api.get<CsoLocation[]>("/cso-mapping/locations/");
+    return data;
+  },
+
+  /** Excel (.xlsx) of mapped CSO locations. */
+  async exportLocationsWorkbook(): Promise<Blob> {
+    const response = await fetchWithAuth("/cso-mapping/locations/export/");
+    if (!response.ok) {
+      throw normalizeApiError({
+        status: response.status,
+        payload: await response.text(),
+        fallbackMessage: "Failed to export CSO locations",
+      });
+    }
+    return response.blob();
+  },
+
+  /** GeoJSON FeatureCollection of mapped CSO locations. */
+  async exportLocationsGeoJSON(): Promise<Blob> {
+    const response = await fetchWithAuth("/cso-mapping/locations/geojson/");
+    if (!response.ok) {
+      throw normalizeApiError({
+        status: response.status,
+        payload: await response.text(),
+        fallbackMessage: "Failed to export CSO locations GeoJSON",
+      });
+    }
+    return response.blob();
   },
 
   /**

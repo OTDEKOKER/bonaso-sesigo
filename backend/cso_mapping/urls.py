@@ -2,6 +2,9 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    CsoLocationExcelExportView,
+    CsoLocationGeoJSONExportView,
+    CsoLocationListView,
     CsoMappingSchemaActivateView,
     CsoMappingSchemaAdminView,
     CsoMappingSchemaHistoryView,
@@ -30,6 +33,18 @@ urlpatterns = [
     ),
     # Authorised staff (router: submissions/, submissions/<pk>/, /export/, /summary/)
     *router.urls,
+    # Authorised-staff CSO location map: minimal feed + Excel/GeoJSON exports.
+    path("locations/", CsoLocationListView.as_view(), name="cso-mapping-locations"),
+    path(
+        "locations/export/",
+        CsoLocationExcelExportView.as_view(),
+        name="cso-mapping-locations-export",
+    ),
+    path(
+        "locations/geojson/",
+        CsoLocationGeoJSONExportView.as_view(),
+        name="cso-mapping-locations-geojson",
+    ),
     # Admin-only form editor (edit the questionnaire without a code deploy).
     path("admin/schema/", CsoMappingSchemaAdminView.as_view(), name="cso-mapping-schema-admin"),
     path(

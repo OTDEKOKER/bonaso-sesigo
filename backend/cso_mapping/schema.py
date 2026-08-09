@@ -44,6 +44,21 @@ MAX_ANSWER_LENGTH = 20000
 # Hard ceiling on a serialized draft answers blob (defence on the draft endpoint).
 MAX_DRAFT_BYTES = 200_000
 
+# Each SELECTED option of a multiple-choice question may carry an OPTIONAL
+# free-text comment, stored in the answers blob under
+# "<field_name>__comment__<option_name>". This is a convention (not a schema
+# field), so it applies to every current and future select question / option
+# without editing the form.
+COMMENT_SEP = "__comment__"
+
+
+def comment_key(field_name: str, option: str) -> str:
+    return f"{field_name}{COMMENT_SEP}{option}"
+
+
+def comment_prefix(field_name: str) -> str:
+    return f"{field_name}{COMMENT_SEP}"
+
 
 @lru_cache(maxsize=1)
 def _bundled_schema() -> dict:
@@ -78,8 +93,12 @@ def load_schema() -> dict:
 
 # Field types the editor + renderer understand, and the relevance operators the
 # evaluator supports. Kept in sync with field_is_active / the frontend renderer.
-EDITABLE_FIELD_TYPES = {"text", "select_one", "note"}
-RELEVANCE_OPS = {"eq", "ne"}
+EDITABLE_FIELD_TYPES = {"text", "select_one", "select_multiple", "note"}
+# Field types whose answer is a LIST of choice names (not a scalar string).
+MULTI_SELECT_TYPES = {"select_multiple"}
+# eq/ne compare a scalar; "selected" tests membership of a value in a
+# multi-select answer (used by "Other — specify" follow-ups).
+RELEVANCE_OPS = {"eq", "ne", "selected"}
 _FIELD_NAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
 
 
@@ -175,7 +194,7 @@ def validate_schema(data) -> None:
                 )
             if ftype != "note" and not f.get("label"):
                 errors.append(f"Question '{name}': a label is required.")
-            if ftype == "select_one":
+            if ftype in ("select_one", "select_multiple"):
                 lst = f.get("list")
                 if not lst or lst not in choices:
                     errors.append(
@@ -206,8 +225,16 @@ def cond_satisfied(cond: dict | None, data: dict) -> bool:
         return True
     if "raw" in cond:  # unexpected expression we couldn't parse — treat as shown
         return True
-    actual = str(data.get(cond["field"], ""))
-    if cond.get("op") == "ne":
+    raw = data.get(cond["field"], "")
+    op = cond.get("op")
+    # "selected": is the value one of the chosen options of a multi-select answer?
+    if op == "selected":
+        chosen = raw if isinstance(raw, list) else [raw]
+        return cond["value"] in [str(v) for v in chosen]
+    # eq/ne compare against a scalar; a list answer is joined so a bare eq never
+    # matches a multi-select (callers use "selected" for those).
+    actual = ", ".join(str(v) for v in raw) if isinstance(raw, list) else str(raw)
+    if op == "ne":
         return actual != cond["value"]
     return actual == cond["value"]
 
@@ -232,6 +259,25 @@ def choice_names(schema: dict, list_name: str) -> set[str]:
     return {c["name"] for c in schema.get("choices", {}).get(list_name, [])}
 
 
+def choice_label(schema: dict, list_name: str, name: str) -> str:
+    """Human-readable label for a stored choice name (falls back to the name)."""
+    for choice in schema.get("choices", {}).get(list_name, []):
+        if choice.get("name") == name:
+            return choice.get("label", name)
+    return name
+
+
+def display_answer(schema: dict, field: dict, value) -> str:
+    """Render a stored answer for export/display: multi-select joined, choices labelled."""
+    ftype = field.get("type")
+    if ftype == "select_multiple":
+        items = value if isinstance(value, list) else ([] if value in (None, "") else [value])
+        return ", ".join(choice_label(schema, field.get("list", ""), v) for v in items)
+    if ftype == "select_one" and value:
+        return choice_label(schema, field.get("list", ""), value)
+    return "" if value is None else str(value)
+
+
 def strip_inactive_branch_answers(schema: dict, answers: dict) -> dict:
     """Drop answers for questions not active under the draft's current answers.
 
@@ -249,5 +295,14 @@ def strip_inactive_branch_answers(schema: dict, answers: dict) -> dict:
         for section, field in iter_answerable_fields(schema)
         if field_is_active(section, field, ctx)
     }
-    keep = active | {"consent", "respondent_type"}
-    return {k: v for k, v in answers.items() if k in keep}
+    # The captured office-location keys are not schema fields but must survive a
+    # draft round-trip (so coordinates persist across sections / device resume).
+    from .location import LOCATION_KEYS
+
+    keep = active | {"consent", "respondent_type"} | set(LOCATION_KEYS)
+
+    # Optional per-option comments ride alongside their (active) question.
+    def _is_active_comment(key: str) -> bool:
+        return COMMENT_SEP in key and key.split(COMMENT_SEP, 1)[0] in active
+
+    return {k: v for k, v in answers.items() if k in keep or _is_active_comment(k)}

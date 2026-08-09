@@ -17,6 +17,7 @@ from django.core.validators import EmailValidator, ValidationError as DjangoVali
 from django.utils import timezone
 from rest_framework import serializers
 
+from .location import validate_location
 from .models import CsoMappingDraft, CsoMappingSubmission
 from .schema import (
     CORE_BOOL_FIELDS,
@@ -24,6 +25,7 @@ from .schema import (
     MAX_ANSWER_LENGTH,
     MAX_DRAFT_BYTES,
     choice_names,
+    comment_prefix,
     field_is_active,
     iter_answerable_fields,
     load_schema,
@@ -56,12 +58,25 @@ class PublicSubmissionSerializer(serializers.Serializer):
             )
 
         schema = load_schema()
-        # Working context of trimmed string values, used for relevance/constraint
-        # evaluation and validation.
-        ctx = {
-            key: ("" if value is None else str(value)).strip()
-            for key, value in data.items()
+        # Multi-select answers are lists of choice names; every other answer is a
+        # trimmed scalar string. Keep that distinction in the working context so
+        # relevance/constraint evaluation and validation see the right shape.
+        multi_fields = {
+            field["name"]
+            for _section, field in iter_answerable_fields(schema)
+            if field["type"] == "select_multiple"
         }
+        ctx: dict[str, object] = {}
+        for key, value in data.items():
+            if key in multi_fields:
+                if isinstance(value, list):
+                    ctx[key] = [str(v).strip() for v in value if str(v).strip() != ""]
+                elif value in (None, ""):
+                    ctx[key] = []
+                else:
+                    ctx[key] = [str(value).strip()]
+            else:
+                ctx[key] = ("" if value is None else str(value)).strip()
 
         # Consent gate: no submission is accepted without explicit consent.
         if ctx.get("consent", "").lower() != "yes":
@@ -85,12 +100,44 @@ class PublicSubmissionSerializer(serializers.Serializer):
         core: dict[str, object] = {}
         answers: dict[str, str] = {}
 
+        def capture_comment(field_name: str) -> None:
+            """Store the optional free-text comment(s) on a select question's options."""
+            prefix = comment_prefix(field_name)
+            for key, raw in ctx.items():
+                if not key.startswith(prefix):
+                    continue
+                text = raw.strip() if isinstance(raw, str) else ""
+                if not text:
+                    continue
+                if len(text) > MAX_ANSWER_LENGTH:
+                    errors[key] = "This comment is too long."
+                else:
+                    answers[key] = text
+
         for section, field in iter_answerable_fields(schema):
             name = field["name"]
             if not field_is_active(section, field, ctx):
                 continue  # inactive branch — ignore any submitted value
 
             value = ctx.get(name, "")
+
+            # Multi-select: a list of choice names, stored in the answers blob.
+            if field["type"] == "select_multiple":
+                values = value if isinstance(value, list) else ([value] if value else [])
+                if sum(len(v) for v in values) > MAX_ANSWER_LENGTH:
+                    errors[name] = "This answer is too long."
+                    continue
+                allowed = choice_names(schema, field.get("list", ""))
+                if any(v not in allowed for v in values):
+                    errors[name] = "Invalid selection."
+                    continue
+                if field.get("required") and not values:
+                    errors[name] = "This field is required."
+                    continue
+                if values:
+                    answers[name] = values
+                capture_comment(name)
+                continue
 
             if len(value) > MAX_ANSWER_LENGTH:
                 errors[name] = "This answer is too long."
@@ -133,9 +180,20 @@ class PublicSubmissionSerializer(serializers.Serializer):
             elif value:
                 answers[name] = value
 
+            if field["type"] == "select_one":
+                capture_comment(name)
+
+        # Office GPS location. Handled explicitly (not schema-driven) and required
+        # for a submission — a questionnaire cannot be submitted without valid
+        # coordinates. Server-side validation is authoritative: never trust the
+        # client. Out-of-country-but-valid points are flagged, not rejected.
+        location_values, location_errors = validate_location(ctx, required=True)
+        errors.update(location_errors)
+
         if errors:
             raise serializers.ValidationError(errors)
 
+        core.update(location_values)
         core["answers"] = answers
         core["form_version"] = schema.get("version", "")
         if parsed_client_id is not None:
@@ -173,6 +231,14 @@ class StaffSubmissionSerializer(serializers.ModelSerializer):
             "additional_comments",
             "answers",
             "form_version",
+            # Office location (staff detail only; excluded from the public map).
+            "latitude",
+            "longitude",
+            "location_accuracy",
+            "location_captured_at",
+            "location_capture_method",
+            "location_flagged",
+            "location_flag_reason",
         ]
         read_only_fields = fields
 
@@ -203,6 +269,14 @@ class DraftWriteSerializer(serializers.ModelSerializer):
             field = fields_by_name.get(name)
             if field is None:
                 continue  # unknown key — ignored (stripped on save), not an error
+            if field["type"] == "select_multiple":
+                items = raw if isinstance(raw, list) else ([] if raw in (None, "") else [raw])
+                if sum(len(str(i)) for i in items) > MAX_ANSWER_LENGTH:
+                    raise serializers.ValidationError(f"'{name}' is too long.")
+                allowed = choice_names(schema, field.get("list", ""))
+                if any(str(i) not in allowed for i in items):
+                    raise serializers.ValidationError(f"Invalid selection for '{name}'.")
+                continue
             text = "" if raw is None else str(raw)
             if len(text) > MAX_ANSWER_LENGTH or (
                 name in CORE_MAXLEN and len(text) > CORE_MAXLEN[name]

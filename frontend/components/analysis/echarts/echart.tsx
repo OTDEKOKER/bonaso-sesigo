@@ -19,6 +19,7 @@ import {
   PieChart,
   GaugeChart,
   MapChart,
+  ScatterChart,
   CustomChart,
 } from "echarts/charts";
 import {
@@ -45,6 +46,7 @@ echarts.use([
   PieChart,
   GaugeChart,
   MapChart,
+  ScatterChart,
   CustomChart,
   GridComponent,
   TooltipComponent,
@@ -114,11 +116,27 @@ export function EChart({
   className,
   onEvents,
   ariaLabel,
+  onInit,
+  preserveGeoRoam,
 }: {
   option: EChartsCoreOption;
   className?: string;
   onEvents?: EChartEventHandlers;
   ariaLabel?: string;
+  /**
+   * Optional: receive the underlying ECharts instance once, right after init.
+   * Used by callers that need `getDataURL()` (image export) or to drive the
+   * chart imperatively (e.g. roam sync). Backward compatible — omit to ignore.
+   */
+  onInit?: (chart: EChartsType) => void;
+  /**
+   * Optional (maps only): apply option updates with `replaceMerge: ['series']`
+   * instead of `notMerge: true`, so a re-render (new filter, legend toggle,
+   * cluster recompute) replaces the series but PRESERVES the geo pan/zoom the
+   * user has set. Default (omitted) keeps the standard notMerge behaviour that
+   * every other SESIGO chart relies on to clear removed series/axes.
+   */
+  preserveGeoRoam?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<EChartsType | null>(null);
@@ -129,6 +147,11 @@ export function EChart({
   useEffect(() => {
     eventsRef.current = onEvents;
   }, [onEvents]);
+  // Same pattern for onInit so the once-only init effect stays dependency-free.
+  const onInitRef = useRef(onInit);
+  useEffect(() => {
+    onInitRef.current = onInit;
+  }, [onInit]);
 
   // Init once; resize with the container; dispose on unmount.
   useEffect(() => {
@@ -137,6 +160,7 @@ export function EChart({
     if (!el) return;
     const chart = echarts.init(el, SESIGO_ECHARTS_THEME, { renderer: "canvas" });
     chartRef.current = chart;
+    onInitRef.current?.(chart);
 
     const eventNames = Object.keys(eventsRef.current ?? {});
     const bound = eventNames.map((evt) => {
@@ -156,12 +180,17 @@ export function EChart({
     };
   }, []);
 
-  // Re-apply options whenever they change. notMerge so removed series/axes clear.
+  // Re-apply options whenever they change. Default notMerge so removed
+  // series/axes clear; maps opt into replaceMerge to keep the user's geo roam.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    chart.setOption(option, { notMerge: true });
-  }, [option]);
+    if (preserveGeoRoam) {
+      chart.setOption(option, { notMerge: false, replaceMerge: ["series"] });
+    } else {
+      chart.setOption(option, { notMerge: true });
+    }
+  }, [option, preserveGeoRoam]);
 
   return (
     <div
