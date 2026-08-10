@@ -4,6 +4,7 @@ import { IndicatorPerformanceTableWidget } from "@/components/dashboard/widgets/
 import { IndicatorHeatmapTableWidget } from "@/components/dashboard/widgets/indicator-heatmap-table-widget";
 import { IndicatorBarChartWidget } from "@/components/dashboard/widgets/indicator-bar-chart-widget";
 import { IndicatorColumnChartWidget } from "@/components/dashboard/widgets/indicator-column-chart-widget";
+import { IndicatorProgressWidget } from "@/components/dashboard/widgets/indicator-progress-widget";
 
 // Indicators spanning the RAG bands: 80% (on-track), 20% (off-track), no-target.
 const metrics = [
@@ -53,6 +54,21 @@ describe("IndicatorColumnChartWidget — RAG legend", () => {
     render(<IndicatorColumnChartWidget metrics={metrics} title="Test" />);
     expect(screen.getByText("Met")).toBeTruthy();
     expect(screen.getByText("Off track")).toBeTruthy();
+  });
+});
+
+describe("IndicatorProgressWidget — RAG progress bars", () => {
+  it("uses status-coloured bars (no flat bg-primary) by default", () => {
+    const { container } = render(<IndicatorProgressWidget metrics={metrics} title="Test" />);
+    // targeted bars render an inline status colour, not the flat primary fill
+    expect(container.querySelector(".bg-primary\\/70")).toBeNull();
+  });
+
+  it("falls back to the flat primary fill when performanceColors is off", () => {
+    const { container } = render(
+      <IndicatorProgressWidget metrics={metrics} title="Test" performanceColors={false} />,
+    );
+    expect(container.querySelector(".bg-primary\\/70")).not.toBeNull();
   });
 });
 

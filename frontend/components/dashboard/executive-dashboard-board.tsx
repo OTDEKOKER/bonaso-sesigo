@@ -1419,12 +1419,14 @@ export function DashboardExecutiveBoard({
                       emptyCopy="Screening indicator totals will appear here as aggregate reports come in."
                       items={topIndicators}
                       title="Top screening indicators"
+                      performanceColors={safeChartPreferences.performanceColors}
                     />
                     <MetricBarsPanel
                       eyebrow="Project Scope"
                       emptyCopy="Projects contributing screening totals will be listed once active-project reporting is available."
                       items={projectMetrics}
                       title="Projects with screening totals"
+                      performanceColors={safeChartPreferences.performanceColors}
                     />
                   </div>
 

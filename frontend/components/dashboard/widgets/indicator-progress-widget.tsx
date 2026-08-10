@@ -1,6 +1,7 @@
 import { DashboardPanel } from "@/components/dashboard/components/dashboard-panel";
 import { ChartEmptyState } from "@/components/dashboard/components/chart-empty-state";
 import { clamp, formatPercent, formatWholeNumber } from "@/components/dashboard/engine/normalize-indicators";
+import { getPerformanceStatusFromValues } from "@/components/dashboard/engine/performance-status";
 import type { WidgetMetricCollection } from "@/components/dashboard/engine/types";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,7 @@ export function MetricBarsPanel({
   title,
   valueSuffix = "",
   className,
+  performanceColors = true,
 }: {
   eyebrow?: string;
   emptyCopy: string;
@@ -22,6 +24,7 @@ export function MetricBarsPanel({
   title: string;
   valueSuffix?: string;
   className?: string;
+  performanceColors?: boolean;
 }) {
   return (
     <DashboardPanel
@@ -38,11 +41,15 @@ export function MetricBarsPanel({
             const hasTarget = item.target > 0;
             const targetPercent = hasTarget ? (item.value / item.target) * 100 : 0;
             const width = hasTarget ? clamp(Math.round(targetPercent), 0, 100) : 0;
+            const statusColor = getPerformanceStatusFromValues(item.value, item.target).color;
             return (
               <div key={item.label} className="min-w-0 space-y-2">
                 <div className="flex min-w-0 items-center justify-between gap-3 text-xs uppercase tracking-[0.16em] text-foreground">
                   <span className="min-w-0 break-words">{item.label}</span>
-                  <span className="text-muted-foreground">
+                  <span
+                    className="text-muted-foreground"
+                    style={hasTarget && performanceColors ? { color: statusColor } : undefined}
+                  >
                     {hasTarget ? `${formatPercent(item.percentage)}%` : "No target"}
                   </span>
                 </div>
@@ -54,8 +61,11 @@ export function MetricBarsPanel({
                 <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
                   {hasTarget ? (
                     <div
-                      className="h-full max-w-full rounded-full bg-primary/70"
-                      style={{ width: `${Math.min(width, 100)}%` }}
+                      className={cn("h-full max-w-full rounded-full", !performanceColors && "bg-primary/70")}
+                      style={{
+                        width: `${Math.min(width, 100)}%`,
+                        backgroundColor: performanceColors ? statusColor : undefined,
+                      }}
                     />
                   ) : (
                     <div className="h-full w-full rounded-full border border-dashed border-border/70 bg-background/60" />
@@ -74,10 +84,12 @@ export function IndicatorProgressWidget({
   metrics,
   subtitle,
   title,
+  performanceColors = true,
 }: {
   metrics: WidgetMetricCollection;
   subtitle?: string;
   title: string;
+  performanceColors?: boolean;
 }) {
   return (
     <MetricBarsPanel
@@ -86,6 +98,7 @@ export function IndicatorProgressWidget({
       items={metrics}
       subtitle={subtitle}
       title={title}
+      performanceColors={performanceColors}
     />
   );
 }
