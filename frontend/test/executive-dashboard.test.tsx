@@ -11,6 +11,21 @@ vi.mock("@/lib/executive/use-executive-data", () => ({
   useExecutiveData: () => ({
     isLoading: false,
     hasError: false,
+    insights: {
+      organizations: [
+        { label: "MBGE", value: 920, target: 1000, percentage: 92 },
+        { label: "BONELA", value: 640, target: 1000, percentage: 64 },
+      ],
+      trend: [
+        { period: "Q1", HIV: 60 },
+        { period: "Q2", HIV: 82 },
+      ],
+      trendSeries: [{ key: "HIV", label: "HIV testing", color: "#0EA5E9" }],
+      reportingOrganizationsCount: 7,
+    },
+    recentSubmissions: [
+      { organization: "TEBELOPELE", indicator: "HIV tests", period: "Q1 2026/27", submittedOn: "2026-05-13", status: "approved" },
+    ],
     indicatorMetrics: [
       { indicatorId: "1", label: "HIV tests conducted", value: 850, target: 1000, percentage: 85 },
       { indicatorId: "2", label: "Condoms distributed", value: 300, target: 1000, percentage: 30 },
@@ -45,10 +60,20 @@ describe("ExecutiveDashboardPage", () => {
 
   it("renders the Target-vs-Achieved table with RAG status from the real engine", () => {
     render(<ExecutiveDashboardPage />);
-    expect(screen.getByText("HIV tests conducted")).toBeTruthy();
-    expect(screen.getByText("Condoms distributed")).toBeTruthy();
+    expect(screen.getAllByText("HIV tests conducted").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Condoms distributed").length).toBeGreaterThan(0);
     // 850/1000 -> On track (from real getPerformanceStatusFromValues); 300/1000 -> Off track
     expect(screen.getAllByText("On track").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Off track").length).toBeGreaterThan(0);
+  });
+
+  it("renders the Inc 2/3 panels (top orgs, attention, recent submissions)", () => {
+    render(<ExecutiveDashboardPage />);
+    expect(screen.getByText("Top Performing Organisations")).toBeTruthy();
+    expect(screen.getByText("MBGE")).toBeTruthy();
+    expect(screen.getByText("Indicators Requiring Attention")).toBeTruthy();
+    expect(screen.getByText("Reporting Compliance")).toBeTruthy();
+    expect(screen.getByText("Recent Data Submissions")).toBeTruthy();
+    expect(screen.getByText("TEBELOPELE")).toBeTruthy();
   });
 });

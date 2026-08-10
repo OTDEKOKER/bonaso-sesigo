@@ -22,7 +22,7 @@ import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import { useAggregateVisibilityScope } from "@/app/(dashboard)/aggregates/hooks";
 import { buildOrganizationDescendantMap } from "@/lib/analytics/org-scope";
 import { buildHomeDashboardScreeningInsights } from "@/lib/dashboard/screening-insights";
-import { getQuarterBucket } from "@/lib/aggregates/quarter-buckets";
+import { getQuarterBucket, formatQuarterBucket } from "@/lib/aggregates/quarter-buckets";
 import { getPerformanceStatus } from "@/components/dashboard/engine/performance-status";
 import { toSafeNumber } from "@/components/dashboard/engine/normalize-indicators";
 import type { Project } from "@/lib/types";
@@ -45,6 +45,14 @@ export const DEFAULT_EXECUTIVE_FILTERS: ExecutiveFilters = {
   indicatorId: "all",
   dateFrom: "",
   dateTo: "",
+};
+
+export type ExecutiveSubmission = {
+  organization: string;
+  indicator: string;
+  period: string;
+  submittedOn: string;
+  status: string;
 };
 
 const coerceId = (value: unknown) => String(value ?? "").trim();
@@ -279,6 +287,37 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     };
   }, [indicatorMetrics, insights.reportingOrganizationsCount, scopedOrganizationIds, organizations.length]);
 
+  // Recent submissions (needs the raw aggregate rows + name maps, only here).
+  const recentSubmissions = useMemo(() => {
+    const rows = Array.isArray(aggregatesData) ? (aggregatesData as Array<Record<string, unknown>>) : [];
+    const orgName = new Map<string, string>(
+      organizations.map((o) => [String(o.id), String(o.name ?? o.id)] as [string, string]),
+    );
+    const indName = new Map<string, string>(
+      (indicatorsData ?? []).map(
+        (i: { id: unknown; name?: unknown }) => [String(i.id), String(i.name ?? i.id)] as [string, string],
+      ),
+    );
+    const periodLabel = (start?: unknown, end?: unknown) => {
+      const b = getQuarterBucket(String(start ?? "")) || getQuarterBucket(String(end ?? ""));
+      return b ? formatQuarterBucket(b) : "—";
+    };
+    return [...rows]
+      .sort((a, b) =>
+        String(b.created_at ?? b.period_end ?? "").localeCompare(String(a.created_at ?? a.period_end ?? "")),
+      )
+      .slice(0, 8)
+      .map(
+        (r): ExecutiveSubmission => ({
+          organization: orgName.get(String(r.organization)) ?? String(r.organization ?? "—"),
+          indicator: indName.get(String(r.indicator)) ?? "—",
+          period: periodLabel(r.period_start, r.period_end),
+          submittedOn: String(r.created_at ?? "").slice(0, 10) || "—",
+          status: String(r.status ?? "—"),
+        }),
+      );
+  }, [aggregatesData, organizations, indicatorsData]);
+
   const districtOptions = useMemo(() => {
     const src = organizationOptions.length ? organizationOptions : organizations;
     return Array.from(
@@ -290,6 +329,7 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     insights,
     indicatorMetrics,
     kpis,
+    recentSubmissions,
     isLoading: analyticsLoading,
     hasError: Boolean(aggregatesError),
     options: {

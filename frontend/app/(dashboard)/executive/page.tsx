@@ -5,6 +5,19 @@
 // KPI strip, and Programme Performance (Target vs Achieved) table with RAG.
 // Data + scoping via useExecutiveData (reuses the home-dashboard hierarchy scope).
 import { useMemo, useState } from "react";
+import {
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -14,8 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatPercent, formatWholeNumber } from "@/components/dashboard/engine/normalize-indicators";
-import { getPerformanceStatusFromValues } from "@/components/dashboard/engine/performance-status";
+import {
+  getPerformanceStatusFromValues,
+  PERFORMANCE_STATUS_COLORS,
+} from "@/components/dashboard/engine/performance-status";
 import { PerformanceStatusPill } from "@/components/dashboard/components/performance-status-pill";
+import { downloadMetricsCsv } from "@/lib/dashboard/export-metrics";
 import {
   useExecutiveData,
   DEFAULT_EXECUTIVE_FILTERS,
@@ -60,7 +77,7 @@ function KpiCard({
 
 export default function ExecutiveDashboardPage() {
   const [filters, setFilters] = useState<ExecutiveFilters>(DEFAULT_EXECUTIVE_FILTERS);
-  const { indicatorMetrics, kpis, isLoading, options } = useExecutiveData(filters);
+  const { insights, indicatorMetrics, kpis, recentSubmissions, isLoading, options } = useExecutiveData(filters);
   const presets = useMemo(() => fyPresets(), []);
   const activePreset = presets.find((p) => p.from === filters.dateFrom && p.to === filters.dateTo)?.key ?? null;
 
@@ -80,6 +97,41 @@ export default function ExecutiveDashboardPage() {
         .sort((a, b) => b.pct - a.pct),
     [indicatorMetrics],
   );
+
+  // Indicators requiring attention: at-risk / off-track, worst first.
+  const attention = useMemo(
+    () => rows.filter((r) => Number(r.target) > 0 && r.pct < 75).sort((a, b) => a.pct - b.pct).slice(0, 6),
+    [rows],
+  );
+
+  // Top performing organisations (hierarchy-scoped org rollups).
+  const topOrgs = useMemo(
+    () =>
+      [...(insights.organizations ?? [])]
+        .filter((o) => Number(o.target) > 0)
+        .sort((a, b) => b.percentage - a.percentage)
+        .slice(0, 5),
+    [insights.organizations],
+  );
+
+  // Performance trend: reuse the insights trend/series; x-axis = the non-series key.
+  const trend = (insights.trend ?? []) as Array<Record<string, number | string>>;
+  const trendSeries = (insights.trendSeries ?? []) as Array<{ color: string; key: string; label: string }>;
+  const trendXKey = useMemo(() => {
+    if (!trend.length) return undefined;
+    const seriesKeys = new Set(trendSeries.map((s) => s.key));
+    return Object.keys(trend[0]).find((k) => !seriesKeys.has(k));
+  }, [trend, trendSeries]);
+
+  // Reporting compliance (reported vs not-reported across scoped orgs).
+  const compliance = useMemo(() => {
+    const reported = kpis.reportingOrganizations;
+    const notReported = Math.max(0, kpis.scopedOrgCount - reported);
+    return [
+      { name: "Reported", value: reported, color: PERFORMANCE_STATUS_COLORS.met },
+      { name: "Not reported", value: notReported, color: PERFORMANCE_STATUS_COLORS["off-track"] },
+    ];
+  }, [kpis.reportingOrganizations, kpis.scopedOrgCount]);
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -150,7 +202,17 @@ export default function ExecutiveDashboardPage() {
 
       {/* Programme Performance (Target vs Achieved) */}
       <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Programme Performance (Target vs Achieved)</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-foreground">Programme Performance (Target vs Achieved)</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={indicatorMetrics.length === 0}
+            onClick={() => downloadMetricsCsv(indicatorMetrics, "executive-performance.csv")}
+          >
+            <Download className="mr-2 h-4 w-4" /> Export CSV
+          </Button>
+        </div>
         {isLoading ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading performance…</p>
         ) : rows.length === 0 ? (
@@ -193,8 +255,134 @@ export default function ExecutiveDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Increment 2: Performance Trend + Reporting Compliance */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:col-span-2">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Performance Trend</h2>
+          {trend.length > 0 && trendXKey ? (
+            <div className="h-[280px] w-full min-w-0 overflow-hidden">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border) / 0.45)" />
+                  <XAxis dataKey={trendXKey} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} tickLine={false} axisLine={false} />
+                  <Tooltip />
+                  {trendSeries.map((s) => (
+                    <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} dot={false} strokeWidth={2} />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">No trend data in the current scope.</p>
+          )}
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Reporting Compliance</h2>
+          <div className="h-[220px] w-full min-w-0 overflow-hidden">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={compliance} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2}>
+                  {compliance.map((c) => (
+                    <Cell key={c.name} fill={c.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
+            {compliance.map((c) => (
+              <span key={c.name} className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: c.color }} />
+                {c.name} ({c.value})
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Increment 3: Top Orgs / Attention / Recent Submissions */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <MiniPanel title="Top Performing Organisations">
+          {topOrgs.length === 0 ? (
+            <EmptyRow text="No organisation targets in scope." />
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {topOrgs.map((o) => (
+                  <tr key={o.label} className="border-t border-border first:border-t-0">
+                    <td className="py-2 pr-2 text-foreground">{o.label}</td>
+                    <td className="py-2 text-right tabular-nums text-foreground">{formatPercent(o.percentage)}%</td>
+                    <td className="py-2 pl-2 text-right">
+                      <PerformanceStatusPill value={o.value} target={o.target} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </MiniPanel>
+
+        <MiniPanel title="Indicators Requiring Attention">
+          {attention.length === 0 ? (
+            <EmptyRow text="No at-risk or off-track indicators. 🎉" />
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {attention.map((r) => (
+                  <tr key={String(r.indicatorId)} className="border-t border-border first:border-t-0">
+                    <td className="py-2 pr-2 text-foreground">{r.label}</td>
+                    <td className="py-2 text-right tabular-nums text-foreground">{formatPercent(r.pct)}%</td>
+                    <td className="py-2 pl-2 text-right">
+                      <PerformanceStatusPill status={r.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </MiniPanel>
+
+        <MiniPanel title="Recent Data Submissions">
+          {recentSubmissions.length === 0 ? (
+            <EmptyRow text="No submissions in scope." />
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {recentSubmissions.map((s, i) => (
+                  <tr key={`${s.organization}-${s.indicator}-${i}`} className="border-t border-border first:border-t-0">
+                    <td className="py-2 pr-2">
+                      <div className="text-foreground">{s.organization}</div>
+                      <div className="text-[11px] text-muted-foreground">{s.indicator} · {s.period}</div>
+                    </td>
+                    <td className="py-2 pl-2 text-right text-[11px] text-muted-foreground">
+                      <div>{s.submittedOn}</div>
+                      <div className="capitalize">{s.status}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </MiniPanel>
+      </div>
     </div>
   );
+}
+
+function MiniPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <h2 className="mb-2 text-sm font-semibold text-foreground">{title}</h2>
+      <div className="max-w-full overflow-x-auto">{children}</div>
+    </div>
+  );
+}
+
+function EmptyRow({ text }: { text: string }) {
+  return <p className="py-6 text-center text-sm text-muted-foreground">{text}</p>;
 }
 
 function FilterSelect({
