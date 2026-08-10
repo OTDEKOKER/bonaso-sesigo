@@ -44,7 +44,10 @@ export default function TrainingLoginPage() {
     setError("")
 
     try {
-      await authService.login({ username: identifier.trim(), password })
+      // Pass mode EXPLICITLY: the token must be training-stamped even on a
+      // fresh login where the storage flag isn't set yet (set below only drives
+      // the route guard). Fixes live-data-in-training incident 2026-08-10.
+      await authService.login({ username: identifier.trim(), password, mode: 'training' })
       setTrainingMode()
       toast({
         title: "Signed in to Sesigo Training Mode",

@@ -35,6 +35,13 @@ export interface LoginCredentials {
   email?: string;
   username?: string;
   password: string;
+  /**
+   * Explicit environment for this login. When set, it — not the ambient
+   * `isTrainingMode()` storage flag — determines the token's `mode` claim.
+   * Login pages MUST pass this so a fresh login can't race the flag and get a
+   * live-stamped token in a training UI (data-isolation incident 2026-08-10).
+   */
+  mode?: 'training' | 'live';
 }
 
 export interface JWTTokenResponse {
@@ -81,13 +88,16 @@ export const authService = {
    * Django endpoint: POST /api/users/request-token/
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
-    // H1: if the user is logging in from a Training Mode context, ask the
-    // backend to stamp a tamper-proof `mode=training` claim on the token so the
-    // session is bound to training mode server-side (not just via query param).
-    const payload =
-      typeof window !== 'undefined' && isTrainingMode()
-        ? { ...credentials, mode: 'training' as const }
-        : credentials;
+    // H1: bind the session to an environment via a tamper-proof `mode` claim on
+    // the token. Prefer the caller's EXPLICIT mode (login pages pass it); only
+    // fall back to the ambient storage flag for legacy callers. Relying on the
+    // flag alone raced a fresh login (flag set AFTER login) and produced a
+    // live-stamped token in the training UI — data-isolation incident 2026-08-10.
+    const resolvedMode: 'training' | 'live' | undefined =
+      credentials.mode ??
+      (typeof window !== 'undefined' && isTrainingMode() ? 'training' : undefined);
+    const { mode: _ignoredMode, ...rest } = credentials;
+    const payload = resolvedMode ? { ...rest, mode: resolvedMode } : rest;
     const { data } = await api.post<JWTTokenResponse>(
       `${USERS_BASE_PATH}/request-token/`,
       payload

@@ -9,12 +9,76 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db import models
-from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids
+from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, training_view_mode
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
 from aggregates.models import Aggregate
 
 from .models import Flag, FlagComment
 from .serializers import FlagSerializer, FlagCommentSerializer
+
+
+def apply_flag_training_filter(queryset, request, prefix=""):
+    """Isolate Sesigo Live vs Training flags.
+
+    A Flag carries no ``is_training`` of its own — it points at a subject
+    polymorphically (``content_type`` + ``object_id``). Its environment is that
+    of the subject: the aggregate's / interaction's project, or (for respondent
+    flags) whether the respondent has a training-project interaction.
+
+      Live (default): exclude flags whose subject is a training-project record.
+      Training Mode:  show ONLY those. Unknown subject types are treated as
+                      live-only (conservative — never surface them in training).
+
+    ``prefix`` addresses the polymorphic columns through a relation, e.g.
+    ``"flag__"`` for FlagComment.
+    """
+    mode = training_view_mode(request)
+    if mode == "all":
+        return queryset
+    from respondents.models import Interaction
+
+    training_aggs = Aggregate.objects.filter(project__is_training=True).values("id")
+    training_ints = Interaction.objects.filter(project__is_training=True).values("id")
+    training_resps = Interaction.objects.filter(
+        project__is_training=True
+    ).values("respondent_id")
+
+    ct, oid = f"{prefix}content_type", f"{prefix}object_id"
+    training_q = (
+        models.Q(**{ct: "aggregate", f"{oid}__in": training_aggs})
+        | models.Q(**{ct: "interaction", f"{oid}__in": training_ints})
+        | models.Q(**{ct: "respondent", f"{oid}__in": training_resps})
+    )
+    if mode == "training":
+        return queryset.filter(training_q)
+    return queryset.exclude(training_q)
+
+
+def apply_flag_project_gate(queryset, request, prefix=""):
+    """Project-assignment gate for flags (mirrors the data endpoints). A flag has
+    no project of its own, so we scope through its aggregate/interaction subject's
+    project. Rollout-safe: admins (project_ids None) and users with no project
+    assignments are NOT narrowed. Respondent-subject and other flag types are
+    kept (governed by org scope) so no legitimate flag is hidden by this gate.
+    """
+    from projects.scope import get_user_project_ids
+    project_ids = get_user_project_ids(request.user)
+    if not project_ids:
+        return queryset
+    from respondents.models import Interaction
+
+    out_aggs = Aggregate.objects.exclude(
+        models.Q(project_id__in=project_ids) | models.Q(project__isnull=True)
+    ).values("id")
+    out_ints = Interaction.objects.exclude(
+        models.Q(project_id__in=project_ids) | models.Q(project__isnull=True)
+    ).values("id")
+    ct, oid = f"{prefix}content_type", f"{prefix}object_id"
+    out_of_scope = (
+        models.Q(**{ct: "aggregate", f"{oid}__in": out_aggs})
+        | models.Q(**{ct: "interaction", f"{oid}__in": out_ints})
+    )
+    return queryset.exclude(out_of_scope)
 
 
 class FlagPagination(PageNumberPagination):
@@ -102,11 +166,15 @@ class FlagViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if is_organization_admin(user):
-            return Flag.objects.all()
-        org_ids = get_user_organization_ids(user)
-        if org_ids:
-            return filter_queryset_by_org_ids(Flag.objects.all(), 'organization_id', org_ids)
-        return Flag.objects.filter(created_by=user)
+            qs = Flag.objects.all()
+        else:
+            org_ids = get_user_organization_ids(user)
+            if org_ids:
+                qs = filter_queryset_by_org_ids(Flag.objects.all(), 'organization_id', org_ids)
+            else:
+                qs = Flag.objects.filter(created_by=user)
+        qs = apply_flag_training_filter(qs, self.request)
+        return apply_flag_project_gate(qs, self.request)
     
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -172,12 +240,15 @@ class FlagCommentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         queryset = FlagComment.objects.select_related('flag', 'created_by')
-        if is_organization_admin(user):
-            return queryset
-        org_ids = get_user_organization_ids(user)
-        if org_ids:
-            return filter_queryset_by_org_ids(queryset, 'flag__organization_id', org_ids)
-        return queryset.filter(created_by=user)
+        if not is_organization_admin(user):
+            org_ids = get_user_organization_ids(user)
+            if org_ids:
+                queryset = filter_queryset_by_org_ids(queryset, 'flag__organization_id', org_ids)
+            else:
+                queryset = queryset.filter(created_by=user)
+        # A comment's environment + project scope follow its parent flag's subject.
+        queryset = apply_flag_training_filter(queryset, self.request, prefix="flag__")
+        return apply_flag_project_gate(queryset, self.request, prefix="flag__")
     
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

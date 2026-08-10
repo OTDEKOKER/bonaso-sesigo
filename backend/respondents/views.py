@@ -7,12 +7,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db.models import Count, Max, Prefetch
+from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponse
 import csv
-from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, assert_project_write_allowed
+from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, training_view_mode, assert_project_write_allowed
 from users.permissions import HasModulePermission
-from projects.scope import filter_queryset_by_assigned_projects
+from projects.scope import filter_queryset_by_assigned_projects, get_user_project_ids
 from idempotency.mixins import IdempotentMutationMixin
 from projects.assignment_rules import (
     is_indicator_assigned_to_organization,
@@ -68,6 +68,40 @@ class RespondentViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 )
             )
 
+        # Training/live isolation. A Respondent carries no is_training of its
+        # own — its mode is defined by the projects of its interactions. We scope
+        # via subqueries on the (already mode-clean) Interaction table rather than
+        # a join on the annotated queryset, so the interaction counts above stay
+        # correct (Django would otherwise fold the filter into the aggregate).
+        mode = training_view_mode(self.request)
+        if mode == "training":
+            training_ids = Interaction.objects.filter(
+                project__is_training=True
+            ).values("respondent_id")
+            queryset = queryset.filter(id__in=training_ids)
+        elif mode == "live":
+            # Keep respondents that have a live / project-less interaction, or no
+            # interactions at all; exclude those that exist ONLY in training.
+            live_ids = Interaction.objects.filter(
+                Q(project__is_training=False) | Q(project__isnull=True)
+            ).values("respondent_id")
+            any_ids = Interaction.objects.values("respondent_id")
+            queryset = queryset.filter(Q(id__in=live_ids) | ~Q(id__in=any_ids))
+        # mode == "all" (admin include_training opt-in): no training filter.
+
+        # Project-assignment gate (mirror InteractionViewSet). A respondent has no
+        # project FK, so we scope via its interactions. Rollout-safe: only users
+        # who HAVE project assignments are narrowed (admins -> None, unassigned ->
+        # empty set, both skip); respondents with no interactions are kept, and
+        # interactions with a null project are kept (matches include_null_project).
+        project_ids = get_user_project_ids(self.request.user)
+        if project_ids:
+            scoped_ids = Interaction.objects.filter(
+                Q(project_id__in=project_ids) | Q(project__isnull=True)
+            ).values("respondent_id")
+            no_interactions = ~Q(id__in=Interaction.objects.values("respondent_id"))
+            queryset = queryset.filter(Q(id__in=scoped_ids) | no_interactions)
+
         user = self.request.user
         if is_organization_admin(user):
             return queryset
@@ -75,7 +109,7 @@ class RespondentViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         if org_ids:
             return filter_queryset_by_org_ids(queryset, 'organization_id', org_ids)
         return Respondent.objects.none()
-    
+
     def perform_create(self, serializer):
         organization = serializer.validated_data.get('organization')
         if not is_organization_admin(self.request.user):

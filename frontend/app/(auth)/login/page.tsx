@@ -98,7 +98,10 @@ function LoginForm() {
     }
 
     try {
-      await authService.login({ username: identifier.trim(), password })
+      // Pass the selected mode EXPLICITLY so the token's environment claim can't
+      // race the storage flag (set in applyModeAndRedirect below). Without this a
+      // fresh training login got a live-stamped token — incident 2026-08-10.
+      await authService.login({ username: identifier.trim(), password, mode })
       applyModeAndRedirect(false)
     } catch (err: unknown) {
       const looksOffline =
