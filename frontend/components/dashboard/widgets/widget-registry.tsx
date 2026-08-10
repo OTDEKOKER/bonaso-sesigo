@@ -14,6 +14,8 @@ type WidgetComponentProps = {
   metrics: WidgetMetricCollection;
   subtitle?: string;
   title: string;
+  /** When true (default), colour indicators by RAG target-vs-achieved status. */
+  performanceColors?: boolean;
 };
 
 export const DASHBOARD_WIDGET_REGISTRY: Record<DashboardCustomWidgetType, ComponentType<WidgetComponentProps>> = {
@@ -33,7 +35,15 @@ export function DashboardWidgetRenderer({
   subtitle,
   title,
   type,
+  performanceColors,
 }: WidgetComponentProps & { type: DashboardCustomWidgetType }) {
   const Component = DASHBOARD_WIDGET_REGISTRY[type] || IndicatorBarChartWidget;
-  return <Component metrics={metrics} subtitle={subtitle} title={title} />;
+  return (
+    <Component
+      metrics={metrics}
+      subtitle={subtitle}
+      title={title}
+      performanceColors={performanceColors}
+    />
+  );
 }

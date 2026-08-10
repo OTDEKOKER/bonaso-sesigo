@@ -9,6 +9,7 @@ import {
   FolderKanban,
   Loader2,
   RotateCcw,
+  Target,
   Users,
 } from "lucide-react";
 import {
@@ -79,7 +80,8 @@ import { normalizeAggregateDisaggregationConfig } from "@/lib/indicators/disaggr
 import { isReadOnlyClient } from "@/lib/permissions";
 import type { Aggregate, Indicator, IndicatorCategory, Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { toSafeNumber } from "@/components/dashboard/engine/normalize-indicators";
+import { formatPercent, toSafeNumber } from "@/components/dashboard/engine/normalize-indicators";
+import { getPerformanceStatus } from "@/components/dashboard/engine/performance-status";
 
 const HOME_DASHBOARD_STORAGE_KEY = "bonaso-home-dashboard-preferences";
 const dashboardQuickLinks = [
@@ -118,6 +120,12 @@ const dashboardQuickLinks = [
 ];
 
 const summaryCardDefinitions = [
+  {
+    id: "overall-achievement",
+    label: "Overall Achievement",
+    note: "achieved vs target across indicators",
+    icon: Target,
+  },
   {
     id: "respondents",
     label: "Respondents",
@@ -172,6 +180,7 @@ type HomeDashboardPreferences = {
   showWelcomeBanner: boolean;
   showSummaryStrip: boolean;
   showUpdatesBoard: boolean;
+  showPerformanceDetail: boolean;
   showFavoritesPanel: boolean;
   showSpotlightPanel: boolean;
   defaultUpdatesTab: UpdatesTab;
@@ -187,12 +196,14 @@ const defaultDashboardChartPreferences: DashboardChartPreferences = {
   showTrendLegend: false,
   trendLayout: "grouped",
   trendSeriesLimit: 3,
+  performanceColors: true,
 };
 
 const defaultHomeDashboardPreferences: HomeDashboardPreferences = {
   showWelcomeBanner: false,
   showSummaryStrip: true,
   showUpdatesBoard: true,
+  showPerformanceDetail: true,
   showFavoritesPanel: false,
   showSpotlightPanel: false,
   defaultUpdatesTab: "deadlines",
@@ -201,6 +212,7 @@ const defaultHomeDashboardPreferences: HomeDashboardPreferences = {
     "view-reports": false,
   },
   summaryCards: {
+    "overall-achievement": true,
     respondents: true,
     interactions: true,
     "active-projects": true,
@@ -226,6 +238,30 @@ const defaultHomeDashboardFilters: HomeDashboardFilters = {
 const defaultWidgetBuilderFilters: HomeDashboardFilters = {
   ...defaultHomeDashboardFilters,
 };
+
+type ReportingPeriodOption = { value: string; label: string; from: string; to: string };
+
+const isoDate = (year: number, month: number, day: number) =>
+  `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+/**
+ * Quick-select reporting periods on the fiscal (April–March) calendar used
+ * across the dashboard's quarter buckets. Returns the current and previous
+ * fiscal years, each with a full-year range and its four quarters.
+ */
+function buildReportingPeriodOptions(reference: Date = new Date()): ReportingPeriodOption[] {
+  const fyStart = reference.getMonth() >= 3 ? reference.getFullYear() : reference.getFullYear() - 1;
+  const options: ReportingPeriodOption[] = [];
+  for (const y of [fyStart, fyStart - 1]) {
+    const suffix = `${y}/${String((y + 1) % 100).padStart(2, "0")}`;
+    options.push({ value: `fy-${y}`, label: `FY ${suffix}`, from: isoDate(y, 4, 1), to: isoDate(y + 1, 3, 31) });
+    options.push({ value: `fy-${y}-q1`, label: `Q1 ${suffix} (Apr–Jun)`, from: isoDate(y, 4, 1), to: isoDate(y, 6, 30) });
+    options.push({ value: `fy-${y}-q2`, label: `Q2 ${suffix} (Jul–Sep)`, from: isoDate(y, 7, 1), to: isoDate(y, 9, 30) });
+    options.push({ value: `fy-${y}-q3`, label: `Q3 ${suffix} (Oct–Dec)`, from: isoDate(y, 10, 1), to: isoDate(y, 12, 31) });
+    options.push({ value: `fy-${y}-q4`, label: `Q4 ${suffix} (Jan–Mar)`, from: isoDate(y + 1, 1, 1), to: isoDate(y + 1, 3, 31) });
+  }
+  return options;
+}
 
 function normalizeDashboardText(value?: string | null) {
   return String(value || "")
@@ -503,6 +539,10 @@ function normalizeHomeDashboardPreferences(
         typeof parsed.chartPreferences?.showTrendLegend === "boolean"
           ? parsed.chartPreferences.showTrendLegend
           : defaultDashboardChartPreferences.showTrendLegend,
+      performanceColors:
+        typeof parsed.chartPreferences?.performanceColors === "boolean"
+          ? parsed.chartPreferences.performanceColors
+          : defaultDashboardChartPreferences.performanceColors,
       trendLayout:
         parsed.chartPreferences?.trendLayout === "stacked" ? "stacked" : defaultDashboardChartPreferences.trendLayout,
       trendSeriesLimit,
@@ -1250,6 +1290,7 @@ function DashboardPageContent({
       | "showWelcomeBanner"
       | "showSummaryStrip"
       | "showUpdatesBoard"
+      | "showPerformanceDetail"
       | "showFavoritesPanel"
       | "showSpotlightPanel",
     checked: boolean,
@@ -1328,7 +1369,48 @@ function DashboardPageContent({
     Boolean(dashboardFilters.dateTo),
   ].filter(Boolean).length;
 
+  // Overall achievement = Σachieved / Σtarget across the filtered indicator
+  // metrics (already filter-aware). Cheap reduce; plain const to avoid adding a
+  // hook in the middle of the render body.
+  const overallAchievement = (() => {
+    const metrics = screeningInsights.indicatorMetrics ?? [];
+    let totalTarget = 0;
+    let totalAchieved = 0;
+    let targeted = 0;
+    let onTrack = 0;
+    for (const metric of metrics) {
+      const target = toSafeNumber(metric.target);
+      const value = toSafeNumber(metric.value);
+      totalTarget += target;
+      totalAchieved += value;
+      if (target > 0) {
+        targeted += 1;
+        if ((value / target) * 100 >= 75) onTrack += 1;
+      }
+    }
+    const targetedOverall = totalTarget > 0;
+    const percentage = targetedOverall ? (totalAchieved / totalTarget) * 100 : 0;
+    return { targeted, onTrack, targetedOverall, percentage };
+  })();
+  const overallStatus = getPerformanceStatus(
+    overallAchievement.percentage,
+    overallAchievement.targetedOverall,
+  );
+
   const summaryCards = [
+    {
+      id: "overall-achievement",
+      label: "Overall Achievement",
+      value: Math.round(overallAchievement.percentage),
+      valueLabel: overallAchievement.targetedOverall
+        ? `${formatPercent(overallAchievement.percentage)}%`
+        : "—",
+      accentColor: overallAchievement.targetedOverall ? overallStatus.color : undefined,
+      note: overallAchievement.targetedOverall
+        ? `${overallAchievement.onTrack} of ${overallAchievement.targeted} indicators on track`
+        : "no targets in range",
+      icon: Target,
+    },
     {
       id: "respondents",
       label: "Respondents",
@@ -1362,6 +1444,17 @@ function DashboardPageContent({
   const visibleSummaryCards = summaryCards.filter(
     (card) => dashboardPreferences.summaryCards[card.id] !== false,
   );
+
+  // Reporting-period quick-select presets (fiscal Apr–Mar), mapped to the
+  // existing dateFrom/dateTo filter. Cheap; plain consts (not hooks).
+  const reportingPeriodOptions = buildReportingPeriodOptions();
+  const activeReportingPeriod =
+    !dashboardFilters.dateFrom && !dashboardFilters.dateTo
+      ? "all"
+      : reportingPeriodOptions.find(
+          (option) =>
+            option.from === dashboardFilters.dateFrom && option.to === dashboardFilters.dateTo,
+        )?.value ?? "custom";
   const visibleQuickLinks = dashboardQuickLinks.filter((link) => {
     if (isReadOnlyUser && (link.id === "respondents" || link.id === "aggregates")) return false;
     return dashboardPreferences.quickLinks[link.id] !== false;
@@ -1915,6 +2008,7 @@ function DashboardPageContent({
                 ["showWelcomeBanner", "Welcome banner", "The greeting, quick actions, and intro copy."],
                 ["showSummaryStrip", "Summary strip", "The four KPI cards below the hero."],
                 ["showUpdatesBoard", "Updates board", "The activity, deadlines, and projects board."],
+                ["showPerformanceDetail", "Performance detail", "The target-vs-achieved drill-down (overview, breakdown, data + CSV)."],
                 ["showFavoritesPanel", "Favorites panel", "Your quick-access shortcut cards."],
                 ["showSpotlightPanel", "Project spotlight", "The current-focus projects panel."],
               ].map(([key, title, description]) => (
@@ -1934,6 +2028,7 @@ function DashboardPageContent({
                           | "showWelcomeBanner"
                           | "showSummaryStrip"
                           | "showUpdatesBoard"
+                          | "showPerformanceDetail"
                           | "showFavoritesPanel"
                           | "showSpotlightPanel"
                         >
@@ -1945,6 +2040,7 @@ function DashboardPageContent({
                           | "showWelcomeBanner"
                           | "showSummaryStrip"
                           | "showUpdatesBoard"
+                          | "showPerformanceDetail"
                           | "showFavoritesPanel"
                           | "showSpotlightPanel",
                         checked,
@@ -2121,6 +2217,19 @@ function DashboardPageContent({
                   <Switch
                     checked={dashboardPreferences.chartPreferences.showTrendLegend}
                     onCheckedChange={(checked) => setChartPreference("showTrendLegend", checked)}
+                  />
+                </label>
+
+                <label className="flex items-start justify-between gap-4 rounded-lg border border-border bg-background px-4 py-3">
+                  <div className="space-y-1">
+                    <div className="font-medium text-foreground">Performance colours</div>
+                    <div className="text-sm text-muted-foreground">
+                      Colour indicators by target-vs-achieved status (Met / On track / At risk / Off track).
+                    </div>
+                  </div>
+                  <Switch
+                    checked={dashboardPreferences.chartPreferences.performanceColors}
+                    onCheckedChange={(checked) => setChartPreference("performanceColors", checked)}
                   />
                 </label>
               </div>
@@ -2576,6 +2685,43 @@ function DashboardPageContent({
           </div>
 
           <div className="min-w-0 space-y-1.5 sm:col-span-2 lg:col-span-2">
+            <Label htmlFor="home-dashboard-period-filter">Reporting period</Label>
+            <Select
+              value={activeReportingPeriod}
+              onValueChange={(value) => {
+                if (value === "custom") return;
+                if (value === "all") {
+                  setDashboardFilters((current) => ({ ...current, dateFrom: "", dateTo: "" }));
+                  return;
+                }
+                const option = reportingPeriodOptions.find((item) => item.value === value);
+                if (option) {
+                  setDashboardFilters((current) => ({
+                    ...current,
+                    dateFrom: option.from,
+                    dateTo: option.to,
+                  }));
+                }
+              }}
+            >
+              <SelectTrigger id="home-dashboard-period-filter" className="h-10 w-full">
+                <SelectValue placeholder="All time" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All time</SelectItem>
+                {activeReportingPeriod === "custom" ? (
+                  <SelectItem value="custom">Custom range</SelectItem>
+                ) : null}
+                {reportingPeriodOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-0 space-y-1.5 sm:col-span-2 lg:col-span-2">
             <Label>Reporting window</Label>
             <div className="grid min-w-0 grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -2765,6 +2911,7 @@ function DashboardPageContent({
         showSpotlightPanel={dashboardPreferences.showSpotlightPanel}
         showSummaryStrip={dashboardPreferences.showSummaryStrip}
         showUpdatesBoard={dashboardPreferences.showUpdatesBoard}
+        showPerformanceDetail={dashboardPreferences.showPerformanceDetail}
         visibleQuickLinks={visibleQuickLinks}
         visibleSummaryCards={visibleSummaryCards}
         onActiveUpdatesTabChange={setActiveUpdatesTab}

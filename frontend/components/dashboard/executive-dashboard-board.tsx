@@ -49,6 +49,7 @@ import {
   toSafeNumber,
 } from "@/components/dashboard/engine/normalize-indicators";
 import { DashboardWidgetRenderer } from "@/components/dashboard/widgets/widget-registry";
+import { PerformanceDetailPanel } from "@/components/dashboard/components/performance-detail-panel";
 import { MetricBarsPanel } from "@/components/dashboard/widgets/indicator-progress-widget";
 import { renderCenteredWrappedTick, renderHorizontalCategoryTick } from "@/components/dashboard/widgets/shared-chart-utils";
 import { MessageAnalyticsDashboard } from "@/components/dashboard/message-analytics/message-analytics-dashboard";
@@ -94,6 +95,7 @@ interface DashboardExecutiveBoardProps {
   showSpotlightPanel: boolean;
   showSummaryStrip: boolean;
   showUpdatesBoard: boolean;
+  showPerformanceDetail: boolean;
   visibleQuickLinks: QuickLink[];
   visibleSummaryCards: SummaryCard[];
   onActiveUpdatesTabChange: (tab: UpdatesTab) => void;
@@ -1013,6 +1015,7 @@ export function DashboardExecutiveBoard({
   showSpotlightPanel,
   showSummaryStrip,
   showUpdatesBoard,
+  showPerformanceDetail,
   visibleQuickLinks,
   visibleSummaryCards,
 }: DashboardExecutiveBoardProps) {
@@ -1036,6 +1039,10 @@ export function DashboardExecutiveBoard({
         chartPreferences?.trendSeriesLimit === 5
           ? chartPreferences.trendSeriesLimit
           : 3,
+      performanceColors:
+        typeof chartPreferences?.performanceColors === "boolean"
+          ? chartPreferences.performanceColors
+          : true,
     }),
     [chartPreferences],
   );
@@ -1210,6 +1217,8 @@ export function DashboardExecutiveBoard({
           label: card.label,
           note: card.note,
           value: card.value,
+          valueLabel: card.valueLabel,
+          accentColor: card.accentColor,
         })),
         {
           icon: Clock3,
@@ -1217,6 +1226,8 @@ export function DashboardExecutiveBoard({
           label: "Upcoming deadlines",
           note: "reporting items due soon",
           value: safeDeadlines.length,
+          valueLabel: undefined as string | undefined,
+          accentColor: undefined as string | undefined,
         },
       ],
     [safeDeadlines.length, safeVisibleSummaryCards],
@@ -1330,8 +1341,11 @@ export function DashboardExecutiveBoard({
                           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                             {metric.label}
                           </p>
-                          <p className="mt-3 text-3xl font-bold tracking-tight text-foreground">
-                            {formatCompactNumber(metric.value)}
+                          <p
+                            className="mt-3 text-3xl font-bold tracking-tight text-foreground"
+                            style={metric.accentColor ? { color: metric.accentColor } : undefined}
+                          >
+                            {metric.valueLabel ?? formatCompactNumber(metric.value)}
                           </p>
                           <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{metric.note}</p>
                         </div>
@@ -1377,12 +1391,26 @@ export function DashboardExecutiveBoard({
                             metrics={widget.metrics}
                             subtitle={subtitle}
                             title={widget.title}
+                            performanceColors={safeChartPreferences.performanceColors}
                           />
                         </CustomWidgetShell>
                       );
                     })}
                     <AddCardTile onClick={onOpenCustomizeDashboard} />
                   </div>
+
+                  {showPerformanceDetail ? (
+                    <PerformanceDetailPanel
+                      metrics={indicatorMetrics}
+                      organizations={
+                        Array.isArray(screeningInsights?.organizations)
+                          ? screeningInsights.organizations
+                          : []
+                      }
+                      projects={projectMetrics}
+                      performanceColors={safeChartPreferences.performanceColors}
+                    />
+                  ) : null}
 
                   <div className="grid gap-4 xl:grid-cols-3">
                     <MetricBarsPanel

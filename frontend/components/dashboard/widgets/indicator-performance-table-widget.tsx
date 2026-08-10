@@ -3,16 +3,19 @@ import { DashboardPanel } from "@/components/dashboard/components/dashboard-pane
 import { ChartEmptyState } from "@/components/dashboard/components/chart-empty-state";
 import { formatPercent, formatWholeNumber } from "@/components/dashboard/engine/normalize-indicators";
 import { buildWidgetMetricRows } from "@/components/dashboard/engine/target-engine";
+import { PerformanceStatusPill } from "@/components/dashboard/components/performance-status-pill";
 import type { WidgetMetricCollection } from "@/components/dashboard/engine/types";
 
 export function IndicatorPerformanceTableWidget({
   metrics,
   subtitle,
   title,
+  performanceColors = true,
 }: {
   metrics: WidgetMetricCollection;
   subtitle?: string;
   title: string;
+  performanceColors?: boolean;
 }) {
   const rows = useMemo(() => buildWidgetMetricRows(metrics, 8), [metrics]);
 
@@ -30,6 +33,7 @@ export function IndicatorPerformanceTableWidget({
                 <th className="px-3 py-2 text-right">Actual</th>
                 <th className="px-3 py-2 text-right">Target</th>
                 <th className="px-3 py-2 text-right">Progress</th>
+                {performanceColors ? <th className="px-3 py-2 text-right">Status</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -45,6 +49,11 @@ export function IndicatorPerformanceTableWidget({
                   <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
                     {row.target > 0 ? `${formatPercent(row.percentage)}%` : "No target"}
                   </td>
+                  {performanceColors ? (
+                    <td className="px-3 py-2.5 text-right">
+                      <PerformanceStatusPill value={row.value} target={row.target} />
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

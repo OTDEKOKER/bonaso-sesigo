@@ -3,16 +3,19 @@ import { DashboardPanel } from "@/components/dashboard/components/dashboard-pane
 import { ChartEmptyState } from "@/components/dashboard/components/chart-empty-state";
 import { buildWidgetMetricRows } from "@/components/dashboard/engine/target-engine";
 import { clamp, formatPercent, formatWholeNumber } from "@/components/dashboard/engine/normalize-indicators";
+import { getPerformanceStatusFromValues } from "@/components/dashboard/engine/performance-status";
 import type { WidgetMetricCollection } from "@/components/dashboard/engine/types";
 
 export function IndicatorHeatmapTableWidget({
   metrics,
   subtitle,
   title,
+  performanceColors = true,
 }: {
   metrics: WidgetMetricCollection;
   subtitle?: string;
   title: string;
+  performanceColors?: boolean;
 }) {
   const rows = useMemo(() => buildWidgetMetricRows(metrics, 10), [metrics]);
   const maxValue = useMemo(
@@ -40,6 +43,18 @@ export function IndicatorHeatmapTableWidget({
                 {rows.map((row) => {
                   const valueIntensity = clamp(row.value / maxValue, 0, 1);
                   const progressIntensity = clamp(row.percentage / 100, 0, 1);
+                  // When RAG colouring is on, shade the Progress cell by status
+                  // colour (red->amber->green) instead of a flat green heatmap.
+                  const ragColor = getPerformanceStatusFromValues(row.value, row.target).color;
+                  const ragAlpha = Math.round((0.12 + progressIntensity * 0.3) * 255)
+                    .toString(16)
+                    .padStart(2, "0");
+                  const progressBg =
+                    row.target > 0
+                      ? performanceColors
+                        ? `${ragColor}${ragAlpha}`
+                        : `rgba(34, 197, 94, ${0.08 + progressIntensity * 0.3})`
+                      : undefined;
                   return (
                     <tr key={row.indicatorId} className="border-t border-border first:border-t-0">
                       <td className="px-3 py-2.5 text-foreground">{row.label}</td>
@@ -54,7 +69,7 @@ export function IndicatorHeatmapTableWidget({
                       </td>
                       <td
                         className="px-3 py-2.5 text-right tabular-nums text-foreground"
-                        style={{ backgroundColor: row.target > 0 ? `rgba(34, 197, 94, ${0.08 + progressIntensity * 0.3})` : undefined }}
+                        style={{ backgroundColor: progressBg }}
                       >
                         {row.target > 0 ? `${formatPercent(row.percentage)}%` : "No target"}
                       </td>

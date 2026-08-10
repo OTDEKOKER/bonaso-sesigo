@@ -10,6 +10,10 @@ export type SummaryCard = {
   value: number;
   note: string;
   icon: LucideIcon;
+  /** Optional display override (e.g. "75%") shown instead of the numeric value. */
+  valueLabel?: string;
+  /** Optional accent colour for the value (e.g. RAG status colour). */
+  accentColor?: string;
 };
 
 export type QuickLink = {
@@ -33,6 +37,8 @@ export type DashboardChartPreferences = {
   showTrendLegend: boolean;
   trendLayout: "grouped" | "stacked";
   trendSeriesLimit: 1 | 2 | 3 | 4 | 5;
+  /** Colour indicators by RAG target-vs-achieved status. Default on. */
+  performanceColors: boolean;
 };
 
 export type DashboardCustomWidgetType =

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, LabelList, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DashboardPanel } from "@/components/dashboard/components/dashboard-panel";
 import { ChartEmptyState } from "@/components/dashboard/components/chart-empty-state";
 import { ChartLegend } from "@/components/dashboard/components/chart-legend";
@@ -14,16 +14,22 @@ import {
   wrapLabelWithoutTruncation,
 } from "@/components/dashboard/engine/normalize-indicators";
 import type { WidgetMetricCollection } from "@/components/dashboard/engine/types";
+import {
+  getPerformanceStatusFromValues,
+  PERFORMANCE_RAG_LEGEND_ITEMS,
+} from "@/components/dashboard/engine/performance-status";
 import { CustomWidgetBarTooltip, renderHorizontalCategoryTick, TargetReferenceMarker } from "./shared-chart-utils";
 
 export function IndicatorBarChartWidget({
   metrics,
   subtitle,
   title,
+  performanceColors = true,
 }: {
   metrics: WidgetMetricCollection;
   subtitle?: string;
   title: string;
+  performanceColors?: boolean;
 }) {
   const displayTitle = title === "NCD" ? "NCD Screening Performance" : `${title} Performance`;
   const displaySubtitle = subtitle || "indicator group / reporting period / project";
@@ -36,6 +42,7 @@ export function IndicatorBarChartWidget({
             ...metric,
             cleanLabel,
             progressLabel: metric.target > 0 ? `${formatPercent(metric.percentage)}%` : "No target",
+            statusColor: getPerformanceStatusFromValues(metric.value, metric.target).color,
             stage,
           };
         })
@@ -76,10 +83,14 @@ export function IndicatorBarChartWidget({
       ) : (
         <div className="space-y-2">
           <ChartLegend
-            items={[
-              { color: actualSeriesColor, label: "Actual" },
-              { color: targetSeriesColor, label: "Target" },
-            ]}
+            items={
+              performanceColors
+                ? [...PERFORMANCE_RAG_LEGEND_ITEMS, { color: targetSeriesColor, label: "Target" }]
+                : [
+                    { color: actualSeriesColor, label: "Actual" },
+                    { color: targetSeriesColor, label: "Target" },
+                  ]
+            }
           />
           <div className="w-full min-w-0 overflow-hidden" style={{ height: `${chartHeight}px` }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -125,6 +136,11 @@ export function IndicatorBarChartWidget({
                     />
                   ))}
                 <Bar dataKey="value" fill={actualSeriesColor} name="Actual" radius={[0, 10, 10, 0]} minPointSize={6} maxBarSize={26}>
+                  {performanceColors
+                    ? processedData.map((metric) => (
+                        <Cell key={`${metric.indicatorId}-cell`} fill={metric.statusColor} />
+                      ))
+                    : null}
                   <LabelList
                     dataKey="value"
                     position="right"
