@@ -5,6 +5,8 @@
  */
 const MODULE_BY_PATH: Record<string, string> = {
   "/dashboard": "dashboard",
+  // Executive Dashboard is a dashboard view — same gate as /dashboard.
+  "/executive": "dashboard",
   "/organizations": "organizations",
   "/users": "users",
   "/projects": "projects",

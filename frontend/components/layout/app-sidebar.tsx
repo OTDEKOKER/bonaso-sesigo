@@ -207,7 +207,15 @@ function applyTrainingHrefs(
 }
 
 const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode; badge?: number; children?: { title: string; href: string }[] }> = [
-  { title: "Dashboard", href: "/dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+  {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: <LayoutDashboard className="h-4 w-4" />,
+    children: [
+      { title: "Home", href: "/dashboard" },
+      { title: "Executive Dashboard", href: "/executive" },
+    ],
+  },
   { title: "Organizations", href: "/organizations", icon: <Building2 className="h-4 w-4" /> },
   { title: "Users", href: "/users", icon: <Users className="h-4 w-4" /> },
   {
