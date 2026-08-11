@@ -186,20 +186,19 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     ]);
   }, [descendantsByParent, selectedCoordinatorId]);
 
-  // The selected project's whole org tree = every coordinator (authoritative list
-  // above) ∪ its descendants (project hierarchy map). Used as the default scope for
-  // the Organisation/District options and the KPI "in scope" counts so they reflect
-  // the project, not the global org list. Null when no project is selected.
+  // The selected project's whole org set = its assigned organizations
+  // (project.organizations M2M, which equals ProjectOrganization is_active — the
+  // authoritative, COMPLETE project membership, including every sub-grantee). Used
+  // as the default scope for the Organisation/District options and the KPI "in
+  // scope" counts so they reflect the project, not the global org list. We must NOT
+  // derive this from coordinators + client-side hierarchy descendants: the project
+  // hierarchy overrides can be empty/flat, so that would collapse to just the
+  // coordinators and drop the sub-grantees that actually report (→ 0% completeness).
+  // Null when no project is selected.
   const projectScopedOrganizationIds = useMemo<Set<string> | null>(() => {
-    if (!selectedProjectId) return null;
-    const set = new Set<string>();
-    for (const c of coordinatorOptions) {
-      const cid = String(c.id);
-      set.add(cid);
-      for (const d of (descendantsByParent[cid] || []) as string[]) set.add(d);
-    }
-    return set.size > 0 ? set : null;
-  }, [selectedProjectId, coordinatorOptions, descendantsByParent]);
+    if (!selectedProjectId || selectedProjectOrganizationIds.length === 0) return null;
+    return new Set<string>(selectedProjectOrganizationIds);
+  }, [selectedProjectId, selectedProjectOrganizationIds]);
 
   const organizationOptions = useMemo(() => {
     // A chosen coordinator narrows to its subtree; otherwise fall back to the whole
