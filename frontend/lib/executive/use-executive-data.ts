@@ -273,19 +273,24 @@ export function useExecutiveData(filters: ExecutiveFilters) {
   );
 
   const effectiveMetrics = useMemo(() => {
+    // The coordinator-targets ROLLUP action (analysis.views.CoordinatorTargetViewSet
+    // ._coordinator_rollup_rows) emits the EFFECTIVE target — derived/percentage
+    // resolved at read time by the coordinator-rollups SSoT — in `target_value`
+    // (NOT `resolved_target_value`, which is only on the list serializer), and the
+    // certified server-side actual in `actual_value`. Read those exact fields.
     const rows = (rollupData?.results ?? []) as Array<{
       indicator_id: number;
       indicator_name?: string;
-      resolved_target_value?: number | null;
-      actual_value?: number;
-      own_actual_value?: number;
+      target_value?: number | null;
+      actual_value?: number | null;
+      own_actual_value?: number | null;
     }>;
     if (!selectedProjectId || rows.length === 0) return null;
     const byIndicator = new Map<string, { indicatorId: string; label: string; target: number; value: number; percentage: number }>();
     for (const r of rows) {
       const id = String(r.indicator_id);
       const cur = byIndicator.get(id) ?? { indicatorId: id, label: r.indicator_name ?? id, target: 0, value: 0, percentage: 0 };
-      cur.target += Number(r.resolved_target_value ?? 0);
+      cur.target += Number(r.target_value ?? 0);
       cur.value += Number(r.actual_value ?? r.own_actual_value ?? 0);
       byIndicator.set(id, cur);
     }
