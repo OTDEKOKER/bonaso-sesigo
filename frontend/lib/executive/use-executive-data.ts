@@ -16,7 +16,9 @@ import {
   useAllIndicators,
   useAllOrganizations,
   useAllProjectDetails,
+  useCoordinatorTargetRollup,
 } from "@/lib/hooks/use-api";
+import type { CoordinatorTargetQuarter } from "@/lib/api/services/coordinator-targets";
 import { useAuth } from "@/lib/contexts/auth-context";
 import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import { useAggregateVisibilityScope } from "@/app/(dashboard)/aggregates/hooks";
@@ -250,11 +252,54 @@ export function useExecutiveData(filters: ExecutiveFilters) {
   ]);
 
   // Optional indicator narrowing for the tables (display-only).
+  // Effective (SSoT) targets — includes DERIVED / PERCENTAGE targets that have no
+  // stored value (computed at read time by analysis.services.coordinator_rollups).
+  // Sourced from the coordinator-targets rollup so we never recompute derivation
+  // client-side. Used whenever a project is selected; else fall back to the
+  // stored-target insights path.
+  const quarterParam: CoordinatorTargetQuarter | "all" | undefined = useMemo(() => {
+    const f = filters.dateFrom ? getQuarterBucket(filters.dateFrom) : null;
+    const t = filters.dateTo ? getQuarterBucket(filters.dateTo) : null;
+    if (f && t && f.year === t.year && f.quarter === t.quarter) {
+      return `Q${f.quarter}` as CoordinatorTargetQuarter;
+    }
+    return filters.dateFrom || filters.dateTo ? "all" : undefined;
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const { data: rollupData } = useCoordinatorTargetRollup(
+    selectedProjectId
+      ? { project_id: selectedProjectId, coordinator_id: selectedCoordinatorId, quarter: quarterParam }
+      : null,
+  );
+
+  const effectiveMetrics = useMemo(() => {
+    const rows = (rollupData?.results ?? []) as Array<{
+      indicator_id: number;
+      indicator_name?: string;
+      resolved_target_value?: number | null;
+      actual_value?: number;
+      own_actual_value?: number;
+    }>;
+    if (!selectedProjectId || rows.length === 0) return null;
+    const byIndicator = new Map<string, { indicatorId: string; label: string; target: number; value: number; percentage: number }>();
+    for (const r of rows) {
+      const id = String(r.indicator_id);
+      const cur = byIndicator.get(id) ?? { indicatorId: id, label: r.indicator_name ?? id, target: 0, value: 0, percentage: 0 };
+      cur.target += Number(r.resolved_target_value ?? 0);
+      cur.value += Number(r.actual_value ?? r.own_actual_value ?? 0);
+      byIndicator.set(id, cur);
+    }
+    return Array.from(byIndicator.values()).map((m) => ({
+      ...m,
+      percentage: m.target > 0 ? (m.value / m.target) * 100 : 0,
+    }));
+  }, [rollupData, selectedProjectId]);
+
   const indicatorMetrics = useMemo(() => {
-    const all = insights.indicatorMetrics ?? [];
+    const all = effectiveMetrics ?? insights.indicatorMetrics ?? [];
     if (filters.indicatorId === "all") return all;
     return all.filter((m) => String(m.indicatorId) === filters.indicatorId);
-  }, [insights.indicatorMetrics, filters.indicatorId]);
+  }, [effectiveMetrics, insights.indicatorMetrics, filters.indicatorId]);
 
   const kpis = useMemo(() => {
     let totalTarget = 0;
