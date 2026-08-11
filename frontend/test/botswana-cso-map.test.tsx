@@ -165,6 +165,64 @@ describe("BotswanaCsoMap", () => {
     expect(html).toContain("Molepolole")
   })
 
+  it("every filter (District, Village/Town, Org Type, Name) + Reset changes the plotted points", async () => {
+    // Molepolole & Maun coords match the settlements mock → derived villages.
+    const P = [
+      { id: 1, cso_name: "Alpha NGO", organisation_type: "Non-Governmental Organisation (NGO)", district: "Kweneng", village_town: "", physical_address: "", latitude: -24.4066, longitude: 25.4951 },
+      { id: 2, cso_name: "Beta Trust", organisation_type: "Trust", district: "North West", village_town: "", physical_address: "", latitude: -19.9833, longitude: 23.4167 },
+      { id: 3, cso_name: "Gamma NGO", organisation_type: "Non-Governmental Organisation (NGO)", district: "North West", village_town: "", physical_address: "", latitude: -19.9833, longitude: 23.4167 },
+    ]
+    service.locations.mockReset().mockResolvedValue(P)
+    render(<BotswanaCsoMap />)
+    await waitFor(() => expect(allMarkerData().length).toBe(3))
+
+    const names = () => allMarkerData().map((d: any) => d.name).sort()
+    const districtSel = screen.getByLabelText("Filter by district") as HTMLSelectElement
+    const villageSel = screen.getByLabelText("Filter by village or town") as HTMLSelectElement
+    const typeSel = screen.getByLabelText("Filter by organisation type") as HTMLSelectElement
+    const nameInput = screen.getByLabelText("Filter by organisation name") as HTMLInputElement
+    const reset = screen.getByRole("button", { name: "Reset filters" })
+
+    // Village options are async (settlements fetch) — wait for them.
+    await waitFor(() =>
+      expect(Array.from(villageSel.querySelectorAll("option")).map((o) => o.textContent)).toEqual(
+        expect.arrayContaining(["Maun", "Molepolole"]),
+      ),
+    )
+
+    // District → only the Kweneng one.
+    fireEvent.change(districtSel, { target: { value: "Kweneng" } })
+    await waitFor(() => expect(names()).toEqual(["Alpha NGO"]))
+    fireEvent.click(reset)
+    await waitFor(() => expect(allMarkerData().length).toBe(3))
+
+    // Village/Town → both Maun ones.
+    fireEvent.change(villageSel, { target: { value: "Maun" } })
+    await waitFor(() => expect(names()).toEqual(["Beta Trust", "Gamma NGO"]))
+    fireEvent.click(reset)
+    await waitFor(() => expect(allMarkerData().length).toBe(3))
+
+    // Organisation type → only the Trust.
+    fireEvent.change(typeSel, { target: { value: "Trust" } })
+    await waitFor(() => expect(names()).toEqual(["Beta Trust"]))
+    fireEvent.click(reset)
+    await waitFor(() => expect(allMarkerData().length).toBe(3))
+
+    // Name search → substring, case-insensitive.
+    fireEvent.change(nameInput, { target: { value: "gamma" } })
+    await waitFor(() => expect(names()).toEqual(["Gamma NGO"]))
+
+    // Combined filters intersect (Maun + NGO → Gamma only).
+    fireEvent.change(nameInput, { target: { value: "" } })
+    fireEvent.change(villageSel, { target: { value: "Maun" } })
+    fireEvent.change(typeSel, { target: { value: "Non-Governmental Organisation (NGO)" } })
+    await waitFor(() => expect(names()).toEqual(["Gamma NGO"]))
+
+    // Reset clears everything.
+    fireEvent.click(reset)
+    await waitFor(() => expect(allMarkerData().length).toBe(3))
+  })
+
   it("shows an empty state when there are no located CSOs (map still shown)", async () => {
     service.locations.mockResolvedValueOnce([])
     render(<BotswanaCsoMap />)
