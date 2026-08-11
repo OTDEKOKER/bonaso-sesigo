@@ -17,6 +17,7 @@ import {
   useAllOrganizations,
   useAllProjectDetails,
   useCoordinatorTargetRollup,
+  useProjectCoordinators,
 } from "@/lib/hooks/use-api";
 import type { CoordinatorTargetQuarter } from "@/lib/api/services/coordinator-targets";
 import { useAuth } from "@/lib/contexts/auth-context";
@@ -157,15 +158,25 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     [organizations, selectedProject, selectedProjectHierarchy, selectedProjectOrganizationIds],
   );
 
-  // Coordinator options follow the selected project.
-  const coordinatorOptions = useMemo(() => {
-    if (!selectedProjectId || selectedProjectOrganizationIds.length === 0) {
-      return availableCoordinatorOrganizations;
+  // Coordinator options follow the selected project via the AUTHORITATIVE backend
+  // endpoint (ProjectOrganization.is_coordinator) — the same source the
+  // /targets/coordinators page uses. This returns every coordinator in the project
+  // (all 6 for an admin; only the user's own for a coordinator M&E officer) and
+  // honours training/live isolation. The old global-scope ∩ project-M2M
+  // intersection silently dropped coordinators that weren't in the flat M2M.
+  const { data: projectCoordinatorsData } = useProjectCoordinators(selectedProjectId ?? null);
+  const coordinatorOptions = useMemo<Array<{ id: string; name: string }>>(() => {
+    if (selectedProjectId) {
+      return (projectCoordinatorsData ?? []).map((o) => ({
+        id: String(o.id),
+        name: String(o.name ?? `Org ${o.id}`),
+      }));
     }
-    const ids = new Set(selectedProjectOrganizationIds);
-    const scoped = availableCoordinatorOrganizations.filter((o) => ids.has(String(o.id)));
-    return scoped.length > 0 ? scoped : availableCoordinatorOrganizations;
-  }, [availableCoordinatorOrganizations, selectedProjectId, selectedProjectOrganizationIds]);
+    return availableCoordinatorOrganizations.map((o) => ({
+      id: String(o.id),
+      name: String((o as { name?: unknown }).name ?? `Org ${o.id}`),
+    }));
+  }, [projectCoordinatorsData, selectedProjectId, availableCoordinatorOrganizations]);
 
   const coordinatorScopedOrganizationIds = useMemo<Set<string> | null>(() => {
     if (!selectedCoordinatorId) return null;
@@ -175,14 +186,34 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     ]);
   }, [descendantsByParent, selectedCoordinatorId]);
 
+  // The selected project's whole org tree = every coordinator (authoritative list
+  // above) ∪ its descendants (project hierarchy map). Used as the default scope for
+  // the Organisation/District options and the KPI "in scope" counts so they reflect
+  // the project, not the global org list. Null when no project is selected.
+  const projectScopedOrganizationIds = useMemo<Set<string> | null>(() => {
+    if (!selectedProjectId) return null;
+    const set = new Set<string>();
+    for (const c of coordinatorOptions) {
+      const cid = String(c.id);
+      set.add(cid);
+      for (const d of (descendantsByParent[cid] || []) as string[]) set.add(d);
+    }
+    return set.size > 0 ? set : null;
+  }, [selectedProjectId, coordinatorOptions, descendantsByParent]);
+
   const organizationOptions = useMemo(() => {
-    if (!coordinatorScopedOrganizationIds) return organizations;
-    return organizations.filter((o) => coordinatorScopedOrganizationIds.has(String(o.id)));
-  }, [coordinatorScopedOrganizationIds, organizations]);
+    // A chosen coordinator narrows to its subtree; otherwise fall back to the whole
+    // project tree; only when no project is selected show the global org list.
+    const scope = coordinatorScopedOrganizationIds ?? projectScopedOrganizationIds;
+    if (!scope) return organizations;
+    return organizations.filter((o) => scope.has(String(o.id)));
+  }, [coordinatorScopedOrganizationIds, projectScopedOrganizationIds, organizations]);
 
   // Hierarchy-scoped org id set (project -> coordinator -> org), then optional district narrowing.
   const scopedOrganizationIds = useMemo<Set<string> | null>(() => {
-    let base: Set<string> | null = coordinatorScopedOrganizationIds;
+    // Default to the whole project tree (so KPI "in scope" counts + reported/not-
+    // reported reflect the project, not the global org list) until a coordinator is chosen.
+    let base: Set<string> | null = coordinatorScopedOrganizationIds ?? projectScopedOrganizationIds;
     if (selectedOrganizationId) {
       const orgScope = new Set<string>([
         selectedOrganizationId,
@@ -204,7 +235,7 @@ export function useExecutiveData(filters: ExecutiveFilters) {
         : inDistrict;
     }
     return base;
-  }, [coordinatorScopedOrganizationIds, descendantsByParent, selectedOrganizationId, filters.district, organizations]);
+  }, [coordinatorScopedOrganizationIds, projectScopedOrganizationIds, descendantsByParent, selectedOrganizationId, filters.district, organizations]);
 
   const activeProjects = useMemo(() => {
     return allProjects.filter((project) => {
@@ -306,6 +337,22 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     return all.filter((m) => String(m.indicatorId) === filters.indicatorId);
   }, [effectiveMetrics, insights.indicatorMetrics, filters.indicatorId]);
 
+  // Indicator options are per-project: the indicators actually present in the
+  // scoped metrics (the UNFILTERED set, so choosing one doesn't collapse the list),
+  // using the SAME canonical ids the table filters on. Only fall back to the global
+  // catalogue when no project is selected.
+  const indicatorOptions = useMemo<Array<{ id: number | string; name: string }>>(() => {
+    if (selectedProjectId) {
+      const seen = new Map<string, string>();
+      for (const m of (effectiveMetrics ?? insights.indicatorMetrics ?? [])) {
+        const id = String(m.indicatorId);
+        if (!seen.has(id)) seen.set(id, String(m.label ?? id));
+      }
+      if (seen.size > 0) return Array.from(seen, ([id, name]) => ({ id, name }));
+    }
+    return (indicatorsData ?? []) as Array<{ id: number | string; name: string }>;
+  }, [selectedProjectId, effectiveMetrics, insights.indicatorMetrics, indicatorsData]);
+
   const kpis = useMemo(() => {
     let totalTarget = 0;
     let totalAchieved = 0;
@@ -402,7 +449,7 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       coordinators: coordinatorOptions,
       organizations: organizationOptions,
       districts: districtOptions,
-      indicators: (indicatorsData ?? []) as Array<{ id: number | string; name: string }>,
+      indicators: indicatorOptions,
     },
   };
 }
