@@ -188,8 +188,14 @@ export function useAllProjectDetails(filters?: ProjectFilters, config?: SWRConfi
     ['projects-all-details', filters],
     async () => {
       const projects = await projectsService.listAll(filters);
+      // light=1: consumers of this hook (dashboard, indicators, executive) read
+      // only base fields + organizations/indicators/targets — never the per-org
+      // indicator-assignment matrix, disaggregation rules or role rows. Fetching
+      // full detail here loaded ~10MB per large project (23k assignment rows on
+      // NSC2026/27) for every project in parallel; light drops those 3 fields.
+      // Project Setup/Targets (which DO need them) use useProject(full) instead.
       const settled = await Promise.allSettled(
-        projects.map((project) => projectsService.get(Number(project.id))),
+        projects.map((project) => projectsService.get(Number(project.id), { light: true })),
       );
       const detailedProjects = settled
         .filter((result): result is PromiseFulfilledResult<(typeof projects)[number]> => result.status === 'fulfilled')

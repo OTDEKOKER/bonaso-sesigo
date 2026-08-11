@@ -120,10 +120,19 @@ export default function ExecutiveDashboardPage() {
   const presets = useMemo(() => fyPresets(), []);
   const activePreset = presets.find((p) => p.from === filters.dateFrom && p.to === filters.dateTo)?.key ?? null;
 
-  // Project-scoped by default: pick the first accessible (permission-scoped) project + current FY.
+  // Land on the CURRENT project by default: the newest active (permission-scoped)
+  // project + current FY. Sort by start_date descending so we deterministically
+  // pick the current live project (e.g. NSC2026/27 over the prior year) instead of
+  // relying on list order; fall back to newest, then first.
   useEffect(() => {
     if (filters.projectId !== "all" || options.projects.length === 0) return;
-    const preferred = options.projects.find((p) => (p as { status?: string }).status === "active") ?? options.projects[0];
+    const byNewest = [...options.projects].sort((a, b) =>
+      String((b as { start_date?: string }).start_date ?? "").localeCompare(
+        String((a as { start_date?: string }).start_date ?? ""),
+      ),
+    );
+    const preferred =
+      byNewest.find((p) => (p as { status?: string }).status === "active") ?? byNewest[0];
     const fy = presets[0];
     setFilters((f) => ({ ...f, projectId: String(preferred.id), dateFrom: f.dateFrom || fy.from, dateTo: f.dateTo || fy.to }));
     // eslint-disable-next-line react-hooks/exhaustive-deps

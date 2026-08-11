@@ -15,7 +15,7 @@ import {
   useAllAggregates,
   useAllIndicators,
   useAllOrganizations,
-  useAllProjectDetails,
+  useAllProjects,
   useCoordinatorTargetRollup,
   useProjectCoordinators,
 } from "@/lib/hooks/use-api";
@@ -95,7 +95,13 @@ export function useExecutiveData(filters: ExecutiveFilters) {
   const selectedOrganizationId = filters.organizationId !== "all" ? filters.organizationId : undefined;
 
   const { data: organizationsData } = useAllOrganizations();
-  const { data: projectsData } = useAllProjectDetails();
+  // Executive scoping needs only base project fields (organizations,
+  // hierarchy_overrides, status, is_training) — all present on the plain list.
+  // useAllProjects is one paginated list call; useAllProjectDetails would fetch
+  // full per-project detail (~10MB each on NSC2026/27), which gated the whole
+  // dashboard's landing/auto-select on a multi-MB download. Base list lets the
+  // page land on the current project and load its data immediately.
+  const { data: projectsData } = useAllProjects();
   const { data: indicatorsData, isLoading: indicatorsLoading } = useAllIndicators({ is_active: "true" });
 
   const aggregatesFilters = useMemo(
