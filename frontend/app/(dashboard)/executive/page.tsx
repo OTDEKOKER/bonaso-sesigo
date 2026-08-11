@@ -28,6 +28,7 @@ import {
   YAxis,
 } from "recharts";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatPercent, formatWholeNumber } from "@/components/dashboard/engine/normalize-indicators";
 import {
@@ -69,6 +70,7 @@ function KpiCard({
   note,
   accent,
   badge,
+  onClick,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
@@ -76,14 +78,27 @@ function KpiCard({
   note?: string;
   accent?: string;
   badge?: PerformanceStatusResult;
+  onClick?: () => void;
 }) {
   return (
     <div className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        <span className="rounded-xl border border-border p-1.5 text-muted-foreground">
-          <Icon className="h-4 w-4" />
-        </span>
+        {onClick ? (
+          <button
+            type="button"
+            onClick={onClick}
+            aria-label={label}
+            title={`View ${label} details`}
+            className="group rounded-xl border border-border p-1.5 text-muted-foreground transition hover:border-primary/60 hover:bg-primary/10 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            <Icon className="h-4 w-4 transition group-hover:scale-110" />
+          </button>
+        ) : (
+          <span className="rounded-xl border border-border p-1.5 text-muted-foreground">
+            <Icon className="h-4 w-4" />
+          </span>
+        )}
       </div>
       <p className="mt-2 text-3xl font-bold tracking-tight" style={accent ? { color: accent } : undefined}>
         {value}
@@ -98,7 +113,10 @@ function KpiCard({
 
 export default function ExecutiveDashboardPage() {
   const [filters, setFilters] = useState<ExecutiveFilters>(DEFAULT_EXECUTIVE_FILTERS);
-  const { insights, indicatorMetrics, kpis, recentSubmissions, isLoading, options } = useExecutiveData(filters);
+  const { insights, indicatorMetrics, kpis, recentSubmissions, reportedOrganizations, notReportedOrganizations, isLoading, options } = useExecutiveData(filters);
+  const [openCard, setOpenCard] = useState<
+    null | "overall" | "ontrack" | "reporting" | "completeness" | "total" | "offtrack"
+  >(null);
   const presets = useMemo(() => fyPresets(), []);
   const activePreset = presets.find((p) => p.from === filters.dateFrom && p.to === filters.dateTo)?.key ?? null;
 
@@ -150,6 +168,22 @@ export default function ExecutiveDashboardPage() {
   );
   const complianceTotal = kpis.scopedOrgCount;
 
+  const cardTitle: Record<string, string> = {
+    overall: "Overall Achievement — indicators",
+    ontrack: "Indicators On Track (≥75%)",
+    offtrack: "Indicators Off Track (<50%)",
+    total: "Total Achieved — by indicator",
+    reporting: "Reporting Organisations",
+    completeness: "Reporting Completeness",
+  };
+  const dialogRows = useMemo(() => {
+    if (openCard === "ontrack") return rows.filter((r) => r.hasTarget && r.pct >= 75);
+    if (openCard === "offtrack") return rows.filter((r) => r.hasTarget && r.pct < 50);
+    if (openCard === "total") return [...rows].sort((a, b) => Number(b.value) - Number(a.value));
+    return rows; // overall
+  }, [openCard, rows]);
+  const isOrgCard = openCard === "reporting" || openCard === "completeness";
+
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <div>
@@ -192,16 +226,16 @@ export default function ExecutiveDashboardPage() {
         <KpiCard icon={Target} label="Overall Achievement"
           value={kpis.targetedOverall ? `${formatPercent(kpis.overallPct)}%` : "—"}
           accent={kpis.targetedOverall ? kpis.overallStatus.color : undefined}
-          badge={kpis.targetedOverall ? kpis.overallStatus : undefined} />
+          badge={kpis.targetedOverall ? kpis.overallStatus : undefined} onClick={() => setOpenCard("overall")} />
         <KpiCard icon={BarChart3} label="Indicators On Track" value={`${kpis.onTrack} / ${kpis.indicatorsTargeted}`}
-          note={`${kpis.indicatorCount} in scope`} />
+          note={`${kpis.indicatorCount} in scope`} onClick={() => setOpenCard("ontrack")} />
         <KpiCard icon={Users} label="Reporting Organisations" value={`${kpis.reportingOrganizations} / ${kpis.scopedOrgCount}`}
-          note="reporting" />
-        <KpiCard icon={CheckCircle2} label="Reporting Completeness" value={`${completeness}%`} note="orgs reporting" />
+          note="reporting" onClick={() => setOpenCard("reporting")} />
+        <KpiCard icon={CheckCircle2} label="Reporting Completeness" value={`${completeness}%`} note="orgs reporting" onClick={() => setOpenCard("completeness")} />
         <KpiCard icon={Database} label="Total Achieved" value={formatWholeNumber(kpis.totalAchieved)}
-          note={`vs Target ${formatWholeNumber(kpis.totalTarget)}`} />
+          note={`vs Target ${formatWholeNumber(kpis.totalTarget)}`} onClick={() => setOpenCard("total")} />
         <KpiCard icon={AlertTriangle} label="Indicators Off Track" value={String(offTrackCount)}
-          accent={offTrackCount > 0 ? PERFORMANCE_STATUS_COLORS["off-track"] : undefined} note="need attention" />
+          accent={offTrackCount > 0 ? PERFORMANCE_STATUS_COLORS["off-track"] : undefined} note="need attention" onClick={() => setOpenCard("offtrack")} />
       </div>
 
       {/* Programme Performance + Trend */}
@@ -360,6 +394,56 @@ export default function ExecutiveDashboardPage() {
           </table>
         )}
       </MiniPanel>
+
+      <Dialog open={openCard !== null} onOpenChange={(o) => { if (!o) setOpenCard(null); }}>
+        <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
+          <DialogHeader><DialogTitle>{cardTitle[openCard ?? "overall"]}</DialogTitle></DialogHeader>
+          {isOrgCard ? (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="mb-2 font-semibold" style={{ color: PERFORMANCE_STATUS_COLORS.met }}>
+                  Reported ({reportedOrganizations.length})
+                </p>
+                <ul className="space-y-1">
+                  {reportedOrganizations.length === 0
+                    ? <li className="text-muted-foreground">None</li>
+                    : reportedOrganizations.map((n) => <li key={n} className="text-foreground">{n}</li>)}
+                </ul>
+              </div>
+              <div>
+                <p className="mb-2 font-semibold" style={{ color: PERFORMANCE_STATUS_COLORS["off-track"] }}>
+                  Not reported ({notReportedOrganizations.length})
+                </p>
+                <ul className="space-y-1">
+                  {notReportedOrganizations.length === 0
+                    ? <li className="text-muted-foreground">None</li>
+                    : notReportedOrganizations.map((n) => <li key={n} className="text-foreground">{n}</li>)}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {dialogRows.length === 0 ? (
+                  <tr><td className="py-4 text-center text-muted-foreground">No indicators in scope.</td></tr>
+                ) : (
+                  dialogRows.map((r) => (
+                    <tr key={String(r.indicatorId)} className="border-t border-border first:border-t-0">
+                      <td className="py-2 pr-2 text-foreground">{r.label}</td>
+                      <td className="py-2 text-right tabular-nums text-foreground">
+                        {openCard === "total"
+                          ? `${formatWholeNumber(Number(r.value))} / ${formatWholeNumber(Number(r.target))}`
+                          : r.hasTarget ? `${formatPercent(r.pct)}%` : "—"}
+                      </td>
+                      <td className="py-2 pl-2 text-right"><StatusBadge status={r.status} /></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 // Mock the data hook so the page renders from a fixture (no API/DB/auth needed).
 // The RAG status pills below still exercise the REAL performance-status engine.
@@ -26,6 +26,8 @@ vi.mock("@/lib/executive/use-executive-data", () => ({
     recentSubmissions: [
       { organization: "TEBELOPELE", indicator: "HIV tests", period: "Q1 2026/27", submittedOn: "2026-05-13", status: "approved" },
     ],
+    reportedOrganizations: ["MBGE Core", "BOCHAIP"],
+    notReportedOrganizations: ["BOFABONETHA"],
     indicatorMetrics: [
       { indicatorId: "1", label: "HIV tests conducted", value: 850, target: 1000, percentage: 85 },
       { indicatorId: "2", label: "Condoms distributed", value: 300, target: 1000, percentage: 30 },
@@ -75,5 +77,14 @@ describe("ExecutiveDashboardPage", () => {
     expect(screen.getByText("Reporting Compliance")).toBeTruthy();
     expect(screen.getByText("Recent Data Submissions")).toBeTruthy();
     expect(screen.getByText("TEBELOPELE")).toBeTruthy();
+  });
+
+  it("clicking Reporting Organisations opens a dialog listing reported vs not-reported orgs", () => {
+    render(<ExecutiveDashboardPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Reporting Organisations" }));
+    expect(screen.getByText(/Reported \(2\)/)).toBeTruthy();
+    expect(screen.getByText(/Not reported \(1\)/)).toBeTruthy();
+    expect(screen.getByText("MBGE Core")).toBeTruthy();
+    expect(screen.getByText("BOFABONETHA")).toBeTruthy();
   });
 });

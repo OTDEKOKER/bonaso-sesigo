@@ -363,6 +363,19 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       );
   }, [aggregatesData, organizations, indicatorsData]);
 
+  // Which scoped orgs reported vs not (for the clickable Reporting cards).
+  const { reportedOrganizations, notReportedOrganizations } = useMemo(() => {
+    const rows = Array.isArray(aggregatesData) ? (aggregatesData as Array<Record<string, unknown>>) : [];
+    const withData = new Set(rows.map((r) => String(r.organization)));
+    const scoped = organizations.filter((o) => (scopedOrganizationIds ? scopedOrganizationIds.has(String(o.id)) : true));
+    const reported: string[] = [];
+    const notReported: string[] = [];
+    for (const o of scoped) {
+      (withData.has(String(o.id)) ? reported : notReported).push(String(o.name ?? o.id));
+    }
+    return { reportedOrganizations: reported.sort(), notReportedOrganizations: notReported.sort() };
+  }, [aggregatesData, organizations, scopedOrganizationIds]);
+
   const districtOptions = useMemo(() => {
     const src = organizationOptions.length ? organizationOptions : organizations;
     return Array.from(
@@ -375,6 +388,8 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     indicatorMetrics,
     kpis,
     recentSubmissions,
+    reportedOrganizations,
+    notReportedOrganizations,
     isLoading: analyticsLoading,
     hasError: Boolean(aggregatesError),
     options: {
