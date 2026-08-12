@@ -2,7 +2,23 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import useSWR from "swr";
-import { Download, Loader2, Plus, ShieldAlert, Wallet } from "lucide-react";
+import { Banknote, Download, Flame, Loader2, Plus, Receipt, ShieldAlert, Wallet } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  KpiStatCard,
+  KpiSkeleton,
+  type KpiStat,
+} from "@/components/analysis/dashboard-primitives";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -51,11 +67,25 @@ function toArray<T>(data: unknown): T[] {
   return Array.isArray(results) ? results : [];
 }
 
+const CURRENCY = "P"; // Botswana Pula (default BWP)
+
 function money(value: string | number | null | undefined): string {
   const n = Number(value ?? 0);
   return Number.isFinite(n)
     ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : "0.00";
+}
+
+/** Compact currency for headline KPIs, e.g. "P 1.24M". */
+function compactMoney(value: string | number | null | undefined): string {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return `${CURRENCY} 0`;
+  const abs = Math.abs(n);
+  const fmt = (v: number, suffix: string) =>
+    `${CURRENCY} ${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}${suffix}`;
+  if (abs >= 1_000_000) return fmt(n / 1_000_000, "M");
+  if (abs >= 1_000) return fmt(n / 1_000, "K");
+  return fmt(n, "");
 }
 
 /** Burn = spent / awarded. Over budget is the risk here. */
@@ -185,17 +215,32 @@ export default function GrantsPage() {
         }
       />
 
-      {/* Grand total KPIs */}
+      {/* Grand total KPIs (standard executive stat cards) */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Total awarded" value={grand ? money(grand.awarded) : "—"} loading={summaryLoading} />
-        <KpiCard label="Disbursed" value={grand ? money(grand.disbursed) : "—"} loading={summaryLoading} />
-        <KpiCard label="Spent" value={grand ? money(grand.spent) : "—"} loading={summaryLoading} />
-        <KpiCard
-          label="Overall burn"
-          value={grand ? <BurnBadge pct={grand.burn_pct} /> : "—"}
-          loading={summaryLoading}
-        />
+        {summaryLoading || !grand
+          ? Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)
+          : kpiStats(grand).map((stat) => <KpiStatCard key={stat.key} stat={stat} />)}
       </div>
+
+      {/* Awarded vs spent chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Awarded vs. spent, by organization</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {summaryLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : (
+            <GrantsBurnChart rows={summaryData?.organizations ?? []} />
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Spend bars are coloured by burn rate (spent ÷ awarded):{" "}
+            <span style={{ color: burnColor(50) }}>● within budget</span>,{" "}
+            <span style={{ color: burnColor(95) }}>● near limit (90–100%)</span>,{" "}
+            <span style={{ color: burnColor(120) }}>● over budget</span>.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Per-organization summary */}
       <Card>
@@ -336,26 +381,53 @@ export default function GrantsPage() {
   );
 }
 
-function KpiCard({
-  label,
-  value,
-  loading,
-}: {
-  label: string;
-  value: ReactNode;
-  loading?: boolean;
-}) {
+function kpiStats(grand: GrantSummary["grand_total"]): KpiStat[] {
+  const burn = grand.burn_pct;
+  return [
+    { key: "awarded", label: "Total awarded", value: compactMoney(grand.awarded), icon: Wallet, accent: "#0f766e", helper: `${grand.organization_count} organizations` },
+    { key: "disbursed", label: "Disbursed", value: compactMoney(grand.disbursed), icon: Banknote, accent: "#2563eb" },
+    { key: "spent", label: "Spent", value: compactMoney(grand.spent), icon: Receipt, accent: "#7c3aed" },
+    { key: "burn", label: "Overall burn", value: burn === null ? "—" : `${burn.toFixed(0)}%`, icon: Flame, accent: burnColor(burn), helper: "spent ÷ awarded" },
+  ];
+}
+
+function GrantsBurnChart({ rows }: { rows: GrantSummary["organizations"] }) {
+  const data = useMemo(
+    () =>
+      [...rows]
+        .sort((a, b) => Number(b.awarded) - Number(a.awarded))
+        .slice(0, 10)
+        .map((r) => ({
+          name: r.organization_name,
+          awarded: Number(r.awarded),
+          spent: Number(r.spent),
+          burn: r.burn_pct,
+        })),
+    [rows],
+  );
+
+  if (data.length === 0) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">No grants in scope.</p>;
+  }
+
   return (
-    <Card>
-      <CardContent className="py-5">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-        {loading ? (
-          <Skeleton className="mt-2 h-7 w-24" />
-        ) : (
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-        )}
-      </CardContent>
-    </Card>
+    <ResponsiveContainer width="100%" height={Math.max(220, data.length * 42)}>
+      <BarChart data={data} layout="vertical" margin={{ left: 12, right: 24 }}>
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+        <XAxis type="number" tickFormatter={(v) => compactMoney(v)} fontSize={12} />
+        <YAxis type="category" dataKey="name" width={130} fontSize={12} />
+        <Tooltip
+          formatter={(value: number, key) => [`${CURRENCY} ${money(value)}`, key === "awarded" ? "Awarded" : "Spent"]}
+        />
+        <Legend />
+        <Bar dataKey="awarded" name="Awarded" fill="#CBD5E1" radius={[0, 4, 4, 0]} />
+        <Bar dataKey="spent" name="Spent" radius={[0, 4, 4, 0]}>
+          {data.map((d, i) => (
+            <Cell key={i} fill={burnColor(d.burn)} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 
