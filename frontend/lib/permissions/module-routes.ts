@@ -16,6 +16,8 @@ const MODULE_BY_PATH: Record<string, string> = {
   "/aggregates": "aggregates",
   "/events": "events",
   "/social": "social",
+  // Grants / financial accounting — deny-by-default (no role default grants it).
+  "/grants": "grants",
   // Client organizations are org-management; gate them with the orgs module.
   "/clients": "organizations",
   "/batch-record": "batch_record",

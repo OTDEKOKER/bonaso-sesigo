@@ -39,6 +39,11 @@ MODULE_ACTIONS: dict[str, list[str]] = {
     # Not in any role default -> deny-by-default; admins always have it, and it is
     # granted to other users only via an explicit assignment.
     'cso_mapping': ['view', 'export', 'edit'],
+    # Grants / financial accounting. Sensitive money data — not in any role
+    # default, so deny-by-default (dark): admins always have it, finance/other
+    # users only via an explicit assignment (view = read-only coordinator,
+    # +edit = finance who can enter money). See grants.permissions.
+    'grants': ['view', 'create', 'edit', 'delete', 'export'],
     'system_status': ['view'],
     'settings': ['view', 'manage'],
     'training_mode': ['view'],

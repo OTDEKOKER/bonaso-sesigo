@@ -32,6 +32,7 @@ import {
   BookOpen,
   LifeBuoy,
   ClipboardList,
+  Wallet,
 } from "lucide-react"
 import {
   Collapsible,
@@ -261,6 +262,7 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
   { title: "Events", href: "/events", icon: <CalendarDays className="h-4 w-4" /> },
   { title: "Social Media", href: "/social", icon: <Share2 className="h-4 w-4" /> },
   { title: "Clients", href: "/clients", icon: <Building className="h-4 w-4" /> },
+  { title: "Grants", href: "/grants", icon: <Wallet className="h-4 w-4" /> },
   { title: "Training Mode", href: "/login?mode=training", icon: <BookOpen className="h-4 w-4" /> },
   { title: "Batch Record", href: "/batch-record", icon: <FileSpreadsheet className="h-4 w-4" /> },
   {

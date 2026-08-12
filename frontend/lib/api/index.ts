@@ -48,6 +48,17 @@ export type {
   UpdateOrganizationRequest,
 } from './services/organizations';
 
+// Grants (financial accounting)
+export { grantsService } from './services/grants';
+export type {
+  Grant,
+  GrantDetail,
+  GrantSummary,
+  GrantOrgSummaryRow,
+  GrantFilters,
+  CreateGrantRequest,
+} from './services/grants';
+
 // Users
 export { usersService } from './services/users';
 export type {

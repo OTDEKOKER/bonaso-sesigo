@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     'funder_reports',
     'support',
     'cso_mapping',
+    'grants',
 ]
 
 MIDDLEWARE = [
