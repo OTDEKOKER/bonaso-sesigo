@@ -84,8 +84,26 @@ class OrganizationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def tree(self, request):
-        """Get organization hierarchy tree."""
-        root_orgs = Organization.objects.filter(parent__isnull=True, is_active=True)
+        """Get organization hierarchy tree.
+
+        Scope note: ``OrganizationTreeSerializer`` recurses through every active
+        child, so returning the global roots would leak the WHOLE organisation
+        list to any authenticated user — bypassing the org scoping that
+        ``get_queryset`` (and this endpoint's open read permission) rely on.
+        Non-admins are therefore rooted at their OWN organisation, so the tree
+        only ever descends into their in-scope subtree, never sibling
+        coordinators. Admins keep the full global tree.
+        """
+        user = request.user
+        if is_organization_admin(user):
+            root_orgs = Organization.objects.filter(parent__isnull=True, is_active=True)
+        else:
+            org = getattr(user, 'organization', None)
+            root_orgs = (
+                Organization.objects.filter(id=org.id, is_active=True)
+                if org is not None
+                else Organization.objects.none()
+            )
         # Keep demo (training-only) organisations out of the live hierarchy tree.
         root_orgs = apply_training_filter_via_projects(root_orgs, request)
         serializer = OrganizationTreeSerializer(root_orgs, many=True)

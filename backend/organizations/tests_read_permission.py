@@ -55,3 +55,58 @@ class OrganizationReadPermissionTests(TestCase):
         force_authenticate(req, user=self.officer)
         resp = OrganizationViewSet.as_view({"post": "create"})(req)
         self.assertEqual(resp.status_code, 403)
+
+
+class OrganizationTreeScopeTests(TestCase):
+    """Regression: GET /api/organizations/tree/ must not leak the whole org list.
+
+    ``OrganizationTreeSerializer`` recurses into every active child, so returning
+    the global roots exposes EVERY organisation (name/code/type) to any
+    authenticated user — bypassing the org scoping the endpoint's open read
+    permission relies on. Non-admins must only see their own org subtree; admins
+    keep the full tree.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        # Two independent coordinator subtrees (unrelated root orgs).
+        cls.coord_a = Organization.objects.create(name="Coord A", code="TREE-A", type="regional")
+        cls.child_a = Organization.objects.create(name="Child A", code="TREE-A-C", type="ngo", parent=cls.coord_a)
+        cls.coord_b = Organization.objects.create(name="Coord B", code="TREE-B", type="regional")
+
+        cls.officer = User.objects.create_user(
+            username="tree_officer", email="tree_officer@example.com", password="x",
+            role="officer", organization=cls.coord_a,
+        )
+        cls.admin = User.objects.create_user(
+            username="tree_admin", email="tree_admin@example.com", password="x",
+            role="admin", organization=cls.coord_a,
+        )
+
+    def _tree(self, user):
+        factory = APIRequestFactory()
+        req = factory.get("/api/organizations/tree/")
+        force_authenticate(req, user=user)
+        resp = OrganizationViewSet.as_view({"get": "tree"})(req)
+        resp.render()
+        self.assertEqual(resp.status_code, 200)
+        return resp.data
+
+    @staticmethod
+    def _flatten_ids(nodes):
+        ids = set()
+        for node in nodes:
+            ids.add(int(node["id"]))
+            ids |= OrganizationTreeScopeTests._flatten_ids(node.get("children", []))
+        return ids
+
+    def test_non_admin_tree_excludes_unrelated_root(self):
+        ids = self._flatten_ids(self._tree(self.officer))
+        self.assertIn(self.coord_a.id, ids)      # own org
+        self.assertIn(self.child_a.id, ids)      # own descendant
+        self.assertNotIn(self.coord_b.id, ids)   # unrelated coordinator must NOT leak
+
+    def test_admin_tree_includes_all_roots(self):
+        ids = self._flatten_ids(self._tree(self.admin))
+        self.assertIn(self.coord_a.id, ids)
+        self.assertIn(self.coord_b.id, ids)

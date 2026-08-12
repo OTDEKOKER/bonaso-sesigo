@@ -2332,7 +2332,15 @@ class DashboardView(viewsets.ViewSet):
         if requested_org_ids is not None and len(requested_org_ids) == 0:
             return Response({'rows': [], 'series': []})
 
-        user_scope_ids = None if is_organization_admin(user) else set(get_user_organization_ids(user) or [])
+        # Resolve the viewer's own-org scope through THIS project's hierarchy
+        # (ProjectOrganizationHierarchy) — the source of truth — not the global
+        # Organization.parent tree. `project_id` is guaranteed set and accessible
+        # here (checked above), and the resolver degrades safely to the global
+        # tree when the project defines no hierarchy for the user's org.
+        user_scope_ids = (
+            None if is_organization_admin(user)
+            else set(get_user_organization_ids(user, project_id=project_id) or [])
+        )
         effective_org_ids = requested_org_ids
         if user_scope_ids is not None:
             effective_org_ids = (

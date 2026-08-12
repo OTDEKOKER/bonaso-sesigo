@@ -44,6 +44,7 @@ from .models import (
     Deadline,
 )
 from .hierarchy import resolve_organization_scope_with_project_hierarchy
+from .scope import filter_queryset_by_assigned_projects
 from .project_indicator_links import ensure_project_indicator_link
 from .project_indicator_scope_sync import ensure_project_indicator_assignments
 from .project_scope_sync import sync_project_scope_tables
@@ -944,6 +945,10 @@ class TaskViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if is_organization_admin(user):
             return queryset
+        # Project-assignment gate (mirror events/aggregates/respondents): a
+        # non-admin only sees tasks for projects they are assigned to. Additive
+        # and rollout-safe — no-op for admins and for users with no assignments.
+        queryset = filter_queryset_by_assigned_projects(queryset, user, 'project_id')
         org_ids = get_user_organization_ids(user)
         if org_ids:
             return filter_queryset_by_org_ids(queryset, 'project__organizations__id', org_ids).distinct()
@@ -987,6 +992,9 @@ class DeadlineViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if is_organization_admin(user):
             return queryset
+        # Project-assignment gate (mirror events/aggregates/respondents). Additive
+        # and rollout-safe — no-op for admins / users with no assignments.
+        queryset = filter_queryset_by_assigned_projects(queryset, user, 'project_id')
         org_ids = get_user_organization_ids(user)
         if org_ids:
             queryset = filter_queryset_by_org_ids(queryset, 'project__organizations__id', org_ids).distinct()
@@ -1107,6 +1115,11 @@ class ProjectActivityViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if is_organization_admin(user):
             return qs
+        # Project-assignment gate first: a non-admin only sees activities in
+        # projects they are assigned to. `visible_to_all` then stays project-wide
+        # (visible to all orgs WITHIN an assigned project), not system-wide.
+        # Additive/rollout-safe — no-op for admins / users with no assignments.
+        qs = filter_queryset_by_assigned_projects(qs, user, 'project_id')
         org_ids = get_user_organization_ids(user)
         return qs.filter(
             Q(visible_to_all=True) | Q(organization_id__in=org_ids)
@@ -1161,6 +1174,10 @@ class NarrativeReportViewSet(viewsets.ModelViewSet):
         qs = NarrativeReport.objects.select_related('project', 'organization', 'uploaded_by')
         user = self.request.user
         if not is_organization_admin(user):
+            # Project-assignment gate (mirror events/aggregates/respondents):
+            # narrative-report uploads are org-sensitive, so a non-admin only
+            # sees those for projects they are assigned to. Additive/rollout-safe.
+            qs = filter_queryset_by_assigned_projects(qs, user, 'project_id')
             org_ids = get_user_organization_ids(user)
             qs = qs.filter(organization_id__in=org_ids)
         return apply_training_filter(qs, self.request, project_lookup='project')
