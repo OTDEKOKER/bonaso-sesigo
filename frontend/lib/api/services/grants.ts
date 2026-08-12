@@ -123,23 +123,26 @@ export interface CreateGrantRequest {
   notes?: string;
 }
 
+// api.get/post/... resolve to an ApiResponse wrapper ({ data, ... }); every
+// service unwraps `.data` before returning the body. (Bug fix 2026-08-12: the
+// grants page read fields off the wrapper → KPIs stuck on skeletons.)
 export const grantsService = {
-  list: (filters: GrantFilters = {}) =>
-    api.get<PaginatedResponse<Grant> | Grant[]>('/grants/', filters as Record<string, string | number>),
+  list: async (filters: GrantFilters = {}) =>
+    (await api.get<PaginatedResponse<Grant> | Grant[]>('/grants/', filters as Record<string, string | number>)).data,
 
-  get: (id: number) => api.get<GrantDetail>(`/grants/${id}/`),
+  get: async (id: number) => (await api.get<GrantDetail>(`/grants/${id}/`)).data,
 
-  summary: (filters: GrantFilters = {}) =>
-    api.get<GrantSummary>('/grants/summary/', filters as Record<string, string | number>),
+  summary: async (filters: GrantFilters = {}) =>
+    (await api.get<GrantSummary>('/grants/summary/', filters as Record<string, string | number>)).data,
 
-  create: (data: CreateGrantRequest) => api.post<Grant>('/grants/', data),
-  update: (id: number, data: Partial<CreateGrantRequest>) => api.patch<Grant>(`/grants/${id}/`, data),
+  create: async (data: CreateGrantRequest) => (await api.post<Grant>('/grants/', data)).data,
+  update: async (id: number, data: Partial<CreateGrantRequest>) => (await api.patch<Grant>(`/grants/${id}/`, data)).data,
   remove: (id: number) => api.delete<void>(`/grants/${id}/`),
 
-  createDisbursement: (data: Partial<GrantDisbursement>) =>
-    api.post<GrantDisbursement>('/grants/disbursements/', data),
-  createExpenditure: (data: Partial<GrantExpenditure>) =>
-    api.post<GrantExpenditure>('/grants/expenditures/', data),
-  createBudgetLine: (data: Partial<GrantBudgetLine>) =>
-    api.post<GrantBudgetLine>('/grants/budget-lines/', data),
+  createDisbursement: async (data: Partial<GrantDisbursement>) =>
+    (await api.post<GrantDisbursement>('/grants/disbursements/', data)).data,
+  createExpenditure: async (data: Partial<GrantExpenditure>) =>
+    (await api.post<GrantExpenditure>('/grants/expenditures/', data)).data,
+  createBudgetLine: async (data: Partial<GrantBudgetLine>) =>
+    (await api.post<GrantBudgetLine>('/grants/budget-lines/', data)).data,
 };

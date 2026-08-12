@@ -119,8 +119,9 @@ class GrantViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def summary(self, request):
         """Per-organization awarded/disbursed/spent/remaining/burn + grand total,
-        scoped to what the viewer may see."""
-        return Response(summarize_by_organization(self.get_queryset()))
+        scoped to what the viewer may see. Honours the ?project=/?organization=/…
+        query filters (via filter_queryset) so it matches the grants list."""
+        return Response(summarize_by_organization(self.filter_queryset(self.get_queryset())))
 
 
 class _GrantChildViewSet(viewsets.ModelViewSet):
