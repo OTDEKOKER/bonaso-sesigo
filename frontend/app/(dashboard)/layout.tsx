@@ -232,6 +232,16 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated) return
     const isTrainingSession = isTrainingMode()
     const path = pathname || ""
+    // CSO Mapping is a live-only module (real submissions / personal data) with no
+    // training mirror. A training session must never reach a live /cso-mapping page
+    // (it would render live data) nor a /training/cso-mapping-* path (which 404s).
+    // Bounce it to the training dashboard instead — the backend also denies these
+    // endpoints in training mode.
+    if (isTrainingSession && /^\/(training\/)?cso-mapping/.test(path)) {
+      setTrainingRedirectPending(true)
+      router.replace("/training/dashboard")
+      return
+    }
     // Shared/global modules (orgs, users, indicators, clients, settings, …) have
     // no /training mirror; redirecting them would 404. Keep them on the live path.
     if (isTrainingSession && !path.startsWith("/training") && !isSharedLiveRoute(path)) {

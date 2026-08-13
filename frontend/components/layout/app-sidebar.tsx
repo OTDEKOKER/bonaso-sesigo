@@ -396,7 +396,7 @@ export function AppSidebar() {
             subItems={item.children}
           />
         ))}
-        {canView("cso_mapping") && (
+        {!isTrainingMode && canView("cso_mapping") && (
           <NavItem
             title="CSO Mapping"
             href="/cso-mapping-submissions"

@@ -1,5 +1,6 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+from organizations.access import training_view_mode
 from users.module_permissions import resolve_user_module_permissions
 
 MODULE = "cso_mapping"
@@ -29,6 +30,13 @@ class CanUseCsoMapping(BasePermission):
     def has_permission(self, request, view) -> bool:
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
+            return False
+        # CSO Mapping holds real submissions (personal data) and has no training
+        # mirror — there is no training CSO dataset. A Sesigo Training-Mode session
+        # must therefore never reach these endpoints, or live data would leak into
+        # training. Deny outright for training sessions (admins inspecting live via
+        # include_training resolve to mode "all", not "training", and are unaffected).
+        if training_view_mode(request) == "training":
             return False
         perms = resolve_user_module_permissions(user)
         return _required_action(request, view) in perms.get(MODULE, [])

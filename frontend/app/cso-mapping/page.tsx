@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRight, ShieldCheck } from "lucide-react"
+import { ArrowRight, Printer, ShieldCheck } from "lucide-react"
 
 // Existing in-app support contact (see components/shared/maintenance-screen.tsx).
 // TODO(management): confirm this is the correct public support address for the
@@ -107,14 +107,26 @@ export default function CsoMappingIntroPage() {
           </div>
 
           <div className="mt-8">
-            <Link
-              href="/cso-mapping/questionnaire"
-              className="inline-flex items-center gap-2 rounded-lg bg-[#356a8d] px-6 py-3 text-base font-semibold tracking-tight text-white transition-colors hover:bg-[#2b5872] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#356a8d]"
-            >
-              Start Questionnaire
-              <ArrowRight className="h-5 w-5" aria-hidden="true" />
-            </Link>
-            <p className="mt-3 text-xs text-slate-400">The questionnaire opens on the next page.</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="/cso-mapping/questionnaire"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#356a8d] px-6 py-3 text-base font-semibold tracking-tight text-white transition-colors hover:bg-[#2b5872] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#356a8d]"
+              >
+                Start Questionnaire
+                <ArrowRight className="h-5 w-5" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/cso-mapping/print"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-5 py-3 text-base font-semibold tracking-tight text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#356a8d]"
+              >
+                <Printer className="h-5 w-5" aria-hidden="true" />
+                Print blank questionnaire
+              </Link>
+            </div>
+            <p className="mt-3 text-xs text-slate-400">
+              The questionnaire opens on the next page. “Print blank questionnaire” opens a paper
+              copy you can print or save as PDF.
+            </p>
           </div>
         </div>
 
