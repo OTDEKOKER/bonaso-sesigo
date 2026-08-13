@@ -97,6 +97,33 @@ export interface GrantSummary {
   };
 }
 
+export interface GrantQuarterRow {
+  organization_id: number;
+  organization_name: string;
+  awarded: string;
+  quarters: Record<string, string>;
+  fy_total: string;
+  burn_pct: number | null;
+}
+
+export interface GrantCoordinatorGroup extends GrantQuarterRow {
+  members: GrantQuarterRow[];
+}
+
+export interface GrantQuarterly {
+  fiscal_year: number;
+  available_fiscal_years: number[];
+  quarters: string[];
+  coordinators: GrantCoordinatorGroup[];
+  ungrouped: GrantQuarterRow[];
+  grand_total: {
+    awarded: string;
+    quarters: Record<string, string>;
+    fy_total: string;
+    burn_pct: number | null;
+  };
+}
+
 export interface GrantFilters {
   project?: string | number;
   organization?: string | number;
@@ -134,6 +161,9 @@ export const grantsService = {
 
   summary: async (filters: GrantFilters = {}) =>
     (await api.get<GrantSummary>('/grants/summary/', filters as Record<string, string | number>)).data,
+
+  quarterly: async (filters: GrantFilters & { fy?: string | number } = {}) =>
+    (await api.get<GrantQuarterly>('/grants/quarterly/', filters as Record<string, string | number>)).data,
 
   create: async (data: CreateGrantRequest) => (await api.post<Grant>('/grants/', data)).data,
   update: async (id: number, data: Partial<CreateGrantRequest>) => (await api.patch<Grant>(`/grants/${id}/`, data)).data,

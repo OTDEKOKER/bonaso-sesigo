@@ -123,6 +123,23 @@ class GrantViewSet(viewsets.ModelViewSet):
         query filters (via filter_queryset) so it matches the grants list."""
         return Response(summarize_by_organization(self.filter_queryset(self.get_queryset())))
 
+    @action(detail=False, methods=["get"])
+    def quarterly(self, request):
+        """Per-org expenditure by FY quarter, grouped/rolled up by coordinator
+        (coordinator's own grant + its sub-grantees), for the selected project.
+        Stays project-org scoped via filter_queryset(get_queryset())."""
+        from projects.models import Project
+
+        from .rollups import quarterly_expenditure
+
+        qs = self.filter_queryset(self.get_queryset())
+        project = None
+        project_id = (request.query_params.get("project") or "").strip()
+        if project_id:
+            project = Project.objects.filter(id=project_id).first()
+        fy = (request.query_params.get("fy") or "").strip() or None
+        return Response(quarterly_expenditure(qs, project=project, fiscal_year=fy))
+
 
 class _GrantChildViewSet(viewsets.ModelViewSet):
     """Shared scoping for budget lines / disbursements / expenditures."""

@@ -15,6 +15,23 @@ const fixtures = vi.hoisted(() => ({
   list: [
     { id: 1, code: "NAHPA-A-01", organization_name: "Coord A", project_name: "NAHPA SC", total_amount: "1000000", currency: "BWP", status: "active", financials: { spent: "1050000", burn_pct: 105 } },
   ],
+  quarterly: {
+    fiscal_year: 2026,
+    available_fiscal_years: [2026],
+    quarters: ["Q1", "Q2", "Q3", "Q4"],
+    coordinators: [
+      {
+        organization_id: 10, organization_name: "Coord A", awarded: "1000000",
+        quarters: { Q1: "180000", Q2: "40000", Q3: "30000", Q4: "0" }, fy_total: "250000", burn_pct: 25,
+        members: [
+          { organization_id: 10, organization_name: "Coord A", awarded: "700000", quarters: { Q1: "60000", Q2: "40000", Q3: "0", Q4: "0" }, fy_total: "100000", burn_pct: 14 },
+          { organization_id: 20, organization_name: "MBGE", awarded: "300000", quarters: { Q1: "120000", Q2: "0", Q3: "30000", Q4: "0" }, fy_total: "150000", burn_pct: 50 },
+        ],
+      },
+    ],
+    ungrouped: [],
+    grand_total: { awarded: "1000000", quarters: { Q1: "180000", Q2: "40000", Q3: "30000", Q4: "0" }, fy_total: "250000", burn_pct: 25 },
+  },
 }));
 
 vi.mock("swr", () => ({
@@ -22,6 +39,7 @@ vi.mock("swr", () => ({
     const k = Array.isArray(key) ? key[0] : key;
     if (k === "grants-summary") return { data: fixtures.summary, isLoading: false, mutate: vi.fn() };
     if (k === "grants-list") return { data: fixtures.list, isLoading: false, mutate: vi.fn() };
+    if (k === "grants-quarterly") return { data: fixtures.quarterly, isLoading: false, mutate: vi.fn() };
     return { data: undefined, isLoading: false, mutate: vi.fn() };
   },
 }));
@@ -57,11 +75,14 @@ describe("GrantsPage", () => {
     render(<GrantsPage />);
     // Grand total footer (2 orgs) — the headline the director sees.
     expect(screen.getByText(/GRAND TOTAL \(2\)/)).toBeTruthy();
-    // Per-org rows are present.
+    // Per-org rows are present (org names appear in both summary + quarterly tables).
     expect(screen.getAllByText("Coord A").length).toBeGreaterThan(0);
-    expect(screen.getByText("MBGE")).toBeTruthy();
+    expect(screen.getAllByText("MBGE").length).toBeGreaterThan(0);
     // Compact KPI currency formatting rendered (P 1.8M awarded).
     expect(screen.getByText(/P\s?1\.8M/)).toBeTruthy();
+    // Quarterly section renders the coordinator rollup group header.
+    expect(screen.getByText(/Quarterly expenditure by organisation/i)).toBeTruthy();
+    expect(screen.getByText(/▾ Coord A/)).toBeTruthy();
   });
 
   it("shows an access-denied panel when the user lacks the grants module", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import { Banknote, Download, Flame, Loader2, Plus, Receipt, ShieldAlert, Wallet } from "lucide-react";
 import {
@@ -57,6 +57,8 @@ import {
   type Grant,
   type GrantDetail,
   type GrantSummary,
+  type GrantQuarterly,
+  type GrantQuarterRow,
 } from "@/lib/api/services/grants";
 
 const ALL = "all";
@@ -301,6 +303,9 @@ export default function GrantsPage() {
         </CardContent>
       </Card>
 
+      {/* Quarterly expenditure, grouped by coordinator (rollup) */}
+      <QuarterlyExpenditure projectFilter={projectFilter} />
+
       {/* Grants list */}
       <Card>
         <CardHeader>
@@ -428,6 +433,123 @@ function GrantsBurnChart({ rows }: { rows: GrantSummary["organizations"] }) {
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+function QuarterRow({
+  row,
+  quarters,
+  label,
+  bold,
+  indent,
+}: {
+  row: GrantQuarterRow;
+  quarters: string[];
+  label?: string;
+  bold?: boolean;
+  indent?: boolean;
+}) {
+  return (
+    <TableRow className={bold ? "bg-muted/40 font-semibold" : undefined}>
+      <TableCell className={indent ? "pl-8" : "font-medium"}>{label ?? row.organization_name}</TableCell>
+      <TableCell className="text-right tabular-nums">{money(row.awarded)}</TableCell>
+      {quarters.map((q) => (
+        <TableCell key={q} className="text-right tabular-nums">{money(row.quarters[q])}</TableCell>
+      ))}
+      <TableCell className="text-right tabular-nums">{money(row.fy_total)}</TableCell>
+      <TableCell className="text-right"><BurnBadge pct={row.burn_pct} /></TableCell>
+    </TableRow>
+  );
+}
+
+function QuarterlyExpenditure({ projectFilter }: { projectFilter: string }) {
+  const [fy, setFy] = useState<string>("");
+
+  const params = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (projectFilter !== ALL) p.project = projectFilter;
+    if (fy) p.fy = fy;
+    return p;
+  }, [projectFilter, fy]);
+
+  const { data, isLoading } = useSWR<GrantQuarterly>(
+    ["grants-quarterly", projectFilter, fy],
+    () => grantsService.quarterly(params),
+  );
+
+  const quarters = data?.quarters ?? ["Q1", "Q2", "Q3", "Q4"];
+  const hasRows = !!data && (data.coordinators.length > 0 || data.ungrouped.length > 0);
+  const fyLabel = (y: number) => `FY ${y}/${String((y + 1) % 100).padStart(2, "0")}`;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle>Quarterly expenditure by organisation (coordinator rollup)</CardTitle>
+        {data && data.available_fiscal_years.length > 0 && (
+          <Select value={fy || String(data.fiscal_year)} onValueChange={setFy}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Fiscal year" /></SelectTrigger>
+            <SelectContent>
+              {data.available_fiscal_years.map((y) => (
+                <SelectItem key={y} value={String(y)}>{fyLabel(y)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : !hasRows ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No expenditure recorded{projectFilter === ALL ? " — select a project to group by coordinator" : ""}.
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Organisation</TableHead>
+                <TableHead className="text-right">Awarded</TableHead>
+                {quarters.map((q) => (
+                  <TableHead key={q} className="text-right">{q}</TableHead>
+                ))}
+                <TableHead className="text-right">FY total</TableHead>
+                <TableHead className="text-right">% spent</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data!.coordinators.map((co) => (
+                <Fragment key={co.organization_id}>
+                  <QuarterRow row={co} quarters={quarters} bold label={`▾ ${co.organization_name}`} />
+                  {co.members.map((m) => (
+                    <QuarterRow
+                      key={m.organization_id}
+                      row={m}
+                      quarters={quarters}
+                      indent
+                      label={m.organization_id === co.organization_id ? `${m.organization_name} (coordinator)` : m.organization_name}
+                    />
+                  ))}
+                </Fragment>
+              ))}
+              {data!.ungrouped.map((r) => (
+                <QuarterRow key={r.organization_id} row={r} quarters={quarters} />
+              ))}
+            </TableBody>
+            <tfoot>
+              <TableRow className="border-t-2 font-semibold">
+                <TableCell>GRAND TOTAL</TableCell>
+                <TableCell className="text-right tabular-nums">{money(data!.grand_total.awarded)}</TableCell>
+                {quarters.map((q) => (
+                  <TableCell key={q} className="text-right tabular-nums">{money(data!.grand_total.quarters[q])}</TableCell>
+                ))}
+                <TableCell className="text-right tabular-nums">{money(data!.grand_total.fy_total)}</TableCell>
+                <TableCell className="text-right"><BurnBadge pct={data!.grand_total.burn_pct} /></TableCell>
+              </TableRow>
+            </tfoot>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

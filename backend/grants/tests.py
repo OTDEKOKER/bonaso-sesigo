@@ -7,7 +7,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from organizations.models import Organization
-from projects.models import Project
+from projects.models import Project, ProjectOrganization, ProjectOrganizationHierarchy
 from users.models import UserModulePermission
 
 from .models import Grant, GrantDisbursement, GrantExpenditure
@@ -102,3 +102,50 @@ class GrantsScopeTests(TestCase):
         by_org = {r["organization_id"]: r for r in resp.data["organizations"]}
         self.assertAlmostEqual(by_org[self.coord_a.id]["burn_pct"], 40.0)    # 400/1000
         self.assertAlmostEqual(by_org[self.coord_b.id]["burn_pct"], 0.0)     # 0/2000
+
+
+class GrantsQuarterlyRollupTests(TestCase):
+    """Quarterly expenditure per org + coordinator rollup (own + sub-grantees)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.proj = Project.objects.create(
+            name="Q", code="Q-LIVE", status="active",
+            start_date=date(2026, 1, 1), end_date=date(2027, 3, 31), is_training=False,
+        )
+        cls.coord = Organization.objects.create(name="Coord", code="Q-CO", type="regional")
+        cls.sub = Organization.objects.create(name="Sub", code="Q-SUB", type="ngo", parent=cls.coord)
+
+        ProjectOrganization.objects.create(project=cls.proj, organization=cls.coord, is_coordinator=True)
+        ProjectOrganization.objects.create(project=cls.proj, organization=cls.sub, is_coordinator=False)
+        ProjectOrganizationHierarchy.objects.create(
+            project=cls.proj, parent_organization=cls.coord, child_organization=cls.sub, is_active=True,
+        )
+
+        cls.admin = User.objects.create_user(username="q_admin", email="q_admin@x.com", password="x", role="admin")
+
+        g_co = Grant.objects.create(project=cls.proj, organization=cls.coord, total_amount=Decimal("700000"))
+        g_sub = Grant.objects.create(project=cls.proj, organization=cls.sub, total_amount=Decimal("300000"))
+        # FY2026: Q1 Apr-Jun'26, Q2 Jul-Sep'26, Q3 Oct-Dec'26.
+        GrantExpenditure.objects.create(grant=g_co, date=date(2026, 5, 15), amount=Decimal("60000"))   # Q1
+        GrantExpenditure.objects.create(grant=g_co, date=date(2026, 8, 10), amount=Decimal("40000"))   # Q2
+        GrantExpenditure.objects.create(grant=g_sub, date=date(2026, 6, 1), amount=Decimal("120000"))  # Q1
+        GrantExpenditure.objects.create(grant=g_sub, date=date(2026, 11, 1), amount=Decimal("30000"))  # Q3
+
+    def test_coordinator_rollup_sums_subtree_by_quarter(self):
+        c = APIClient()
+        c.force_authenticate(user=self.admin)
+        resp = c.get(f"/api/grants/quarterly/?project={self.proj.id}&fy=2026")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.data
+        self.assertEqual(data["fiscal_year"], 2026)
+        self.assertEqual(len(data["coordinators"]), 1)
+        co = data["coordinators"][0]
+        self.assertEqual(co["organization_id"], self.coord.id)
+        self.assertEqual(Decimal(str(co["quarters"]["Q1"])), Decimal("180000"))  # 60k + 120k
+        self.assertEqual(Decimal(str(co["quarters"]["Q2"])), Decimal("40000"))
+        self.assertEqual(Decimal(str(co["quarters"]["Q3"])), Decimal("30000"))
+        self.assertEqual(Decimal(str(co["awarded"])), Decimal("1000000"))         # 700k + 300k
+        self.assertEqual(Decimal(str(co["fy_total"])), Decimal("250000"))
+        self.assertEqual([m["organization_id"] for m in co["members"]], [self.coord.id, self.sub.id])
+        self.assertEqual(Decimal(str(data["grand_total"]["quarters"]["Q1"])), Decimal("180000"))
