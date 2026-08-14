@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
-import { ExploreWorkbench } from "@/components/explore/explore-workbench";
+import { ExploreWorkbench, dimensionMetrics } from "@/components/explore/explore-workbench";
 
 // Presentational component — fed a fixture directly, no network/auth. Charts
 // render through the REAL widget registry; drill-down uses the REAL
@@ -49,6 +49,24 @@ describe("ExploreWorkbench", () => {
     expect(screen.queryByText("New visualization")).toBeNull();
     expect(screen.getByRole("button", { name: "Drill down" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Remove HIV tests/i })).toBeInTheDocument();
+  });
+
+  it("requires an indicator only in indicator mode (dimension pivots need none)", () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: /Add your first visualization/i }));
+    // default groupBy is "indicator" → Add is disabled until one is picked
+    expect(screen.getByRole("button", { name: "Add to canvas" })).toBeDisabled();
+  });
+
+  it("adapts a dimension breakdown into renderable widget metric rows (pivot core)", () => {
+    const rows = dimensionMetrics(ORGS);
+    expect(rows).toHaveLength(2);
+    // preserves label/value/target/percentage and synthesises a stable key
+    expect(rows[0]).toMatchObject({ label: "MBGE", value: 920, target: 1000, percentage: 92 });
+    expect(rows[0].indicatorId).toContain("MBGE");
+    expect(rows[1]).toMatchObject({ label: "BONELA", value: 320, target: 1000, percentage: 32 });
+    // unique keys across rows (so charts don't collide)
+    expect(rows[0].indicatorId).not.toEqual(rows[1].indicatorId);
   });
 
   it("opens the drill-down panel for a card", () => {

@@ -45,14 +45,36 @@ export type ExploreWorkbenchProps = {
   error?: boolean;
 };
 
+type GroupBy = "indicator" | "organization" | "project";
+
+const GROUP_BY_OPTIONS: ReadonlyArray<{ value: GroupBy; label: string }> = [
+  { value: "indicator", label: "Indicator" },
+  { value: "organization", label: "Organisation" },
+  { value: "project", label: "Project" },
+];
+
 type ExploreCard = {
   id: string;
   type: DashboardCustomWidgetType;
+  groupBy: GroupBy;
   indicatorIds: string[];
   title: string;
 };
 
 type Density = "comfortable" | "compact";
+
+type DimensionRow = { label: string; value: number; target: number; percentage: number };
+
+/** Adapt a dimension breakdown (org/project) into the widget metric row shape. */
+export function dimensionMetrics(rows: readonly DimensionRow[]): WidgetMetricCollection {
+  return rows.map((row, index) => ({
+    indicatorId: `dim-${index}-${row.label}`,
+    label: row.label,
+    value: row.value,
+    target: row.target,
+    percentage: row.percentage,
+  }));
+}
 
 let cardSeq = 0;
 
@@ -75,6 +97,7 @@ export function ExploreWorkbench({
   const [drillCard, setDrillCard] = useState<ExploreCard | null>(null);
 
   const [draftType, setDraftType] = useState<DashboardCustomWidgetType>(DEFAULT_DASHBOARD_CUSTOM_WIDGET_TYPE);
+  const [draftGroupBy, setDraftGroupBy] = useState<GroupBy>("indicator");
   const [draftIndicatorIds, setDraftIndicatorIds] = useState<string[]>([]);
   const [draftTitle, setDraftTitle] = useState("");
   const [search, setSearch] = useState("");
@@ -89,25 +112,41 @@ export function ExploreWorkbench({
   const toggleDraftIndicator = (id: string) =>
     setDraftIndicatorIds((prev) => (prev.includes(id) ? prev.filter((existing) => existing !== id) : [...prev, id]));
 
-  const metricsForCard = (card: ExploreCard): WidgetMetricCollection =>
-    card.indicatorIds
+  const metricsForCard = (card: ExploreCard): WidgetMetricCollection => {
+    if (card.groupBy === "organization") return dimensionMetrics(organizations);
+    if (card.groupBy === "project") return dimensionMetrics(projects);
+    return card.indicatorIds
       .map((id) => metricsById.get(id))
       .filter((metric): metric is WidgetMetricCollection[number] => Boolean(metric));
+  };
+
+  const isDimensionGrouping = draftGroupBy !== "indicator";
+  const canAddCard = isDimensionGrouping || draftIndicatorIds.length > 0;
 
   const addCard = () => {
-    if (draftIndicatorIds.length === 0) return;
+    if (!canAddCard) return;
     const first = metricsById.get(draftIndicatorIds[0]);
-    const title =
-      draftTitle.trim() ||
-      (draftIndicatorIds.length === 1
-        ? first?.label ?? "Visualization"
-        : `${draftIndicatorIds.length} indicators`);
+    const autoTitle =
+      draftGroupBy === "organization"
+        ? "By organisation"
+        : draftGroupBy === "project"
+          ? "By project"
+          : draftIndicatorIds.length === 1
+            ? first?.label ?? "Visualization"
+            : `${draftIndicatorIds.length} indicators`;
     cardSeq += 1;
     setCards((prev) => [
       ...prev,
-      { id: `card-${cardSeq}`, type: draftType, indicatorIds: [...draftIndicatorIds], title },
+      {
+        id: `card-${cardSeq}`,
+        type: draftType,
+        groupBy: draftGroupBy,
+        indicatorIds: [...draftIndicatorIds],
+        title: draftTitle.trim() || autoTitle,
+      },
     ]);
     setBuilderOpen(false);
+    setDraftGroupBy("indicator");
     setDraftIndicatorIds([]);
     setDraftTitle("");
     setSearch("");
@@ -225,54 +264,78 @@ export function ExploreWorkbench({
             <DialogTitle>New visualization</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Chart type</label>
-              <Select value={draftType} onValueChange={(value) => setDraftType(value as DashboardCustomWidgetType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DASHBOARD_CUSTOM_WIDGET_STYLE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Group by</label>
+                <Select value={draftGroupBy} onValueChange={(value) => setDraftGroupBy(value as GroupBy)}>
+                  <SelectTrigger aria-label="Group by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GROUP_BY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Chart type</label>
+                <Select value={draftType} onValueChange={(value) => setDraftType(value as DashboardCustomWidgetType)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DASHBOARD_CUSTOM_WIDGET_STYLE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Indicators ({draftIndicatorIds.length} selected)
-              </label>
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search indicators…"
-                aria-label="Search indicators"
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-              />
-              <ScrollArea className="h-52 rounded-md border border-border">
-                <div className="p-1">
-                  {pickable.map((option) => (
-                    <label
-                      key={option.id}
-                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={draftIndicatorIds.includes(option.id)}
-                        onChange={() => toggleDraftIndicator(option.id)}
-                      />
-                      <span className="truncate">{option.label}</span>
-                    </label>
-                  ))}
-                  {pickable.length === 0 && (
-                    <p className="p-2 text-xs text-muted-foreground">No indicators match your search.</p>
-                  )}
-                </div>
-              </ScrollArea>
-            </div>
+            {isDimensionGrouping ? (
+              <p className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Showing achieved vs target across all your{" "}
+                {draftGroupBy === "organization" ? "organisations" : "projects"} for the selected chart type.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Indicators ({draftIndicatorIds.length} selected)
+                </label>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search indicators…"
+                  aria-label="Search indicators"
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                />
+                <ScrollArea className="h-52 rounded-md border border-border">
+                  <div className="p-1">
+                    {pickable.map((option) => (
+                      <label
+                        key={option.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={draftIndicatorIds.includes(option.id)}
+                          onChange={() => toggleDraftIndicator(option.id)}
+                        />
+                        <span className="truncate">{option.label}</span>
+                      </label>
+                    ))}
+                    {pickable.length === 0 && (
+                      <p className="p-2 text-xs text-muted-foreground">No indicators match your search.</p>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Title (optional)</label>
@@ -289,7 +352,7 @@ export function ExploreWorkbench({
               <Button variant="ghost" onClick={() => setBuilderOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={addCard} disabled={draftIndicatorIds.length === 0}>
+              <Button onClick={addCard} disabled={!canAddCard}>
                 Add to canvas
               </Button>
             </div>
