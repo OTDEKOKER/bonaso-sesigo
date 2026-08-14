@@ -4,6 +4,7 @@
  * rest of the API services). Every card answers the five management questions
  * and carries finding / evidence / DQ qualifier / action / drill-down.
  */
+import type { PerformanceStatus } from "@/components/dashboard/engine/performance-status";
 
 export type AttentionSeverity = "critical" | "high" | "medium" | "low";
 
@@ -19,8 +20,13 @@ export type TrendPoint = {
   target?: number | null;
 };
 
-/** Pace vs where we should be by now; `pending` when no comparable target yet. */
-export type PaceStatus = "ahead" | "on_track" | "behind" | "at_risk" | "pending";
+/**
+ * Standardised on the canonical RAG vocabulary (single source of truth):
+ * met / on-track / at-risk / off-track / untargeted. The backend
+ * management-intelligence payload now emits these same strings
+ * (analysis.services.performance_status), so no translation is needed.
+ */
+export type PaceStatus = PerformanceStatus;
 
 export type WhereSlice = {
   name: string;

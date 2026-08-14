@@ -28,18 +28,14 @@ from aggregates import reporting_control
 from flags.models import Flag
 from projects.models import ProjectOrganization
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
+from analysis.services.performance_status import classify_performance
 
-# achievement-% → pace bucket (a completed quarter's expectation is 100%).
+# achievement-% → canonical RAG status. Delegates to the single source of truth
+# (analysis.services.performance_status) so this surface agrees with the
+# dashboard, executive view, funder reports and reports hub — same bands
+# (100/75/50), same vocabulary (met/on-track/at-risk/off-track/untargeted).
 def pace_status(achievement_percent: float | None) -> str:
-    if achievement_percent is None:
-        return "pending"
-    if achievement_percent >= 100:
-        return "ahead"
-    if achievement_percent >= 80:
-        return "on_track"
-    if achievement_percent >= 50:
-        return "behind"
-    return "at_risk"
+    return classify_performance(achievement_percent)
 
 
 _QUARTER_ORDER = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
@@ -204,8 +200,8 @@ def _attention_for(project, coordinator_id, indicator_id, rep, window, q_start, 
     items: list[dict] = []
     achievement = rep.get("achievement_percent")
 
-    # under-pace (from the SSoT status)
-    if achievement is not None and achievement < 80:
+    # under-pace: below the canonical on-track band (at-risk/off-track = < 75).
+    if achievement is not None and achievement < 75:
         sev = "critical" if achievement < 50 else "high"
         items.append({"severity": sev, "source": "target",
                       "label": f"{round(achievement)}% of quarterly target"})
@@ -281,7 +277,7 @@ def _interpret(card: dict, rep: dict, window_state, project, year, quarter) -> d
 
     if card["data_state"] == "not_reported":
         action = f"Follow up with {name} to submit and approve '{ind}' for this period."
-    elif pct is not None and pct < 80:
+    elif pct is not None and pct < 75:
         action = f"Review {name}'s delivery of '{ind}' — {round(pct)}% of target; check commodities, referrals and non-reporting sub-grantees."
     elif any(a["source"] == "flag" for a in card["attention"]):
         action = f"Resolve the open data-quality flags in {name}'s data before period close."

@@ -31,12 +31,14 @@ import type {
   PaceStatus,
 } from "@/lib/intelligence/types";
 
+// Canonical RAG labels (single source of truth) so the intelligence card reads
+// the same verdict as the dashboard, executive view and funder reports.
 const PACE_LABEL: Record<PaceStatus, string> = {
-  ahead: "Ahead of pace",
-  on_track: "On track",
-  behind: "Behind pace",
-  at_risk: "At risk",
-  pending: "Target pending",
+  met: "Met",
+  "on-track": "On track",
+  "at-risk": "At risk",
+  "off-track": "Off track",
+  untargeted: "No target",
 };
 
 const SEVERITY_STYLE: Record<AttentionSeverity, string> = {
