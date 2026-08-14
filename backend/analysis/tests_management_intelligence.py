@@ -16,12 +16,14 @@ from analysis.services.management_intelligence import (
 
 class PaceStatusTests(SimpleTestCase):
     def test_buckets(self):
-        self.assertEqual(pace_status(None), "pending")
-        self.assertEqual(pace_status(120), "ahead")
-        self.assertEqual(pace_status(100), "ahead")
-        self.assertEqual(pace_status(85), "on_track")
-        self.assertEqual(pace_status(60), "behind")
-        self.assertEqual(pace_status(10), "at_risk")
+        # Canonical RAG vocabulary (SSoT): met/on-track/at-risk/off-track/
+        # untargeted at 100/75/50. See analysis.test_performance_status.
+        self.assertEqual(pace_status(None), "untargeted")
+        self.assertEqual(pace_status(120), "met")
+        self.assertEqual(pace_status(100), "met")
+        self.assertEqual(pace_status(85), "on-track")
+        self.assertEqual(pace_status(60), "at-risk")
+        self.assertEqual(pace_status(10), "off-track")
 
 
 class PickRepresentativeTests(SimpleTestCase):

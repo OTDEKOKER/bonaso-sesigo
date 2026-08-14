@@ -10,12 +10,14 @@ import { SESIGO_SEMANTIC_COLORS } from "@/lib/chart-theme";
 import { formatChartNumber } from "@/components/analysis/chart-theme";
 import type { PaceStatus, TrendPoint, WhereSlice } from "@/lib/intelligence/types";
 
+// Keyed by the canonical RAG status (single source of truth). Colours keep the
+// Sesigo semantic theme; only the keys/bands are standardised.
 export const PACE_COLOR: Record<PaceStatus, string> = {
-  ahead: SESIGO_SEMANTIC_COLORS.overTarget,
-  on_track: SESIGO_SEMANTIC_COLORS.achieved,
-  behind: SESIGO_SEMANTIC_COLORS.late,
-  at_risk: SESIGO_SEMANTIC_COLORS.missing,
-  pending: "#94a3b8",
+  met: SESIGO_SEMANTIC_COLORS.overTarget,
+  "on-track": SESIGO_SEMANTIC_COLORS.achieved,
+  "at-risk": SESIGO_SEMANTIC_COLORS.late,
+  "off-track": SESIGO_SEMANTIC_COLORS.missing,
+  untargeted: "#94a3b8",
 };
 
 /** "What happened" — compact actual-vs-target trend line. */
