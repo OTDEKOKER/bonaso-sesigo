@@ -79,6 +79,14 @@ describe("ExecutiveDashboardPage", () => {
     expect(screen.getByText("TEBELOPELE")).toBeTruthy();
   });
 
+  it("renders the Indicator Performance Mix pie (canonical RAG portfolio breakdown)", () => {
+    render(<ExecutiveDashboardPage />);
+    expect(screen.getByText("Indicator Performance Mix")).toBeTruthy();
+    // 1 on-track (85%) + 1 off-track (30%) of 2 targeted → 50% on track+ (center label);
+    // "on track+" only renders in the non-empty pie, so this confirms the analysis ran.
+    expect(screen.getByText("on track+")).toBeTruthy();
+  });
+
   it("clicking Reporting Organisations opens a dialog listing reported vs not-reported orgs", () => {
     render(<ExecutiveDashboardPage />);
     fireEvent.click(screen.getByRole("button", { name: "Reporting Organisations" }));

@@ -34,6 +34,9 @@ import { formatPercent, formatWholeNumber } from "@/components/dashboard/engine/
 import {
   getPerformanceStatusFromValues,
   PERFORMANCE_STATUS_COLORS,
+  PERFORMANCE_STATUS_LABELS,
+  PERFORMANCE_STATUS_ORDER,
+  type PerformanceStatus,
   type PerformanceStatusResult,
 } from "@/components/dashboard/engine/performance-status";
 import { downloadMetricsCsv } from "@/lib/dashboard/export-metrics";
@@ -177,6 +180,23 @@ export default function ExecutiveDashboardPage() {
   );
   const complianceTotal = kpis.scopedOrgCount;
 
+  // Indicator performance mix: the programme's indicator portfolio decomposed by
+  // canonical RAG status (met / on-track / at-risk / off-track / untargeted). Uses
+  // the same SSoT classifier as every other surface, so the pie can't disagree
+  // with the KPIs or the table.
+  const statusMix = useMemo(() => {
+    const counts = new Map<PerformanceStatus, number>();
+    for (const r of rows) counts.set(r.status.status, (counts.get(r.status.status) ?? 0) + 1);
+    return PERFORMANCE_STATUS_ORDER
+      .map((s) => ({ name: PERFORMANCE_STATUS_LABELS[s], value: counts.get(s) ?? 0, color: PERFORMANCE_STATUS_COLORS[s] }))
+      .filter((slice) => slice.value > 0);
+  }, [rows]);
+  const targetedCount = useMemo(() => rows.filter((r) => r.hasTarget).length, [rows]);
+  const onTrackShare = useMemo(() => {
+    if (targetedCount === 0) return 0;
+    return Math.round((rows.filter((r) => r.hasTarget && r.pct >= 75).length / targetedCount) * 100);
+  }, [rows, targetedCount]);
+
   const cardTitle: Record<string, string> = {
     overall: "Overall Achievement — indicators",
     ontrack: "Indicators On Track (≥75%)",
@@ -315,8 +335,8 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Compliance donut + Top Orgs + Attention */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Compliance donut + Performance mix + Top Orgs + Attention */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold text-foreground">Reporting Compliance</h2>
           <div className="relative h-[220px] w-full min-w-0 overflow-hidden">
@@ -341,6 +361,41 @@ export default function ExecutiveDashboardPage() {
               </span>
             ))}
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h2 className="mb-2 text-sm font-semibold text-foreground">Indicator Performance Mix</h2>
+          {statusMix.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No indicator data in scope.</p>
+          ) : (
+            <>
+              <div className="relative h-[220px] w-full min-w-0 overflow-hidden">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={statusMix} dataKey="value" nameKey="name" innerRadius={60} outerRadius={88} paddingAngle={2}>
+                      {statusMix.map((slice) => <Cell key={slice.name} fill={slice.color} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold text-foreground">{onTrackShare}%</span>
+                  <span className="text-[11px] text-muted-foreground">on track+</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {statusMix.map((slice) => (
+                  <span key={slice.name} className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: slice.color }} />
+                    {slice.name} ({slice.value})
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                {targetedCount} targeted indicator{targetedCount === 1 ? "" : "s"} · {onTrackShare}% on track or better
+              </p>
+            </>
+          )}
         </div>
 
         <MiniPanel title="Top Performing Organisations">
