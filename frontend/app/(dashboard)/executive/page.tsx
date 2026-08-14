@@ -41,6 +41,7 @@ import {
 } from "@/components/dashboard/engine/performance-status";
 import { downloadMetricsCsv } from "@/lib/dashboard/export-metrics";
 import { useExecutiveData, DEFAULT_EXECUTIVE_FILTERS, type ExecutiveFilters } from "@/lib/executive/use-executive-data";
+import { ProgrammeFigures } from "@/components/executive/programme-figures";
 
 function fyPresets(now = new Date()) {
   const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
@@ -334,6 +335,14 @@ export default function ExecutiveDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Programme Figures — config-driven funder-report figures for the current
+          project (hidden when no project is selected or none is configured). */}
+      <ProgrammeFigures
+        projectId={filters.projectId !== "all" ? Number(filters.projectId) : null}
+        periodStart={filters.dateFrom || undefined}
+        periodEnd={filters.dateTo || undefined}
+      />
 
       {/* Compliance donut + Performance mix + Top Orgs + Attention */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
