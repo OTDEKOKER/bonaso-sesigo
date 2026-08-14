@@ -15,19 +15,23 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from audit.recording import record_audit_event
 from aggregates import reporting_workbook as rw
 from projects.models import Project
+from indicators.models import Indicator
 
 from .generation import generate_figure
 from .models import (
     ReportTemplate, ReportSection, ReportFigure,
     ReportFigureIndicatorMapping, ReportFigureFilter, ReportFigureSnapshot,
+    ChartType, Dimension, TargetMode, CalculationMode, MappingRole,
 )
 from .permissions import (
     ReportBuilderPermission, allowed_org_ids_for_report, build_scoped_filters,
     can_view_unapproved, visible_templates, can_edit_report_object,
+    can_generate_reports,
 )
 from .serializers import (
     ReportTemplateSerializer, ReportTemplateDetailSerializer, ReportSectionSerializer,
@@ -131,6 +135,126 @@ def _resolve_period(request):
         raise ValidationError('quarter (1-4) or period dates are required.')
     s, e = rw.quarter_period_range(quarter, fy)
     return project, s, e, rw.quarter_label(quarter, fy)
+
+
+# ---------------------------------------------------------------------------
+# Ad-hoc (unsaved) figure generation. Reuses the funder-report engine
+# (FigureGenerator) so self-service surfaces like /explore render charts that are
+# IDENTICAL to the funder report: indicators-vs-indicators (group_by=indicator),
+# achieved-vs-target (target_mode + group_by=organization/coordinator) and
+# disaggregates (group_by=sex/age/key_population/district). No ReportFigure is
+# saved; the engine runs unchanged against a duck-typed spec.
+# ---------------------------------------------------------------------------
+class _AdHocRelated:
+    """Stand-in for the related-manager the engine calls: ``.select_related(...).all()``."""
+    def __init__(self, items):
+        self._items = list(items)
+
+    def select_related(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        return list(self._items)
+
+
+class _AdHocMapping:
+    def __init__(self, indicator, role):
+        self.indicator = indicator
+        self.indicator_id = indicator.id
+        self.role = role
+        self.label_override = ""
+
+
+class _AdHocFigure:
+    """Carries only the attributes FigureGenerator reads, so the shared engine
+    runs unchanged against an unsaved spec (see the enumerated attribute list)."""
+    id = None
+    figure_number = ""
+    description = ""
+    narrative_template = ""
+    secondary_grouping_dimension = Dimension.NONE
+
+    def __init__(self, *, indicators, grouping_dimension, chart_type, target_mode,
+                 calculation_mode, title):
+        self.title = title
+        self.chart_type = chart_type
+        self.grouping_dimension = grouping_dimension
+        self.target_mode = target_mode
+        self.calculation_mode = calculation_mode
+        self.mappings = _AdHocRelated(
+            _AdHocMapping(ind, MappingRole.ACHIEVED) for ind in indicators
+        )
+        self.filters = _AdHocRelated([])
+
+
+def _parse_id_list(value):
+    raw = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    ids = []
+    for item in raw:
+        try:
+            ids.append(int(str(item).strip()))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def _validate_choice(value, choices, field):
+    valid = {choice[0] for choice in choices}
+    if value not in valid:
+        raise ValidationError(f"{field} must be one of: {', '.join(sorted(valid))}.")
+    return value
+
+
+class AdHocFigureGenerateView(APIView):
+    """POST an ad-hoc funder-report chart spec, get chart-ready JSON back.
+
+    Body: project (+ quarter+fiscal_year OR period_start/period_end),
+    indicator_ids, group_by (dimension), chart_type, target_mode, [title].
+    Fully scope-safe: org scope + approved-only via resolve_generation_context.
+    """
+    permission_classes = [ReportBuilderPermission]
+
+    def post(self, request):
+        if not can_generate_reports(request.user):
+            raise PermissionDenied("You do not have access to report generation.")
+        project, period_start, period_end, label = _resolve_period(request)
+
+        data = {**getattr(request, "data", {})}
+        indicator_ids = _parse_id_list(data.get("indicator_ids"))
+        if not indicator_ids:
+            raise ValidationError("indicator_ids is required (list or comma-separated).")
+
+        grouping_dimension = _validate_choice(
+            str(data.get("group_by") or Dimension.INDICATOR), Dimension.choices, "group_by")
+        chart_type = _validate_choice(
+            str(data.get("chart_type") or ChartType.GROUPED_BAR), ChartType.choices, "chart_type")
+        target_mode = _validate_choice(
+            str(data.get("target_mode") or TargetMode.NONE), TargetMode.choices, "target_mode")
+        calculation_mode = (
+            CalculationMode.ACHIEVEMENT_PERCENT
+            if target_mode != TargetMode.NONE else CalculationMode.NONE
+        )
+
+        indicators = list(Indicator.objects.filter(id__in=indicator_ids))
+        if not indicators:
+            raise ValidationError("No matching indicators.")
+
+        figure = _AdHocFigure(
+            indicators=indicators,
+            grouping_dimension=grouping_dimension,
+            chart_type=chart_type,
+            target_mode=target_mode,
+            calculation_mode=calculation_mode,
+            title=str(data.get("title") or "Ad-hoc figure"),
+        )
+
+        org_ids, filters, include_unapproved, _mode = resolve_generation_context(request, project)
+        payload = generate_figure(
+            figure, project=project, period_start=period_start, period_end=period_end,
+            org_ids=org_ids, include_unapproved=include_unapproved, filters=filters,
+        )
+        payload["period_label"] = label
+        return Response(payload)
 
 
 class ReportTemplateViewSet(viewsets.ModelViewSet):
