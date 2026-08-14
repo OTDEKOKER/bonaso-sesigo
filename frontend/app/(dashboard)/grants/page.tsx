@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState, type ReactNode } from "react";
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import { Banknote, Download, Flame, Loader2, Plus, Receipt, ShieldAlert, Wallet } from "lucide-react";
 import {
   Bar,
@@ -157,7 +157,7 @@ export default function GrantsPage() {
     canAccess ? ["grants-summary", projectFilter] : null,
     () => grantsService.summary(filterParams),
   );
-  const { data: listData, isLoading: listLoading, mutate: mutateList } = useSWR(
+  const { data: listData, isLoading: listLoading } = useSWR(
     canAccess ? ["grants-list", projectFilter] : null,
     () => grantsService.list(filterParams),
   );
@@ -165,6 +165,10 @@ export default function GrantsPage() {
   const { data: projectsRaw } = useProjects();
   const projects = toArray<{ id: number; name: string }>(projectsRaw);
   const grants = toArray<Grant>(listData);
+
+  // Revalidate every grants surface (summary, list, quarterly) after any change.
+  const refreshGrants = () =>
+    globalMutate((k) => Array.isArray(k) && String(k[0] ?? "").startsWith("grants-"));
 
   if (!canAccess) {
     return (
@@ -368,16 +372,16 @@ export default function GrantsPage() {
           grantId={detailId}
           canManage={canManage}
           onClose={() => setDetailId(null)}
-          onChanged={() => mutateList()}
+          onChanged={refreshGrants}
         />
       )}
 
       {createOpen && (
-        <CreateGrantDialog
+        <GrantFormDialog
           onClose={() => setCreateOpen(false)}
-          onCreated={() => {
+          onSaved={() => {
             setCreateOpen(false);
-            mutateList();
+            refreshGrants();
             toast({ title: "Grant created" });
           }}
         />
@@ -569,9 +573,11 @@ function GrantDetailDialog({
     grantsService.get(grantId),
   );
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [disb, setDisb] = useState({ date: today, amount: "" });
   const [exp, setExp] = useState({ date: today, amount: "", category: "" });
+  const [bl, setBl] = useState({ category: "", budgeted_amount: "" });
 
   const addDisbursement = async () => {
     if (!disb.amount) return;
@@ -610,103 +616,167 @@ function GrantDetailDialog({
     }
   };
 
+  const addBudgetLine = async () => {
+    if (!bl.category || !bl.budgeted_amount) return;
+    setBusy(true);
+    try {
+      await grantsService.createBudgetLine({ grant: grantId, category: bl.category, budgeted_amount: bl.budgeted_amount });
+      setBl({ category: "", budgeted_amount: "" });
+      await mutate();
+      onChanged();
+      toast({ title: "Budget line added" });
+    } catch {
+      toast({ title: "Could not add budget line", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteGrant = async () => {
+    if (!window.confirm("Delete this grant and all its budget lines, disbursements and expenditures? This cannot be undone.")) return;
+    setBusy(true);
+    try {
+      await grantsService.remove(grantId);
+      toast({ title: "Grant deleted" });
+      onChanged();
+      onClose();
+    } catch {
+      toast({ title: "Could not delete grant", variant: "destructive" });
+      setBusy(false);
+    }
+  };
+
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{data?.code || data?.title || `Grant #${grantId}`}</DialogTitle>
-          <DialogDescription>
-            {data?.organization_name} · {data?.project_name}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{data?.code || data?.title || `Grant #${grantId}`}</DialogTitle>
+            <DialogDescription>
+              {data?.organization_name} · {data?.project_name}
+            </DialogDescription>
+          </DialogHeader>
 
-        {isLoading || !data ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <div className="space-y-5">
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              <Stat label="Awarded" value={`${data.currency} ${money(data.financials.awarded)}`} />
-              <Stat label="Disbursed" value={money(data.financials.disbursed)} />
-              <Stat label="Spent" value={money(data.financials.spent)} />
-              <Stat label="Budgeted" value={money(data.financials.budgeted)} />
-              <Stat label="Remaining" value={money(data.financials.remaining)} />
-              <Stat label="Burn" value={<BurnBadge pct={data.financials.burn_pct} />} />
-            </div>
-
-            <Section title={`Disbursements (${data.disbursements.length})`}>
-              {data.disbursements.map((d) => (
-                <Row key={d.id} left={d.date} right={money(d.amount)} />
-              ))}
-            </Section>
-
-            <Section title={`Expenditures (${data.expenditures.length})`}>
-              {data.expenditures.map((e) => (
-                <Row key={e.id} left={`${e.date} ${e.category}`} right={money(e.amount)} />
-              ))}
-            </Section>
-
-            {canManage && (
-              <div className="grid gap-4 rounded-md border p-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="text-xs">Add disbursement</Label>
-                  <Input type="date" value={disb.date} onChange={(e) => setDisb({ ...disb, date: e.target.value })} />
-                  <Input
-                    type="number"
-                    placeholder="Amount"
-                    value={disb.amount}
-                    onChange={(e) => setDisb({ ...disb, amount: e.target.value })}
-                  />
-                  <Button size="sm" disabled={busy} onClick={addDisbursement}>
-                    {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Record
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Add expenditure</Label>
-                  <Input type="date" value={exp.date} onChange={(e) => setExp({ ...exp, date: e.target.value })} />
-                  <Input
-                    placeholder="Category"
-                    value={exp.category}
-                    onChange={(e) => setExp({ ...exp, category: e.target.value })}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Amount"
-                    value={exp.amount}
-                    onChange={(e) => setExp({ ...exp, amount: e.target.value })}
-                  />
-                  <Button size="sm" disabled={busy} onClick={addExpenditure}>
-                    {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Record
-                  </Button>
-                </div>
+          {isLoading || !data ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <div className="space-y-5">
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <Stat label="Awarded" value={`${data.currency} ${money(data.financials.awarded)}`} />
+                <Stat label="Disbursed" value={money(data.financials.disbursed)} />
+                <Stat label="Spent" value={money(data.financials.spent)} />
+                <Stat label="Budgeted" value={money(data.financials.budgeted)} />
+                <Stat label="Remaining" value={money(data.financials.remaining)} />
+                <Stat label="Burn" value={<BurnBadge pct={data.financials.burn_pct} />} />
               </div>
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+
+              <Section title={`Budget lines (${data.budget_lines.length})`}>
+                {data.budget_lines.map((b) => (
+                  <Row key={b.id} left={b.category} right={money(b.budgeted_amount)} />
+                ))}
+              </Section>
+
+              <Section title={`Disbursements (${data.disbursements.length})`}>
+                {data.disbursements.map((d) => (
+                  <Row key={d.id} left={d.date} right={money(d.amount)} />
+                ))}
+              </Section>
+
+              <Section title={`Expenditures (${data.expenditures.length})`}>
+                {data.expenditures.map((e) => (
+                  <Row key={e.id} left={`${e.date} ${e.category}`} right={money(e.amount)} />
+                ))}
+              </Section>
+
+              {canManage && (
+                <div className="space-y-4 rounded-md border p-3">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Add disbursement</Label>
+                      <Input type="date" value={disb.date} onChange={(e) => setDisb({ ...disb, date: e.target.value })} />
+                      <Input type="number" placeholder="Amount" value={disb.amount} onChange={(e) => setDisb({ ...disb, amount: e.target.value })} />
+                      <Button size="sm" disabled={busy} onClick={addDisbursement}>
+                        {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Record
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Add expenditure</Label>
+                      <Input type="date" value={exp.date} onChange={(e) => setExp({ ...exp, date: e.target.value })} />
+                      <Input placeholder="Category" value={exp.category} onChange={(e) => setExp({ ...exp, category: e.target.value })} />
+                      <Input type="number" placeholder="Amount" value={exp.amount} onChange={(e) => setExp({ ...exp, amount: e.target.value })} />
+                      <Button size="sm" disabled={busy} onClick={addExpenditure}>
+                        {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Record
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Budget category</Label>
+                      <Input placeholder="e.g. Personnel" value={bl.category} onChange={(e) => setBl({ ...bl, category: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Budgeted amount</Label>
+                      <Input type="number" value={bl.budgeted_amount} onChange={(e) => setBl({ ...bl, budgeted_amount: e.target.value })} />
+                    </div>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={addBudgetLine}>Add budget line</Button>
+                  </div>
+                </div>
+              )}
+
+              {canManage && (
+                <div className="flex items-center justify-between border-t pt-3">
+                  <Button variant="destructive" size="sm" disabled={busy} onClick={deleteGrant}>Delete grant</Button>
+                  <Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit grant</Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {editing && data && (
+        <GrantFormDialog
+          grant={data}
+          onClose={() => setEditing(false)}
+          onSaved={async () => {
+            setEditing(false);
+            await mutate();
+            onChanged();
+          }}
+        />
+      )}
+    </>
   );
 }
 
-function CreateGrantDialog({
+const GRANT_STATUSES = ["draft", "active", "suspended", "closed"];
+
+function GrantFormDialog({
+  grant,
   onClose,
-  onCreated,
+  onSaved,
 }: {
+  grant?: GrantDetail | Grant | null;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
   const { toast } = useToast();
   const { data: projectsRaw } = useProjects();
   const { data: orgsRaw } = useOrganizations();
   const projects = toArray<{ id: number; name: string }>(projectsRaw);
   const orgs = toArray<{ id: number; name: string }>(orgsRaw);
+  const isEdit = !!grant;
 
   const [form, setForm] = useState({
-    project: "",
-    organization: "",
-    code: "",
-    total_amount: "",
-    currency: "BWP",
-    status: "active",
+    project: grant ? String(grant.project) : "",
+    organization: grant ? String(grant.organization) : "",
+    code: grant?.code ?? "",
+    title: grant?.title ?? "",
+    total_amount: grant ? String(grant.total_amount ?? "") : "",
+    currency: grant?.currency ?? "BWP",
+    status: grant?.status ?? "active",
+    start_date: grant?.start_date ?? "",
+    end_date: grant?.end_date ?? "",
   });
   const [busy, setBusy] = useState(false);
 
@@ -717,17 +787,25 @@ function CreateGrantDialog({
     }
     setBusy(true);
     try {
-      await grantsService.create({
+      const payload = {
         project: Number(form.project),
         organization: Number(form.organization),
         code: form.code,
+        title: form.title,
         total_amount: form.total_amount,
         currency: form.currency,
         status: form.status,
-      });
-      onCreated();
+        start_date: form.start_date || null,
+        end_date: form.end_date || null,
+      };
+      if (isEdit && grant) await grantsService.update(grant.id, payload);
+      else await grantsService.create(payload);
+      onSaved();
     } catch {
-      toast({ title: "Could not create grant (check your access to this org)", variant: "destructive" });
+      toast({
+        title: isEdit ? "Could not update grant" : "Could not create grant (check your access to this org)",
+        variant: "destructive",
+      });
     } finally {
       setBusy(false);
     }
@@ -735,9 +813,9 @@ function CreateGrantDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New grant</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit grant" : "New grant"}</DialogTitle>
           <DialogDescription>Record a funding award to an organization.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -769,18 +847,45 @@ function CreateGrantDialog({
               <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Amount ({form.currency})</Label>
-              <Input
-                type="number"
-                value={form.total_amount}
-                onChange={(e) => setForm({ ...form, total_amount: e.target.value })}
-              />
+              <Label className="text-xs">Title</Label>
+              <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Amount</Label>
+              <Input type="number" value={form.total_amount} onChange={(e) => setForm({ ...form, total_amount: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Currency</Label>
+              <Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Status</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {GRANT_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Start date</Label>
+              <Input type="date" value={form.start_date ?? ""} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">End date</Label>
+              <Input type="date" value={form.end_date ?? ""} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
             <Button disabled={busy} onClick={submit}>
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Create grant
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {isEdit ? "Save changes" : "Create grant"}
             </Button>
           </div>
         </div>
