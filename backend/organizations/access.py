@@ -85,6 +85,27 @@ def can_submit_aggregates(user) -> bool:
     )
 
 
+def is_data_entry_user(user) -> bool:
+    """Who may touch individual respondent data (respondents, interactions,
+    responses, profiles).
+
+    Admits admins and the three data-handling roles (Manager / Officer /
+    Collector). **Clients are external/read stakeholders** — they consume
+    aggregated dashboards and reports, never individual respondents' personal
+    data — so they (and any unknown/None role) are denied. Org + project +
+    training scoping is layered on top by each view's ``get_queryset``; this is
+    the role gate that ensures scope alone can never expose personal data to a
+    non-data role.
+    """
+    return bool(
+        user
+        and (
+            is_organization_admin(user)
+            or getattr(user, "role", None) in {"manager", "officer", "collector"}
+        )
+    )
+
+
 def filter_queryset_by_org_ids(queryset, field_name: str, org_ids: Iterable[int]):
     org_ids = list(org_ids)
     if not org_ids:

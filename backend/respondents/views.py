@@ -11,7 +11,7 @@ from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponse
 import csv
 from organizations.access import get_user_organization_ids, is_organization_admin, filter_queryset_by_org_ids, apply_training_filter, training_view_mode, assert_project_write_allowed
-from users.permissions import HasModulePermission
+from users.permissions import HasModulePermission, IsDataEntryUser
 from projects.scope import filter_queryset_by_assigned_projects, get_user_project_ids
 from idempotency.mixins import IdempotentMutationMixin
 from projects.assignment_rules import (
@@ -35,7 +35,7 @@ class RespondentViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     queryset = Respondent.objects.all()
     serializer_class = RespondentSerializer
     required_module = 'respondents'
-    permission_classes = [IsAuthenticated, HasModulePermission]
+    permission_classes = [IsAuthenticated, IsDataEntryUser, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['organization', 'gender', 'is_active']
     search_fields = ['unique_id', 'first_name', 'last_name', 'phone', 'email']
@@ -169,7 +169,7 @@ class InteractionViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     # 'respondents' module at the API too. Org/project scope (get_queryset)
     # already prevents cross-org access; this adds the module-visibility gate.
     required_module = 'respondents'
-    permission_classes = [IsAuthenticated, HasModulePermission]
+    permission_classes = [IsAuthenticated, IsDataEntryUser, HasModulePermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['respondent', 'assessment', 'project', 'event']
     search_fields = ['respondent__unique_id', 'notes']
@@ -316,7 +316,7 @@ class ResponseViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
     serializer_class = ResponseSerializer
     # Responses belong to the respondents module (see InteractionViewSet).
     required_module = 'respondents'
-    permission_classes = [IsAuthenticated, HasModulePermission]
+    permission_classes = [IsAuthenticated, IsDataEntryUser, HasModulePermission]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['interaction', 'indicator', 'question']
 
