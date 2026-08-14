@@ -553,6 +553,18 @@ function AggregatesPageContent() {
     () => (Array.isArray(reviewCoordinatorData) ? reviewCoordinatorData : []),
     [reviewCoordinatorData],
   );
+  // Review project's hierarchy links → used to map a queued org to its coordinator
+  // so the Coordinator filter can be narrowed to coordinators that actually have
+  // queued rows (mirrors the browse-side filterProjectDetail fetch).
+  const reviewProjectNumericId = reviewProjectFilter !== "all" ? Number(reviewProjectFilter) : null;
+  const { data: reviewProjectData } = useProject(reviewProjectNumericId, {
+    keepPreviousData: false,
+    light: true,
+  });
+  const reviewProjectDetail =
+    reviewProjectData && String(reviewProjectData.id) === reviewProjectFilter
+      ? reviewProjectData
+      : null;
   // A coordinator selection only makes sense within a project.
   useEffect(() => {
     if (reviewProjectFilter === "all" && reviewCoordinatorFilter !== "all") {
@@ -585,6 +597,95 @@ function AggregatesPageContent() {
     aggregateSwrConfig,
   );
   const queueAggregates = useMemo(() => queueAggregatesData || [], [queueAggregatesData]);
+
+  // Organizations to offer in the review-queue Organization filter: ONLY those
+  // that actually have rows in the queue for the current project/coordinator
+  // (reviewer) scope — not every organization in the system. This mirrors the
+  // queue fetch but drops the organization and search filters, so selecting an
+  // org (which narrows the main queue fetch to that org server-side) can't
+  // collapse the dropdown to a single entry. When no org/search is applied this
+  // shares queueFetchFilters' cache key, so SWR de-dupes and no extra request is
+  // made.
+  const queueOrgScopeFilters = useMemo(() => {
+    const f: Record<string, string> = {
+      ...(aggregateApiFilters || {}),
+      status: "pending,reviewed,flagged",
+    };
+    if (reviewProjectFilter !== "all") f.project = reviewProjectFilter;
+    if (reviewCoordinatorFilter !== "all") {
+      f.coordinator = reviewCoordinatorFilter;
+      if (reviewProjectFilter !== "all") f.project = reviewProjectFilter;
+    }
+    return f;
+  }, [aggregateApiFilters, reviewProjectFilter, reviewCoordinatorFilter]);
+  const { data: queueOrgScopeData } = useAllAggregates(
+    queueOrgScopeFilters,
+    aggregateSwrConfig,
+  );
+  const queueOrganizationOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const row of queueOrgScopeData || []) {
+      const id = String((row as { organization?: number | string }).organization ?? "");
+      if (!id || byId.has(id)) continue;
+      byId.set(
+        id,
+        String((row as { organization_name?: string }).organization_name || `Organization ${id}`),
+      );
+    }
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [queueOrgScopeData]);
+
+  // Coordinators to offer in the review-queue Coordinator filter: ONLY those that
+  // have queued rows in the current project (reviewer) scope. Scoped to the project
+  // only (drops coordinator/org/search) so selecting a coordinator can't collapse
+  // the dropdown to itself. Each queued org is mapped to its coordinator via the
+  // project's hierarchy links. Falls back to the full coordinator set when the
+  // mapping can't resolve (flat project / links not yet loaded) so the filter
+  // never disappears.
+  const queueCoordScopeFilters = useMemo(() => {
+    const f: Record<string, string> = {
+      ...(aggregateApiFilters || {}),
+      status: "pending,reviewed,flagged",
+    };
+    if (reviewProjectFilter !== "all") f.project = reviewProjectFilter;
+    return f;
+  }, [aggregateApiFilters, reviewProjectFilter]);
+  const { data: queueCoordScopeData } = useAllAggregates(
+    queueCoordScopeFilters,
+    aggregateSwrConfig,
+  );
+  const queueCoordinatorOptions = useMemo(() => {
+    if (reviewCoordinatorOptions.length === 0) return reviewCoordinatorOptions;
+    const coordinatorIdSet = new Set(reviewCoordinatorOptions.map((c) => String(c.id)));
+    const parentByChild = new Map<string, string>();
+    for (const link of reviewProjectDetail?.project_hierarchy_links ?? []) {
+      if (link.is_active === false) continue;
+      parentByChild.set(String(link.child_organization), String(link.parent_organization));
+    }
+    const coordinatorForOrg = (orgId: string): string | null => {
+      let cursor: string | undefined = orgId;
+      const seen = new Set<string>();
+      while (cursor && !seen.has(cursor)) {
+        if (coordinatorIdSet.has(cursor)) return cursor;
+        seen.add(cursor);
+        cursor = parentByChild.get(cursor);
+      }
+      return null;
+    };
+    const present = new Set<string>();
+    for (const row of queueCoordScopeData || []) {
+      const orgId = String((row as { organization?: number | string }).organization ?? "");
+      const coordinatorId = orgId ? coordinatorForOrg(orgId) : null;
+      if (coordinatorId) present.add(coordinatorId);
+    }
+    // Mapping produced nothing despite queued rows → don't hide the filter.
+    if (present.size === 0 && (queueCoordScopeData?.length ?? 0) > 0) {
+      return reviewCoordinatorOptions;
+    }
+    return reviewCoordinatorOptions.filter((c) => present.has(String(c.id)));
+  }, [reviewCoordinatorOptions, reviewProjectDetail, queueCoordScopeData]);
 
   // Single refresh used by the one-shot write paths (create, auto-calc, workbook
   // import): revalidate the browse data, the review queue and the periods list
@@ -764,14 +865,6 @@ function AggregatesPageContent() {
         name: String(organization.name || `Organization ${organization.id}`),
       })),
     [writableOrganizations],
-  );
-  const visibleOrganizationOptions = useMemo(
-    () =>
-      visibleOrganizations.map((organization) => ({
-        id: organization.id,
-        name: String(organization.name || `Organization ${organization.id}`),
-      })),
-    [visibleOrganizations],
   );
 
   // Coordinator dropdown must follow the selected project: when a project with
@@ -1723,8 +1816,8 @@ function AggregatesPageContent() {
                 indicatorById={indicatorById}
                 projectNameById={projectNameById}
                 projects={projects}
-                organizations={visibleOrganizationOptions}
-                coordinators={reviewCoordinatorOptions}
+                organizations={queueOrganizationOptions}
+                coordinators={queueCoordinatorOptions}
                 serverFiltered
                 projectFilter={reviewProjectFilter}
                 onProjectFilterChange={setReviewProjectFilter}
