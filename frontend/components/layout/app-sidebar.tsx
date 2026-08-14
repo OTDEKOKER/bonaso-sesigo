@@ -215,6 +215,7 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
     children: [
       { title: "Home", href: "/dashboard" },
       { title: "Executive Dashboard", href: "/executive" },
+      { title: "Explore", href: "/explore" },
     ],
   },
   { title: "Organizations", href: "/organizations", icon: <Building2 className="h-4 w-4" /> },

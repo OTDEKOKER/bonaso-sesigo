@@ -7,6 +7,9 @@ const MODULE_BY_PATH: Record<string, string> = {
   "/dashboard": "dashboard",
   // Executive Dashboard is a dashboard view — same gate as /dashboard.
   "/executive": "dashboard",
+  // Explore workbench — a self-service dashboard view; same gate as /dashboard.
+  // Underlying data is org-scoped server-side, so this only gates UI access.
+  "/explore": "dashboard",
   "/organizations": "organizations",
   "/users": "users",
   "/projects": "projects",
