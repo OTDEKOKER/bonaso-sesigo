@@ -19,6 +19,10 @@ ENV CONTENT_SECURITY_POLICY=$CONTENT_SECURITY_POLICY
 ENV CONTENT_SECURITY_POLICY_REPORT_ONLY=$CONTENT_SECURITY_POLICY_REPORT_ONLY
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Cap the build heap so a memory spike fails THIS build cleanly rather than
+# letting the host OOM-killer take down a live container on the RAM-constrained
+# host (audit O1). Tune up if the build legitimately needs more headroom.
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
