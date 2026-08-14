@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-from organizations.access import is_organization_admin
+from organizations.access import is_data_entry_user, is_organization_admin
 
 # DRF viewset/action name -> permission verb (preferred when present).
 _ACTION_NAME_TO_PERM = {
@@ -101,6 +101,29 @@ def user_can_act(user, module: str | None, action: str) -> bool:
     if not row.is_enabled:
         return False
     return action in (row.actions or [])
+
+
+class IsDataEntryUser(BasePermission):
+    """Restrict a viewset to admins + the data-handling roles.
+
+    Individual respondent data (respondents, interactions, responses, profiles)
+    is personal — and in the profile case special-category (health/disability)
+    — data. The generic ``HasModulePermission`` is allow-when-no-explicit-row,
+    so on its own it does NOT stop an external ``client`` (read-only funder) or
+    an unknown/None role from reaching these endpoints within their org scope.
+    Layer this class on top so scope alone can never authorise a non-data role
+    to read or write personal data. Admins and Manager/Officer/Collector keep
+    full access; any explicit module deny an admin set is still honoured by
+    ``HasModulePermission`` alongside this gate.
+    """
+
+    message = "Your role does not permit access to respondent personal data."
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+        if user is None or not getattr(user, "is_authenticated", False):
+            return False
+        return is_data_entry_user(user)
 
 
 class HasModulePermission(BasePermission):
