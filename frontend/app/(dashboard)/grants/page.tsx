@@ -162,6 +162,40 @@ export default function GrantsPage() {
     () => grantsService.list(filterParams),
   );
 
+  // Coordinator rollup for the "Awarded vs spent" chart. The coordinator hierarchy
+  // is project-specific, so this is only available when a single project is
+  // selected. We reuse the quarterly endpoint purely for its org→coordinator
+  // membership and re-bucket the already-computed per-org money (no new totals).
+  const { data: coordGroups } = useSWR<GrantQuarterly>(
+    canAccess && projectFilter !== ALL ? ["grants-quarterly", projectFilter, "groups"] : null,
+    () => grantsService.quarterly({ project: projectFilter }),
+  );
+  const coordinatorRows = useMemo<GrantSummary["organizations"] | null>(() => {
+    if (!summaryData || !coordGroups || coordGroups.coordinators.length === 0) return null;
+    const byOrg = new Map(summaryData.organizations.map((r) => [r.organization_id, r]));
+    return coordGroups.coordinators.map((co) => {
+      let awarded = 0;
+      let disbursed = 0;
+      let spent = 0;
+      for (const m of co.members) {
+        const r = byOrg.get(m.organization_id);
+        if (!r) continue;
+        awarded += Number(r.awarded);
+        disbursed += Number(r.disbursed);
+        spent += Number(r.spent);
+      }
+      return {
+        organization_id: co.organization_id,
+        organization_name: co.organization_name,
+        awarded: String(awarded),
+        disbursed: String(disbursed),
+        spent: String(spent),
+        remaining: String(awarded - spent),
+        burn_pct: awarded > 0 ? (spent / awarded) * 100 : null,
+      };
+    });
+  }, [summaryData, coordGroups]);
+
   const { data: projectsRaw } = useProjects();
   const projects = toArray<{ id: number; name: string }>(projectsRaw);
   const grants = toArray<Grant>(listData);
@@ -228,16 +262,21 @@ export default function GrantsPage() {
           : kpiStats(grand).map((stat) => <KpiStatCard key={stat.key} stat={stat} />)}
       </div>
 
-      {/* Awarded vs spent chart */}
+      {/* Awarded vs spent chart — rolled up by coordinator when a project is selected */}
       <Card>
         <CardHeader>
-          <CardTitle>Awarded vs. spent, by organization</CardTitle>
+          <CardTitle>Awarded vs. spent, by {coordinatorRows ? "coordinator" : "organization"}</CardTitle>
         </CardHeader>
         <CardContent>
           {summaryLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : (
-            <GrantsBurnChart rows={summaryData?.organizations ?? []} />
+            <GrantsBurnChart rows={coordinatorRows ?? summaryData?.organizations ?? []} />
+          )}
+          {projectFilter === ALL && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Showing individual organisations. Select a project to roll up by coordinator.
+            </p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
             Spend bars are coloured by burn rate (spent ÷ awarded):{" "}
