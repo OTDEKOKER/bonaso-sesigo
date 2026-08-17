@@ -321,7 +321,12 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       actual_value?: number | null;
       own_actual_value?: number | null;
     }>;
-    if (!selectedProjectId || rows.length === 0) return null;
+    // The rollup is scoped to project + coordinator ONLY — it cannot narrow to a
+    // single organisation. When the user picks a specific org (e.g. BOCHAIP under
+    // MBGE) skip the rollup so the metrics/KPIs fall back to the org-scoped
+    // aggregate insights below (scopedOrganizationIds = that org + its subtree),
+    // showing ONLY the selected organisation's data instead of the coordinator roll-up.
+    if (!selectedProjectId || selectedOrganizationId || rows.length === 0) return null;
     const byIndicator = new Map<string, { indicatorId: string; label: string; target: number; value: number; percentage: number }>();
     for (const r of rows) {
       const id = String(r.indicator_id);
@@ -334,7 +339,7 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       ...m,
       percentage: m.target > 0 ? (m.value / m.target) * 100 : 0,
     }));
-  }, [rollupData, selectedProjectId]);
+  }, [rollupData, selectedProjectId, selectedOrganizationId]);
 
   const indicatorMetrics = useMemo(() => {
     const all = effectiveMetrics ?? insights.indicatorMetrics ?? [];

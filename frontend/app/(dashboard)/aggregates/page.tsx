@@ -360,27 +360,38 @@ function AggregatesPageContent() {
     return coordinatorIds.size > 0 ? coordinatorIds : parentIds;
   }, [effectiveProjectHierarchyLinks]);
 
-  const effectiveCoordinatorOrganizations = useMemo(
-    () =>
-      effectiveCoordinatorOrganizationIds
-        ? organizations.filter(
-            (org) =>
-              effectiveCoordinatorOrganizationIds.has(String(org.id)) &&
-              // Scope the project's coordinators to what THIS user may act on:
-              // a coordinator M&E officer assigned to Mopipi must see only Mopipi,
-              // not every coordinator in the project hierarchy. Admins (and anyone
-              // who can report across organizations) have every org in
-              // visibleOrganizationIds, so this is a no-op for them.
-              visibleOrganizationIds.has(String(org.id)),
-          )
-        : availableCoordinatorOrganizations,
-    [
-      availableCoordinatorOrganizations,
-      effectiveCoordinatorOrganizationIds,
-      organizations,
-      visibleOrganizationIds,
-    ],
-  );
+  const effectiveCoordinatorOrganizations = useMemo(() => {
+    const scopedToProjectHierarchy = effectiveCoordinatorOrganizationIds
+      ? organizations.filter(
+          (org) =>
+            effectiveCoordinatorOrganizationIds.has(String(org.id)) &&
+            // Scope the project's coordinators to what THIS user may act on:
+            // a coordinator M&E officer assigned to Mopipi must see only Mopipi,
+            // not every coordinator in the project hierarchy. Admins (and anyone
+            // who can report across organizations) have every org in
+            // visibleOrganizationIds, so this is a no-op for them.
+            visibleOrganizationIds.has(String(org.id)),
+        )
+      : null;
+    // When a specific project is selected, its ProjectOrganizationHierarchy is the
+    // SOLE source of truth for who the coordinators are. Never fall back to the
+    // global/seed coordinator set here: that list is project-agnostic (an org's
+    // type is global, and the hardcoded seed names are last year's coordinators),
+    // so it surfaced stale names — e.g. BONELA instead of HPP/Mopipi for NSC
+    // 2026/27 — that no amount of DB correction could fix. If the project detail
+    // hasn't loaded yet (or the project is flat) show nothing rather than wrong
+    // names; the "All Coordinators" option still covers the whole project.
+    if (projectFilter !== "all") {
+      return scopedToProjectHierarchy ?? [];
+    }
+    return scopedToProjectHierarchy ?? availableCoordinatorOrganizations;
+  }, [
+    availableCoordinatorOrganizations,
+    effectiveCoordinatorOrganizationIds,
+    organizations,
+    projectFilter,
+    visibleOrganizationIds,
+  ]);
 
   // Map each coordinator → the organizations that report under it (self + descendants),
   // so the workbook dialog's Organization picker can follow the chosen Coordinator.

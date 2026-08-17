@@ -360,8 +360,31 @@ export function useAggregateFilters(args: AggregateFiltersArgs) {
     return isKnownCoordinator ? parentOrgFilter : "all";
   }, [availableCoordinatorOrganizations, parentOrgFilter]);
 
+  // Every org that belongs to the selected project's hierarchy (all parents +
+  // children of its active links). Used to keep the Organizations picker relevant
+  // to the chosen project even before a coordinator is picked, instead of showing
+  // the whole system org list. Null when no project scope applies ("All Projects").
+  const projectScopedOrganizationIds = useMemo(() => {
+    if (!projectHierarchyLinks || projectHierarchyLinks.length === 0) return null;
+    const ids = new Set<string>();
+    projectHierarchyLinks
+      .filter((link) => link.is_active)
+      .forEach((link) => {
+        ids.add(String(link.parent_organization));
+        ids.add(String(link.child_organization));
+      });
+    return ids.size > 0 ? ids : null;
+  }, [projectHierarchyLinks]);
+
   const scopedOrganizations = useMemo(() => {
     if (effectiveParentOrgFilter === "all") {
+      // No coordinator picked: narrow to the selected project's orgs when a
+      // project is chosen; only show the full visible list for "All Projects".
+      if (projectScopedOrganizationIds) {
+        return visibleOrganizations.filter((organization) =>
+          projectScopedOrganizationIds.has(String(organization.id)),
+        );
+      }
       return visibleOrganizations;
     }
     const scopedIds = collectDescendantOrganizationIds(effectiveParentOrgFilter, childrenByParentId);
@@ -370,7 +393,7 @@ export function useAggregateFilters(args: AggregateFiltersArgs) {
       .filter((organization) => scopedIds.has(String(organization.id)))
       .slice()
       .sort((left, right) => String(left.name || "").localeCompare(String(right.name || "")));
-  }, [childrenByParentId, effectiveParentOrgFilter, visibleOrganizations]);
+  }, [childrenByParentId, effectiveParentOrgFilter, projectScopedOrganizationIds, visibleOrganizations]);
 
   const scopedOrganizationIds = useMemo(
     () => new Set(scopedOrganizations.map((organization) => String(organization.id))),
