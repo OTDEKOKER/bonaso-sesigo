@@ -18,6 +18,7 @@ import {
   useAllProjects,
   useCoordinatorTargetRollup,
   useProjectCoordinators,
+  useWorkbookLayouts,
 } from "@/lib/hooks/use-api";
 import type { CoordinatorTargetQuarter } from "@/lib/api/services/coordinator-targets";
 import { useAuth } from "@/lib/contexts/auth-context";
@@ -184,6 +185,60 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     }));
   }, [projectCoordinatorsData, selectedProjectId, availableCoordinatorOrganizations]);
 
+  // Canonical indicator resolution (SSoT): an alias indicator (e.g. the deprecated
+  // GBV-eligible 462) resolves to its canonical id (539) via the backend
+  // `canonical_indicator` FK carried on every indicator. Matching indicators by
+  // canonical id keeps the workbook filter below robust to alias/canonical drift
+  // between the workbook layout, the coordinator rollup and the aggregate insights.
+  const canonicalIndicatorId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ind of (indicatorsData ?? []) as Array<{
+      id: number | string;
+      canonical_indicator?: number | string | null;
+    }>) {
+      const id = String(ind.id);
+      map.set(id, ind.canonical_indicator != null ? String(ind.canonical_indicator) : id);
+    }
+    return (id: number | string) => map.get(String(id)) ?? String(id);
+  }, [indicatorsData]);
+
+  // "Workbook indicators" for the current scope: the indicators placed in the
+  // active WorkbookLayout(s) of the coordinator(s) in scope — the selected
+  // coordinator's own layout, else the union across the project's coordinators
+  // (shared indicators collapse; no double-count). Canonicalised so it matches the
+  // metrics regardless of alias. Null (= no restriction) when there is no project
+  // scope or the layouts haven't loaded yet, so the panels never collapse to empty
+  // while data is pending.
+  const { data: workbookLayoutsData } = useWorkbookLayouts(Boolean(selectedProjectId));
+  const workbookCanonicalIndicatorIds = useMemo<Set<string> | null>(() => {
+    if (!selectedProjectId) return null;
+    const layouts = (workbookLayoutsData ?? []) as Array<{
+      is_active?: boolean;
+      coordinator_organization: number | string;
+      items?: Array<{ indicator: number | null }>;
+    }>;
+    if (layouts.length === 0) return null;
+    const coordinatorIds = selectedCoordinatorId
+      ? new Set<string>([String(selectedCoordinatorId)])
+      : new Set<string>((projectCoordinatorsData ?? []).map((c) => String(c.id)));
+    if (coordinatorIds.size === 0) return null;
+    const ids = new Set<string>();
+    for (const layout of layouts) {
+      if (layout.is_active === false) continue;
+      if (!coordinatorIds.has(String(layout.coordinator_organization))) continue;
+      for (const item of layout.items ?? []) {
+        if (item.indicator != null) ids.add(canonicalIndicatorId(item.indicator));
+      }
+    }
+    return ids.size > 0 ? ids : null;
+  }, [
+    workbookLayoutsData,
+    selectedProjectId,
+    selectedCoordinatorId,
+    projectCoordinatorsData,
+    canonicalIndicatorId,
+  ]);
+
   const coordinatorScopedOrganizationIds = useMemo<Set<string> | null>(() => {
     if (!selectedCoordinatorId) return null;
     return new Set<string>([
@@ -322,11 +377,17 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       own_actual_value?: number | null;
     }>;
     // The rollup is scoped to project + coordinator ONLY — it cannot narrow to a
-    // single organisation. When the user picks a specific org (e.g. BOCHAIP under
-    // MBGE) skip the rollup so the metrics/KPIs fall back to the org-scoped
-    // aggregate insights below (scopedOrganizationIds = that org + its subtree),
-    // showing ONLY the selected organisation's data instead of the coordinator roll-up.
-    if (!selectedProjectId || selectedOrganizationId || rows.length === 0) return null;
+    // single organisation OR a district. When the user picks a specific org (e.g.
+    // BOCHAIP under MBGE) or a district, skip the rollup so the metrics/KPIs fall
+    // back to the org-scoped aggregate insights below (scopedOrganizationIds = that
+    // org/district subtree), showing ONLY the filtered data instead of the roll-up.
+    if (
+      !selectedProjectId ||
+      selectedOrganizationId ||
+      filters.district !== "all" ||
+      rows.length === 0
+    )
+      return null;
     const byIndicator = new Map<string, { indicatorId: string; label: string; target: number; value: number; percentage: number }>();
     for (const r of rows) {
       const id = String(r.indicator_id);
@@ -339,29 +400,54 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       ...m,
       percentage: m.target > 0 ? (m.value / m.target) * 100 : 0,
     }));
-  }, [rollupData, selectedProjectId, selectedOrganizationId]);
+  }, [rollupData, selectedProjectId, selectedOrganizationId, filters.district]);
 
   const indicatorMetrics = useMemo(() => {
-    const all = effectiveMetrics ?? insights.indicatorMetrics ?? [];
+    let all = effectiveMetrics ?? insights.indicatorMetrics ?? [];
+    // Programme Performance / KPIs show ONLY the reporting workbook's indicators —
+    // not every indicator that happens to carry a target or an aggregate row.
+    // Canonical-matched so an alias metric still matches its canonical workbook id.
+    if (workbookCanonicalIndicatorIds) {
+      all = all.filter((m) =>
+        workbookCanonicalIndicatorIds.has(canonicalIndicatorId(m.indicatorId)),
+      );
+    }
     if (filters.indicatorId === "all") return all;
     return all.filter((m) => String(m.indicatorId) === filters.indicatorId);
-  }, [effectiveMetrics, insights.indicatorMetrics, filters.indicatorId]);
+  }, [
+    effectiveMetrics,
+    insights.indicatorMetrics,
+    workbookCanonicalIndicatorIds,
+    canonicalIndicatorId,
+    filters.indicatorId,
+  ]);
 
-  // Indicator options are per-project: the indicators actually present in the
-  // scoped metrics (the UNFILTERED set, so choosing one doesn't collapse the list),
-  // using the SAME canonical ids the table filters on. Only fall back to the global
-  // catalogue when no project is selected.
+  // Indicator options are per-project: the workbook indicators actually present in
+  // the scoped metrics (the UNFILTERED set, so choosing one doesn't collapse the
+  // list). Only fall back to the global catalogue when no project is selected.
   const indicatorOptions = useMemo<Array<{ id: number | string; name: string }>>(() => {
     if (selectedProjectId) {
       const seen = new Map<string, string>();
       for (const m of (effectiveMetrics ?? insights.indicatorMetrics ?? [])) {
+        if (
+          workbookCanonicalIndicatorIds &&
+          !workbookCanonicalIndicatorIds.has(canonicalIndicatorId(m.indicatorId))
+        )
+          continue;
         const id = String(m.indicatorId);
         if (!seen.has(id)) seen.set(id, String(m.label ?? id));
       }
       if (seen.size > 0) return Array.from(seen, ([id, name]) => ({ id, name }));
     }
     return (indicatorsData ?? []) as Array<{ id: number | string; name: string }>;
-  }, [selectedProjectId, effectiveMetrics, insights.indicatorMetrics, indicatorsData]);
+  }, [
+    selectedProjectId,
+    effectiveMetrics,
+    insights.indicatorMetrics,
+    workbookCanonicalIndicatorIds,
+    canonicalIndicatorId,
+    indicatorsData,
+  ]);
 
   const kpis = useMemo(() => {
     let totalTarget = 0;

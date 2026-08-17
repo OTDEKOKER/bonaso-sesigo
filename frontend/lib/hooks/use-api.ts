@@ -36,6 +36,7 @@ import {
   dashboardChartsService,
   dashboardSettingsService,
   coordinatorTargetsService,
+  workbookLayoutsService,
   type ProjectFilters,
   type TaskFilters,
   type DeadlineFilters,
@@ -697,6 +698,17 @@ export function useProjectCoordinators(projectId: string | null, config?: SWRCon
   return useSWR(
     projectId && projectId !== "all" ? ["project-coordinators", projectId] : null,
     () => coordinatorTargetsService.coordinators(projectId!),
+    { ...defaultConfig, ...config },
+  );
+}
+
+// All workbook layouts for the CURRENT session mode (the endpoint filters by the
+// JWT mode claim server-side), each with its ordered items. Used to derive a
+// project/coordinator's "workbook indicators" set. Enabled only when needed.
+export function useWorkbookLayouts(enabled: boolean, config?: SWRConfiguration) {
+  return useSWR(
+    enabled ? ["workbook-layouts", "all"] : null,
+    () => workbookLayoutsService.list(),
     { ...defaultConfig, ...config },
   );
 }
