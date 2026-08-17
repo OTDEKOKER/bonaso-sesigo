@@ -209,34 +209,58 @@ export function useExecutiveData(filters: ExecutiveFilters) {
   // metrics regardless of alias. Null (= no restriction) when there is no project
   // scope or the layouts haven't loaded yet, so the panels never collapse to empty
   // while data is pending.
+  const indicatorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ind of (indicatorsData ?? []) as Array<{ id: number | string; name?: unknown }>) {
+      map.set(String(ind.id), String(ind.name ?? ind.id));
+    }
+    return map;
+  }, [indicatorsData]);
+
   const { data: workbookLayoutsData } = useWorkbookLayouts(Boolean(selectedProjectId));
-  const workbookCanonicalIndicatorIds = useMemo<Set<string> | null>(() => {
+  const workbookScope = useMemo<
+    | { canonicalIds: Set<string>; indicators: Array<{ canonicalId: string; name: string }> }
+    | null
+  >(() => {
     if (!selectedProjectId) return null;
     const layouts = (workbookLayoutsData ?? []) as Array<{
       is_active?: boolean;
       coordinator_organization: number | string;
-      items?: Array<{ indicator: number | null }>;
+      items?: Array<{ indicator: number | null; indicator_name?: string }>;
     }>;
     if (layouts.length === 0) return null;
     const coordinatorIds = selectedCoordinatorId
       ? new Set<string>([String(selectedCoordinatorId)])
       : new Set<string>((projectCoordinatorsData ?? []).map((c) => String(c.id)));
     if (coordinatorIds.size === 0) return null;
-    const ids = new Set<string>();
+    // canonicalId -> display name (first placement wins; shared indicators dedupe).
+    const byCanonical = new Map<string, string>();
     for (const layout of layouts) {
       if (layout.is_active === false) continue;
       if (!coordinatorIds.has(String(layout.coordinator_organization))) continue;
       for (const item of layout.items ?? []) {
-        if (item.indicator != null) ids.add(canonicalIndicatorId(item.indicator));
+        if (item.indicator == null) continue;
+        const canonicalId = canonicalIndicatorId(item.indicator);
+        if (!byCanonical.has(canonicalId)) {
+          byCanonical.set(
+            canonicalId,
+            indicatorNameById.get(canonicalId) || String(item.indicator_name || canonicalId),
+          );
+        }
       }
     }
-    return ids.size > 0 ? ids : null;
+    if (byCanonical.size === 0) return null;
+    return {
+      canonicalIds: new Set(byCanonical.keys()),
+      indicators: Array.from(byCanonical, ([canonicalId, name]) => ({ canonicalId, name })),
+    };
   }, [
     workbookLayoutsData,
     selectedProjectId,
     selectedCoordinatorId,
     projectCoordinatorsData,
     canonicalIndicatorId,
+    indicatorNameById,
   ]);
 
   const coordinatorScopedOrganizationIds = useMemo<Set<string> | null>(() => {
@@ -403,37 +427,67 @@ export function useExecutiveData(filters: ExecutiveFilters) {
   }, [rollupData, selectedProjectId, selectedOrganizationId, filters.district]);
 
   const indicatorMetrics = useMemo(() => {
-    let all = effectiveMetrics ?? insights.indicatorMetrics ?? [];
-    // Programme Performance / KPIs show ONLY the reporting workbook's indicators —
-    // not every indicator that happens to carry a target or an aggregate row.
-    // Canonical-matched so an alias metric still matches its canonical workbook id.
-    if (workbookCanonicalIndicatorIds) {
-      all = all.filter((m) =>
-        workbookCanonicalIndicatorIds.has(canonicalIndicatorId(m.indicatorId)),
-      );
+    const base = effectiveMetrics ?? insights.indicatorMetrics ?? [];
+    let result: Array<{
+      indicatorId: string;
+      label: string;
+      target: number;
+      value: number;
+      percentage: number;
+    }> = base.map((m) => ({
+      indicatorId: String(m.indicatorId),
+      label: String(m.label ?? m.indicatorId),
+      target: Number(m.target) || 0,
+      value: Number(m.value) || 0,
+      percentage: Number(m.percentage) || 0,
+    }));
+    if (workbookScope) {
+      // Programme Performance / KPIs show EVERY reporting-workbook indicator (and
+      // nothing else). Target + achieved come from the scoped metrics; a workbook
+      // indicator with no target still appears with its achieved (from the
+      // aggregate insights), so the whole workbook is visible, not just targeted
+      // rows. Canonical-matched so an alias metric maps onto its canonical id.
+      const achievedByCanonical = new Map<string, number>();
+      for (const m of insights.indicatorMetrics ?? []) {
+        const cid = canonicalIndicatorId(m.indicatorId);
+        achievedByCanonical.set(cid, (achievedByCanonical.get(cid) ?? 0) + (Number(m.value) || 0));
+      }
+      const byCanonical = new Map<string, (typeof result)[number]>();
+      for (const m of result) {
+        const cid = canonicalIndicatorId(m.indicatorId);
+        if (!workbookScope.canonicalIds.has(cid) || byCanonical.has(cid)) continue;
+        byCanonical.set(cid, {
+          ...m,
+          indicatorId: cid,
+          percentage: m.target > 0 ? (m.value / m.target) * 100 : 0,
+        });
+      }
+      for (const wb of workbookScope.indicators) {
+        if (byCanonical.has(wb.canonicalId)) continue;
+        byCanonical.set(wb.canonicalId, {
+          indicatorId: wb.canonicalId,
+          label: wb.name,
+          target: 0,
+          value: achievedByCanonical.get(wb.canonicalId) ?? 0,
+          percentage: 0,
+        });
+      }
+      result = Array.from(byCanonical.values());
     }
-    if (filters.indicatorId === "all") return all;
-    return all.filter((m) => String(m.indicatorId) === filters.indicatorId);
-  }, [
-    effectiveMetrics,
-    insights.indicatorMetrics,
-    workbookCanonicalIndicatorIds,
-    canonicalIndicatorId,
-    filters.indicatorId,
-  ]);
+    if (filters.indicatorId === "all") return result;
+    return result.filter((m) => String(m.indicatorId) === filters.indicatorId);
+  }, [effectiveMetrics, insights.indicatorMetrics, workbookScope, canonicalIndicatorId, filters.indicatorId]);
 
-  // Indicator options are per-project: the workbook indicators actually present in
-  // the scoped metrics (the UNFILTERED set, so choosing one doesn't collapse the
-  // list). Only fall back to the global catalogue when no project is selected.
+  // Indicator options: every workbook indicator for the scope (so the filter lists
+  // the full workbook, matching the chart). Falls back to the scoped metrics, then
+  // the global catalogue when no project is selected.
   const indicatorOptions = useMemo<Array<{ id: number | string; name: string }>>(() => {
+    if (workbookScope) {
+      return workbookScope.indicators.map((wb) => ({ id: wb.canonicalId, name: wb.name }));
+    }
     if (selectedProjectId) {
       const seen = new Map<string, string>();
       for (const m of (effectiveMetrics ?? insights.indicatorMetrics ?? [])) {
-        if (
-          workbookCanonicalIndicatorIds &&
-          !workbookCanonicalIndicatorIds.has(canonicalIndicatorId(m.indicatorId))
-        )
-          continue;
         const id = String(m.indicatorId);
         if (!seen.has(id)) seen.set(id, String(m.label ?? id));
       }
@@ -441,11 +495,10 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     }
     return (indicatorsData ?? []) as Array<{ id: number | string; name: string }>;
   }, [
+    workbookScope,
     selectedProjectId,
     effectiveMetrics,
     insights.indicatorMetrics,
-    workbookCanonicalIndicatorIds,
-    canonicalIndicatorId,
     indicatorsData,
   ]);
 
