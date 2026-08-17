@@ -95,6 +95,22 @@ export function useExecutiveData(filters: ExecutiveFilters) {
   const selectedCoordinatorId = filters.coordinatorId !== "all" ? filters.coordinatorId : undefined;
   const selectedOrganizationId = filters.organizationId !== "all" ? filters.organizationId : undefined;
 
+  // Fraction of the SELECTED reporting window that has elapsed as of today — the
+  // pace denominator. Targets are cumulative for the whole window (annual for a
+  // full FY), so raw achieved% vs the full target is misleading mid-period: at
+  // month 4.5 of 12 an on-pace indicator sits at ~38%, which a 100/75/50 RAG scale
+  // wrongly paints red. We compare achieved against target × periodFraction
+  // (expected-to-date) instead. A fully-elapsed window (past quarter) = 1.
+  const periodFraction = useMemo(() => {
+    if (!filters.dateFrom || !filters.dateTo) return 1;
+    const from = new Date(filters.dateFrom).getTime();
+    const to = new Date(filters.dateTo).getTime();
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 1;
+    // eslint-disable-next-line react-hooks/purity -- "elapsed as of now" is intentional; recomputed when the window changes
+    const now = Date.now();
+    return Math.min(1, Math.max(0, (now - from) / (to - from)));
+  }, [filters.dateFrom, filters.dateTo]);
+
   const { data: organizationsData } = useAllOrganizations();
   // Executive scoping needs only base project fields (organizations,
   // hierarchy_overrides, status, is_training) — all present on the plain list.
@@ -474,9 +490,12 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       }
       result = Array.from(byCanonical.values());
     }
-    if (filters.indicatorId === "all") return result;
-    return result.filter((m) => String(m.indicatorId) === filters.indicatorId);
-  }, [effectiveMetrics, insights.indicatorMetrics, workbookScope, canonicalIndicatorId, filters.indicatorId]);
+    // Attach expected-to-date (target prorated by elapsed period) so downstream
+    // pace classification/KPIs never compare a mid-period actual to a full target.
+    const withExpected = result.map((m) => ({ ...m, expected: m.target * periodFraction }));
+    if (filters.indicatorId === "all") return withExpected;
+    return withExpected.filter((m) => String(m.indicatorId) === filters.indicatorId);
+  }, [effectiveMetrics, insights.indicatorMetrics, workbookScope, canonicalIndicatorId, filters.indicatorId, periodFraction]);
 
   // Indicator options: every workbook indicator for the scope (so the filter lists
   // the full workbook, matching the chart). Falls back to the scoped metrics, then
@@ -505,29 +524,55 @@ export function useExecutiveData(filters: ExecutiveFilters) {
   const kpis = useMemo(() => {
     let totalTarget = 0;
     let totalAchieved = 0;
+    let totalExpected = 0;
     let targeted = 0;
     let onTrack = 0;
+    let onPace = 0;
+    let behindPace = 0;
+    let maxTargetVal = 0;
+    let maxTargetLabel = "";
     for (const m of indicatorMetrics) {
       const t = toSafeNumber(m.target);
       const v = toSafeNumber(m.value);
+      const e = toSafeNumber((m as { expected?: number }).expected);
       totalTarget += t;
       totalAchieved += v;
+      totalExpected += e;
+      if (t > maxTargetVal) {
+        maxTargetVal = t;
+        maxTargetLabel = m.label;
+      }
       if (t > 0) {
         targeted += 1;
         if ((v / t) * 100 >= 75) onTrack += 1;
+        // Pace = achieved vs expected-to-date. On/ahead of pace ≥95%; behind <75%.
+        const pace = e > 0 ? v / e : v > 0 ? Infinity : 0;
+        if (pace >= 0.95) onPace += 1;
+        else if (pace < 0.75) behindPace += 1;
       }
     }
     const targetedOverall = totalTarget > 0;
     const overallPct = targetedOverall ? (totalAchieved / totalTarget) * 100 : 0;
+    const overallPacePct = totalExpected > 0 ? (totalAchieved / totalExpected) * 100 : 0;
     return {
       overallPct,
+      overallPacePct,
       overallStatus: getPerformanceStatus(overallPct, targetedOverall),
+      // Pace status colours the headline: on-pace work is no longer painted red.
+      overallPaceStatus: getPerformanceStatus(overallPacePct, targetedOverall && totalExpected > 0),
       targetedOverall,
       onTrack,
+      onPace,
+      behindPace,
       indicatorsTargeted: targeted,
       indicatorCount: indicatorMetrics.length,
       totalAchieved,
       totalTarget,
+      totalExpected,
+      // Largest single indicator as a share of the blended target denominator —
+      // used to warn when one indicator (e.g. condoms ≈65%) dominates the headline.
+      dominantShare: totalTarget > 0 ? maxTargetVal / totalTarget : 0,
+      dominantLabel: maxTargetLabel,
       reportingOrganizations: insights.reportingOrganizationsCount ?? 0,
       scopedOrgCount: scopedOrganizationIds ? scopedOrganizationIds.size : organizations.length,
     };
@@ -584,10 +629,109 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     ).sort();
   }, [organizationOptions, organizations]);
 
+  // Reporting analysis (SSoT-consistent): indicator-level completeness (reported
+  // vs EXPECTED org×workbook-indicator cells, not just "org submitted something"),
+  // plus per-coordinator and per-district reporting coverage so the executive can
+  // see WHERE the gaps are — the two dimensions previously only filterable.
+  const reportingAnalysis = useMemo(() => {
+    const coordIds = new Set<string>((projectCoordinatorsData ?? []).map((c) => String(c.id)));
+    const orgToCoord = new Map<string, string>();
+    for (const cid of coordIds) {
+      orgToCoord.set(cid, cid);
+      for (const oid of (descendantsByParent[cid] || []) as string[]) orgToCoord.set(String(oid), cid);
+    }
+    const perCoordWb = new Map<string, Set<string>>();
+    for (const layout of (workbookLayoutsData ?? []) as Array<{
+      is_active?: boolean;
+      coordinator_organization: number | string;
+      items?: Array<{ indicator: number | null }>;
+    }>) {
+      if (layout.is_active === false) continue;
+      const cid = String(layout.coordinator_organization);
+      if (!coordIds.has(cid)) continue;
+      const set = perCoordWb.get(cid) ?? new Set<string>();
+      for (const it of layout.items ?? []) if (it.indicator != null) set.add(canonicalIndicatorId(it.indicator));
+      perCoordWb.set(cid, set);
+    }
+    const scopedOrgs = organizations.filter((o) =>
+      scopedOrganizationIds ? scopedOrganizationIds.has(String(o.id)) : true,
+    );
+    const rows = Array.isArray(aggregatesData) ? (aggregatesData as Array<Record<string, unknown>>) : [];
+    const submittedOrgs = new Set<string>();
+    const reportedCells = new Set<string>();
+    for (const r of rows) {
+      const oid = String(r.organization);
+      submittedOrgs.add(oid);
+      reportedCells.add(`${oid}|${canonicalIndicatorId(String(r.indicator))}`);
+    }
+    let cellsExpected = 0;
+    let cellsReported = 0;
+    const coordAgg = new Map<string, { orgs: Set<string>; reportedOrgs: Set<string>; expected: number; reported: number }>();
+    const distAgg = new Map<string, { orgs: Set<string>; reportedOrgs: Set<string> }>();
+    for (const o of scopedOrgs) {
+      const oid = String(o.id);
+      const cid = orgToCoord.get(oid);
+      const wb = cid ? perCoordWb.get(cid) : undefined;
+      const expectedForOrg = wb ? wb.size : 0;
+      let reportedForOrg = 0;
+      if (wb) for (const ind of wb) if (reportedCells.has(`${oid}|${ind}`)) reportedForOrg += 1;
+      cellsExpected += expectedForOrg;
+      cellsReported += reportedForOrg;
+      if (cid) {
+        const c = coordAgg.get(cid) ?? { orgs: new Set<string>(), reportedOrgs: new Set<string>(), expected: 0, reported: 0 };
+        c.orgs.add(oid);
+        if (submittedOrgs.has(oid)) c.reportedOrgs.add(oid);
+        c.expected += expectedForOrg;
+        c.reported += reportedForOrg;
+        coordAgg.set(cid, c);
+      }
+      const d = orgDistrict(o as Record<string, unknown>) || "—";
+      const da = distAgg.get(d) ?? { orgs: new Set<string>(), reportedOrgs: new Set<string>() };
+      da.orgs.add(oid);
+      if (submittedOrgs.has(oid)) da.reportedOrgs.add(oid);
+      distAgg.set(d, da);
+    }
+    const coordName = new Map<string, string>(
+      (projectCoordinatorsData ?? []).map((c) => [String(c.id), String(c.name ?? c.id)]),
+    );
+    const byCoordinator = Array.from(coordAgg, ([id, v]) => ({
+      id,
+      name: coordName.get(id) ?? id,
+      orgsExpected: v.orgs.size,
+      orgsReported: v.reportedOrgs.size,
+      completeness: v.expected > 0 ? Math.round((100 * v.reported) / v.expected) : 0,
+    })).sort((a, b) => a.completeness - b.completeness);
+    const byDistrict = Array.from(distAgg, ([district, v]) => ({
+      district,
+      orgsExpected: v.orgs.size,
+      orgsReported: v.reportedOrgs.size,
+      reportingPct: v.orgs.size > 0 ? Math.round((100 * v.reportedOrgs.size) / v.orgs.size) : 0,
+    })).sort((a, b) => a.reportingPct - b.reportingPct);
+    return {
+      orgsExpected: scopedOrgs.length,
+      orgsSubmitted: scopedOrgs.filter((o) => submittedOrgs.has(String(o.id))).length,
+      cellsExpected,
+      cellsReported,
+      completenessPct: cellsExpected > 0 ? Math.round((100 * cellsReported) / cellsExpected) : 0,
+      byCoordinator,
+      byDistrict,
+    };
+  }, [
+    projectCoordinatorsData,
+    descendantsByParent,
+    workbookLayoutsData,
+    canonicalIndicatorId,
+    organizations,
+    scopedOrganizationIds,
+    aggregatesData,
+  ]);
+
   return {
     insights,
     indicatorMetrics,
     kpis,
+    periodFraction,
+    reportingAnalysis,
     recentSubmissions,
     reportedOrganizations,
     notReportedOrganizations,

@@ -117,7 +117,7 @@ function KpiCard({
 
 export default function ExecutiveDashboardPage() {
   const [filters, setFilters] = useState<ExecutiveFilters>(DEFAULT_EXECUTIVE_FILTERS);
-  const { insights, indicatorMetrics, kpis, recentSubmissions, reportedOrganizations, notReportedOrganizations, isLoading, options } = useExecutiveData(filters);
+  const { insights, indicatorMetrics, kpis, periodFraction, reportingAnalysis, recentSubmissions, reportedOrganizations, notReportedOrganizations, isLoading, options } = useExecutiveData(filters);
   const [openCard, setOpenCard] = useState<
     null | "overall" | "ontrack" | "reporting" | "completeness" | "total" | "offtrack"
   >(null);
@@ -146,20 +146,34 @@ export default function ExecutiveDashboardPage() {
   const setProject = (v: string) => set({ projectId: v, coordinatorId: "all", organizationId: "all", district: "all" });
   const setCoordinator = (v: string) => set({ coordinatorId: v, organizationId: "all" });
 
+  const periodPct = Math.round(periodFraction * 100);
   const rows = useMemo(
     () =>
       [...indicatorMetrics]
-        .map((m) => ({
-          ...m,
-          status: getPerformanceStatusFromValues(Number(m.value), Number(m.target)),
-          pct: Number(m.target) > 0 ? (Number(m.value) / Number(m.target)) * 100 : 0,
-          hasTarget: Number(m.target) > 0,
-        }))
-        .sort((a, b) => b.pct - a.pct),
+        .map((m) => {
+          const target = Number(m.target) || 0;
+          const value = Number(m.value) || 0;
+          const expected = Number((m as { expected?: number }).expected) || 0;
+          return {
+            ...m,
+            expected,
+            target,
+            value,
+            hasTarget: target > 0,
+            // vs annual target (for the volume column), and vs expected-to-date (pace).
+            pct: target > 0 ? (value / target) * 100 : 0,
+            pacePct: expected > 0 ? (value / expected) * 100 : 0,
+            variance: value - expected,
+            // Colour/status reflect PACE (achieved vs expected-to-date), so on-pace
+            // work early in the year is no longer painted red.
+            status: getPerformanceStatusFromValues(value, expected),
+          };
+        })
+        // Worst pace first — executives scan for problems at the top.
+        .sort((a, b) => a.pacePct - b.pacePct),
     [indicatorMetrics],
   );
-  const attention = useMemo(() => rows.filter((r) => r.hasTarget && r.pct < 75).sort((a, b) => a.pct - b.pct).slice(0, 6), [rows]);
-  const offTrackCount = useMemo(() => rows.filter((r) => r.hasTarget && r.pct < 50).length, [rows]);
+  const attention = useMemo(() => rows.filter((r) => r.hasTarget && r.pacePct < 75).slice(0, 6), [rows]);
   const topOrgs = useMemo(
     () => [...(insights.organizations ?? [])].filter((o) => Number(o.target) > 0).sort((a, b) => b.percentage - a.percentage).slice(0, 5),
     [insights.organizations],
@@ -171,20 +185,21 @@ export default function ExecutiveDashboardPage() {
     const keys = new Set(trendSeries.map((s) => s.key));
     return Object.keys(trend[0]).find((k) => !keys.has(k));
   }, [trend, trendSeries]);
-  const completeness = kpis.scopedOrgCount > 0 ? Math.round((kpis.reportingOrganizations / kpis.scopedOrgCount) * 100) : 0;
+  // Reporting is now indicator-level completeness (reported vs EXPECTED org×indicator
+  // cells), with org submission as the compliance split.
+  const completeness = reportingAnalysis.completenessPct;
   const compliance = useMemo(
     () => [
-      { name: "Reported", value: kpis.reportingOrganizations, color: PERFORMANCE_STATUS_COLORS.met },
-      { name: "Not reported", value: Math.max(0, kpis.scopedOrgCount - kpis.reportingOrganizations), color: PERFORMANCE_STATUS_COLORS["off-track"] },
+      { name: "Submitted", value: reportingAnalysis.orgsSubmitted, color: PERFORMANCE_STATUS_COLORS.met },
+      { name: "Not submitted", value: Math.max(0, reportingAnalysis.orgsExpected - reportingAnalysis.orgsSubmitted), color: PERFORMANCE_STATUS_COLORS["off-track"] },
     ],
-    [kpis.reportingOrganizations, kpis.scopedOrgCount],
+    [reportingAnalysis.orgsSubmitted, reportingAnalysis.orgsExpected],
   );
-  const complianceTotal = kpis.scopedOrgCount;
+  const complianceTotal = reportingAnalysis.orgsExpected;
 
-  // Indicator performance mix: the programme's indicator portfolio decomposed by
-  // canonical RAG status (met / on-track / at-risk / off-track / untargeted). Uses
-  // the same SSoT classifier as every other surface, so the pie can't disagree
-  // with the KPIs or the table.
+  // Indicator PACE mix: the portfolio decomposed by achieved-vs-expected-to-date
+  // status (not raw annual %), so the pie reflects "who is behind pace", not "it's
+  // early in the year". Same SSoT classifier as the KPIs and table.
   const statusMix = useMemo(() => {
     const counts = new Map<PerformanceStatus, number>();
     for (const r of rows) counts.set(r.status.status, (counts.get(r.status.status) ?? 0) + 1);
@@ -193,22 +208,22 @@ export default function ExecutiveDashboardPage() {
       .filter((slice) => slice.value > 0);
   }, [rows]);
   const targetedCount = useMemo(() => rows.filter((r) => r.hasTarget).length, [rows]);
-  const onTrackShare = useMemo(() => {
+  const onPaceShare = useMemo(() => {
     if (targetedCount === 0) return 0;
-    return Math.round((rows.filter((r) => r.hasTarget && r.pct >= 75).length / targetedCount) * 100);
+    return Math.round((rows.filter((r) => r.hasTarget && r.pacePct >= 95).length / targetedCount) * 100);
   }, [rows, targetedCount]);
 
   const cardTitle: Record<string, string> = {
     overall: "Overall Achievement — indicators",
-    ontrack: "Indicators On Track (≥75%)",
-    offtrack: "Indicators Off Track (<50%)",
+    ontrack: "Indicators On Pace (≥ expected-to-date)",
+    offtrack: "Indicators Behind Pace (< expected-to-date)",
     total: "Total Achieved — by indicator",
-    reporting: "Reporting Organisations",
+    reporting: "Organisations Submitted",
     completeness: "Reporting Completeness",
   };
   const dialogRows = useMemo(() => {
-    if (openCard === "ontrack") return rows.filter((r) => r.hasTarget && r.pct >= 75);
-    if (openCard === "offtrack") return rows.filter((r) => r.hasTarget && r.pct < 50);
+    if (openCard === "ontrack") return rows.filter((r) => r.hasTarget && r.pacePct >= 95);
+    if (openCard === "offtrack") return rows.filter((r) => r.hasTarget && r.pacePct < 75);
     if (openCard === "total") return [...rows].sort((a, b) => Number(b.value) - Number(a.value));
     return rows; // overall
   }, [openCard, rows]);
@@ -251,28 +266,34 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* KPI strip (6, mirroring the mockup) */}
+      {/* KPI strip — pace-aware, with numerator/denominator visible. */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <KpiCard icon={BarChart3} label="Indicators On Pace" value={`${kpis.onPace} / ${kpis.indicatorsTargeted}`}
+          accent={kpis.indicatorsTargeted > 0 ? kpis.overallPaceStatus.color : undefined}
+          note={`vs expected · ${periodPct}% of period elapsed`} onClick={() => setOpenCard("ontrack")} />
         <KpiCard icon={Target} label="Overall Achievement"
           value={kpis.targetedOverall ? `${formatPercent(kpis.overallPct)}%` : "—"}
-          accent={kpis.targetedOverall ? kpis.overallStatus.color : undefined}
-          badge={kpis.targetedOverall ? kpis.overallStatus : undefined} onClick={() => setOpenCard("overall")} />
-        <KpiCard icon={BarChart3} label="Indicators On Track" value={`${kpis.onTrack} / ${kpis.indicatorsTargeted}`}
-          note={`${kpis.indicatorCount} in scope`} onClick={() => setOpenCard("ontrack")} />
-        <KpiCard icon={Users} label="Reporting Organisations" value={`${kpis.reportingOrganizations} / ${kpis.scopedOrgCount}`}
-          note="reporting" onClick={() => setOpenCard("reporting")} />
-        <KpiCard icon={CheckCircle2} label="Reporting Completeness" value={`${completeness}%`} note="orgs reporting" onClick={() => setOpenCard("completeness")} />
+          accent={kpis.targetedOverall ? kpis.overallPaceStatus.color : undefined}
+          badge={kpis.targetedOverall ? kpis.overallPaceStatus : undefined}
+          note={kpis.targetedOverall ? `${formatWholeNumber(kpis.totalAchieved)} / ${formatWholeNumber(kpis.totalTarget)} · exp ${periodPct}%` : undefined}
+          onClick={() => setOpenCard("overall")} />
+        <KpiCard icon={AlertTriangle} label="Indicators Behind Pace" value={String(kpis.behindPace)}
+          accent={kpis.behindPace > 0 ? PERFORMANCE_STATUS_COLORS["off-track"] : undefined}
+          note="< expected-to-date" onClick={() => setOpenCard("offtrack")} />
+        <KpiCard icon={Users} label="Organisations Submitted" value={`${reportingAnalysis.orgsSubmitted} / ${reportingAnalysis.orgsExpected}`}
+          note="submitted this period" onClick={() => setOpenCard("reporting")} />
+        <KpiCard icon={CheckCircle2} label="Reporting Completeness" value={`${completeness}%`}
+          note={`${formatWholeNumber(reportingAnalysis.cellsReported)} / ${formatWholeNumber(reportingAnalysis.cellsExpected)} indicator cells`} onClick={() => setOpenCard("completeness")} />
         <KpiCard icon={Database} label="Total Achieved" value={formatWholeNumber(kpis.totalAchieved)}
-          note={`vs Target ${formatWholeNumber(kpis.totalTarget)}`} onClick={() => setOpenCard("total")} />
-        <KpiCard icon={AlertTriangle} label="Indicators Off Track" value={String(offTrackCount)}
-          accent={offTrackCount > 0 ? PERFORMANCE_STATUS_COLORS["off-track"] : undefined} note="need attention" onClick={() => setOpenCard("offtrack")} />
+          note={kpis.dominantShare >= 0.4 ? `${Math.round(kpis.dominantShare * 100)}% is "${kpis.dominantLabel}"` : `vs Target ${formatWholeNumber(kpis.totalTarget)}`}
+          onClick={() => setOpenCard("total")} />
       </div>
 
       {/* Programme Performance + Trend */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:col-span-2">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-foreground">Programme Performance (Target vs Achieved)</h2>
+            <h2 className="text-sm font-semibold text-foreground">Programme Performance (vs expected-to-date · {periodPct}% elapsed)</h2>
             <Button variant="outline" size="sm" disabled={indicatorMetrics.length === 0}
               onClick={() => downloadMetricsCsv(indicatorMetrics, "executive-performance.csv")}>
               <Download className="mr-2 h-4 w-4" /> Export
@@ -284,12 +305,13 @@ export default function ExecutiveDashboardPage() {
             <p className="py-10 text-center text-sm text-muted-foreground">No indicators with data for this project/period.</p>
           ) : (
             <div className="w-full max-w-full overflow-x-auto">
-              <table className="w-full min-w-[560px] border-collapse text-sm">
+              <table className="w-full min-w-[680px] border-collapse text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                     <th className="px-2 py-2">Indicator</th>
-                    <th className="px-2 py-2 text-right">Achievement</th>
-                    <th className="px-2 py-2">Target vs Achieved</th>
+                    <th className="px-2 py-2 text-right">Achieved / Target</th>
+                    <th className="px-2 py-2 text-right">Pace</th>
+                    <th className="px-2 py-2">Progress (bar=achieved · line=expected)</th>
                     <th className="px-2 py-2 text-right">Status</th>
                   </tr>
                 </thead>
@@ -300,12 +322,21 @@ export default function ExecutiveDashboardPage() {
                         <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">{i + 1}</span>
                         {r.label}
                       </td>
+                      <td className="px-2 py-2.5 text-right tabular-nums text-foreground">
+                        {formatWholeNumber(r.value)}{r.hasTarget ? ` / ${formatWholeNumber(r.target)}` : ""}
+                      </td>
                       <td className="px-2 py-2.5 text-right font-semibold tabular-nums" style={{ color: r.hasTarget ? r.status.color : undefined }}>
-                        {r.hasTarget ? `${formatPercent(r.pct)}%` : "—"}
+                        {r.hasTarget ? `${formatPercent(r.pacePct)}%` : "—"}
                       </td>
                       <td className="px-2 py-2.5">
-                        <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                        {/* Bar = achieved as % of annual target (uncapped visually to 100 for
+                            layout); the vertical line marks expected-to-date. Bar past the
+                            line = ahead of pace, short of it = behind. */}
+                        <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted">
                           <div className="h-full rounded-full" style={{ width: `${Math.min(Math.max(r.pct, 0), 100)}%`, backgroundColor: r.status.color }} />
+                          {r.hasTarget ? (
+                            <div className="absolute top-[-2px] h-[calc(100%+4px)] w-0.5 bg-foreground/70" style={{ left: `${Math.min(Math.max(periodFraction * 100, 0), 100)}%` }} />
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-2 py-2.5 text-right"><StatusBadge status={r.status} /></td>
@@ -317,7 +348,7 @@ export default function ExecutiveDashboardPage() {
           )}
         </div>
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Performance Trend</h2>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Volume Trend <span className="font-normal text-muted-foreground">(top indicators, raw counts)</span></h2>
           {trend.length > 0 && trendXKey ? (
             <div className="h-[300px] w-full min-w-0 overflow-hidden">
               <ResponsiveContainer width="100%" height="100%">
@@ -337,7 +368,13 @@ export default function ExecutiveDashboardPage() {
       </div>
 
       {/* Programme Figures — config-driven funder-report figures for the current
-          project (hidden when no project is selected or none is configured). */}
+          project (hidden when no project is selected or none is configured).
+          These are PROJECT+PERIOD scoped only (funder-report engine); they do not
+          follow the coordinator/organisation/district/indicator filters, so we say
+          so when one of those is active to avoid a false "filtered" impression. */}
+      {(filters.coordinatorId !== "all" || filters.organizationId !== "all" || filters.district !== "all" || filters.indicatorId !== "all") ? (
+        <p className="-mb-1 text-[11px] text-muted-foreground">Programme Figures below are project-level (funder-report figures) and are not narrowed by the coordinator/organisation/district/indicator filters.</p>
+      ) : null}
       <ProgrammeFigures
         projectId={filters.projectId !== "all" ? Number(filters.projectId) : null}
         periodStart={filters.dateFrom || undefined}
@@ -373,7 +410,7 @@ export default function ExecutiveDashboardPage() {
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Indicator Performance Mix</h2>
+          <h2 className="mb-2 text-sm font-semibold text-foreground">Indicator Pace Mix</h2>
           {statusMix.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">No indicator data in scope.</p>
           ) : (
@@ -388,8 +425,8 @@ export default function ExecutiveDashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-foreground">{onTrackShare}%</span>
-                  <span className="text-[11px] text-muted-foreground">on track+</span>
+                  <span className="text-2xl font-bold text-foreground">{onPaceShare}%</span>
+                  <span className="text-[11px] text-muted-foreground">on pace</span>
                 </div>
               </div>
               <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -401,7 +438,7 @@ export default function ExecutiveDashboardPage() {
                 ))}
               </div>
               <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                {targetedCount} targeted indicator{targetedCount === 1 ? "" : "s"} · {onTrackShare}% on track or better
+                {targetedCount} targeted indicator{targetedCount === 1 ? "" : "s"} · {onPaceShare}% on/ahead of pace ({periodPct}% elapsed)
               </p>
             </>
           )}
@@ -423,19 +460,80 @@ export default function ExecutiveDashboardPage() {
           )}
         </MiniPanel>
 
-        <MiniPanel title="Indicators Requiring Attention">
-          {attention.length === 0 ? <EmptyRow text="No at-risk or off-track indicators. 🎉" /> : (
+        <MiniPanel title="Indicators Behind Pace">
+          {attention.length === 0 ? <EmptyRow text="No indicators behind pace. 🎉" /> : (
             <table className="w-full text-sm">
               <tbody>
                 {attention.map((r) => (
                   <tr key={String(r.indicatorId)} className="border-t border-border first:border-t-0">
                     <td className="py-2 pr-2 text-foreground">{r.label}</td>
-                    <td className="py-2 text-right font-semibold tabular-nums" style={{ color: r.status.color }}>{formatPercent(r.pct)}%</td>
+                    <td className="py-2 text-right font-semibold tabular-nums" style={{ color: r.status.color }}>{formatPercent(r.pacePct)}%</td>
                     <td className="py-2 pl-2 text-right"><StatusBadge status={r.status} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          )}
+        </MiniPanel>
+      </div>
+
+      {/* Reporting gaps by coordinator + district + the non-reporting exception list
+          — the two dimensions (coordinator, district) that were previously only
+          filterable, plus who has NOT submitted, so gaps are actionable at a glance. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <MiniPanel title="Reporting by Coordinator (worst first)">
+          {reportingAnalysis.byCoordinator.length === 0 ? <EmptyRow text="No coordinators in scope." /> : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                  <th className="py-2 pr-2">Coordinator</th>
+                  <th className="py-2 px-2 text-right">Orgs</th>
+                  <th className="py-2 pl-2 text-right">Completeness</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportingAnalysis.byCoordinator.map((c) => (
+                  <tr key={c.id} className="border-t border-border">
+                    <td className="py-2 pr-2 text-foreground">{c.name}</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.orgsReported}/{c.orgsExpected}</td>
+                    <td className="py-2 pl-2 text-right font-semibold tabular-nums" style={{ color: getPerformanceStatusFromValues(c.completeness, 100).color }}>{c.completeness}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </MiniPanel>
+
+        <MiniPanel title="Reporting by District (worst first)">
+          {reportingAnalysis.byDistrict.length === 0 ? <EmptyRow text="No districts in scope." /> : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                  <th className="py-2 pr-2">District</th>
+                  <th className="py-2 px-2 text-right">Orgs submitted</th>
+                  <th className="py-2 pl-2 text-right">Reporting</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportingAnalysis.byDistrict.slice(0, 12).map((d) => (
+                  <tr key={d.district} className="border-t border-border">
+                    <td className="py-2 pr-2 text-foreground">{d.district}</td>
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{d.orgsReported}/{d.orgsExpected}</td>
+                    <td className="py-2 pl-2 text-right font-semibold tabular-nums" style={{ color: getPerformanceStatusFromValues(d.reportingPct, 100).color }}>{d.reportingPct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </MiniPanel>
+
+        <MiniPanel title={`Not Yet Submitted (${notReportedOrganizations.length})`}>
+          {notReportedOrganizations.length === 0 ? <EmptyRow text="Every organisation in scope has submitted. 🎉" /> : (
+            <ul className="max-h-[220px] space-y-1 overflow-y-auto text-sm">
+              {notReportedOrganizations.map((n) => (
+                <li key={n} className="text-foreground">{n}</li>
+              ))}
+            </ul>
           )}
         </MiniPanel>
       </div>
