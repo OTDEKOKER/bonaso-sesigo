@@ -111,7 +111,13 @@ export interface CoordinatorTargetChildContribution {
   share_percent: number;
 }
 
-const LIST_ALL_PAGE_SIZE = "500";
+// Matches the backend CoordinatorTargetPagination.max_page_size (2000). listAll
+// walks pages serially, and every page runs the coordinator rollup engine
+// (get_coordinator_performance) over its rows, so with ~5k targets a 500 page
+// size means ~11 sequential round trips + rollup passes. A larger page (~3 pages)
+// cuts the round trips and rollup invocations without changing behaviour. Kept at
+// (not above) max_page_size so a page is never larger than the server will honour.
+const LIST_ALL_PAGE_SIZE = "2000";
 
 // Backed by analysis.CoordinatorTargetViewSet (DefaultRouter under /api/analysis/).
 // Single canonical endpoint — no path probing or local fabrication fallback:

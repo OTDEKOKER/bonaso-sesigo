@@ -223,7 +223,15 @@ const normalizeAggregateList = (aggregates?: Aggregate[] | null): Aggregate[] =>
 // Aggregates Service
 // ============================================================================
 
-const LIST_ALL_PAGE_SIZE = '500';
+// Matches the backend AggregatePagination.max_page_size (5000). The all-pages
+// fetch reassembles the full scoped set client-side, so the only thing page
+// size controls is how many round trips it takes. A larger page means far fewer
+// pages (~19k approved rows → 4 pages instead of ~38), and each aggregates list
+// request forces a full result-set sort + COUNT on the DB, so cutting the page
+// count is the dominant win for the Aggregates page load. Must never exceed
+// max_page_size or DRF clamps the response while the client keeps paging by the
+// requested size — which would silently drop rows.
+const LIST_ALL_PAGE_SIZE = '5000';
 const LIST_ALL_MAX_PAGES = 500;
 const LIST_ALL_REQUEST_TIMEOUT_MS = 45_000;
 const LIST_ALL_MAX_RETRIES = 2;
