@@ -6,7 +6,7 @@ import { ArrowRight, Printer, ShieldCheck } from "lucide-react"
 // Existing in-app support contact (see components/shared/maintenance-screen.tsx).
 // TODO(management): confirm this is the correct public support address for the
 // CSO Mapping questionnaire before wide distribution.
-const SUPPORT_EMAIL = "info@bonaso.org"
+const SUPPORT_EMAIL = "info@bonaso.org.bw"
 // BONASO support phone (Botswana). Rendered with a tel: link (spaces stripped).
 const SUPPORT_PHONE = "+267 317 0582"
 
