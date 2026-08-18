@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260818_v20",
+  "version": "20260818_v21",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -484,7 +484,7 @@
         {
           "name": "q_ah0fy3e0",
           "type": "select_one",
-          "label": "Is the organisational currently operational?",
+          "label": "Is the organisation currently operational?",
           "hint": null,
           "required": false,
           "multiline": false,
