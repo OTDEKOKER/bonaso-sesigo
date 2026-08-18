@@ -55,6 +55,12 @@ const SCHEMA = {
           list: "respondent_type",
           choices: [{ name: "cso", label: "CSO" }],
         }),
+        field("primary_district", "select_one", {
+          label: "Primary district or geographic area represented",
+          required: true,
+          list: "district",
+          choices: [{ name: "Gaborone", label: "Gaborone" }],
+        }),
         field("physical_address", "text", { label: "Physical address" }),
       ],
     },
@@ -105,16 +111,19 @@ describe("CSO Mapping questionnaire — office location capture", () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  it("shows the Capture Current Location button directly below Physical address", async () => {
+  it("shows the Capture Current Location button directly below Primary district", async () => {
     installGeolocation()
     render(<NativeQuestionnaire />)
     await gotoAdminStep()
 
-    const address = screen.getByText("Physical address")
+    const primary = screen.getByText("Primary district or geographic area represented")
     const button = screen.getByRole("button", { name: /Capture Current Location/i })
     expect(button).toBeInTheDocument()
-    // The capture control comes AFTER the Physical address field in the DOM.
-    expect(address.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The capture control comes AFTER the Primary district field in the DOM...
+    expect(primary.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // ...and BEFORE the Physical address field (anchored to primary_district).
+    const address = screen.getByText("Physical address")
+    expect(button.compareDocumentPosition(address) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it("shows 'Capturing location…' and disables the button while capturing", async () => {

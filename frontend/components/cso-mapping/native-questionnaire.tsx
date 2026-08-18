@@ -49,9 +49,9 @@ const TOKEN_KEY = "cso-mapping-draft-token" // stores ONLY the opaque token, nev
 const AUTOSAVE_DELAY = 1500
 
 // The location-capture widget is anchored inside this section, directly below
-// the "physical_address" question.
+// the "primary_district" (primary location) question.
 const LOCATION_SECTION = "administrative_information"
-const LOCATION_ANCHOR_FIELD = "physical_address"
+const LOCATION_ANCHOR_FIELD = "primary_district"
 const LOCATION_REQUIRED_MSG =
   "The CSO office location is required. Please use the “Capture Current Location” button while at the office."
 // A select_one with more options than this renders as a dropdown, not radios
