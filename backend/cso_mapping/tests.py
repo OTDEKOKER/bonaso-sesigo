@@ -1045,3 +1045,48 @@ class MultiSelectQuestionTests(APITestCase):
             for cell in row
         )
         self.assertTrue(found, f"expected joined labels {joined!r} in the workbook")
+
+
+class FundingSourcesTests(APITestCase):
+    """The structured 'funding sources' composite field (v18)."""
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("cso-mapping-submit")
+
+    def test_records_stored_and_blank_records_dropped(self):
+        payload = build_valid_payload("cso")
+        payload["annex2_funding_sources"] = [
+            {
+                "funder_name": "Global Fund",
+                "project_name": "HIV Prevention",
+                "scope": "National",
+                "period": "Jan 2025 - Dec 2026",
+            },
+            {"funder_name": "", "project_name": "", "scope": "", "period": ""},  # blank → dropped
+            {"funder_name": "PEPFAR"},
+        ]
+        resp = self.client.post(self.url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        sub = CsoMappingSubmission.objects.latest("id")
+        items = sub.answers.get("annex2_funding_sources")
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0]["funder_name"], "Global Fund")
+        self.assertEqual(items[1], {"funder_name": "PEPFAR"})
+
+    def test_record_with_content_requires_funder_name(self):
+        payload = build_valid_payload("cso")
+        payload["annex2_funding_sources"] = [
+            {"project_name": "Some project", "period": "2025"},  # content but no funder
+        ]
+        resp = self.client.post(self.url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("annex2_funding_sources", resp.data)
+
+    def test_empty_funding_is_optional(self):
+        payload = build_valid_payload("cso")
+        payload["annex2_funding_sources"] = [{"funder_name": "", "project_name": ""}]
+        resp = self.client.post(self.url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        sub = CsoMappingSubmission.objects.latest("id")
+        self.assertNotIn("annex2_funding_sources", sub.answers)

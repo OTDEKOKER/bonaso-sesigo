@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260818_v17",
+  "version": "20260818_v18",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -1226,44 +1226,46 @@
           "constraint": null
         },
         {
-          "name": "annex2_a2_3d",
-          "type": "text",
-          "label": "Current funder / donor name(s) supporting your organisation",
-          "hint": "Name of each current funder or donor. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "name": "annex2_funding_sources",
+          "type": "funding_sources",
+          "label": "Current funding sources",
+          "hint": "Add each current source of funding or support. You can add more than one.",
           "required": false,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
-        },
-        {
-          "name": "annex2_a2_3e",
-          "type": "text",
-          "label": "Project / grant name(s)",
-          "hint": "The project or grant name the funding supports. If you have more than one funder, list one per line, in the same order across all four funding questions.",
-          "required": false,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
-        },
-        {
-          "name": "annex2_a2_3f",
-          "type": "text",
-          "label": "Scope of the funding",
-          "hint": "What the funding covers — e.g. thematic area, activities, districts, or amount. If you have more than one funder, list one per line, in the same order across all four funding questions.",
-          "required": false,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
-        },
-        {
-          "name": "annex2_a2_3g",
-          "type": "text",
-          "label": "Funding period",
-          "hint": "The funding period, e.g. Jan 2025 – Dec 2026. If you have more than one funder, list one per line, in the same order across all four funding questions.",
-          "required": false,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "item_label": "funding source",
+          "sub_fields": [
+            {
+              "name": "funder_name",
+              "type": "text",
+              "label": "Funder / donor name",
+              "required": true,
+              "multiline": false
+            },
+            {
+              "name": "project_name",
+              "type": "text",
+              "label": "Project / grant name",
+              "required": false,
+              "multiline": false
+            },
+            {
+              "name": "scope",
+              "type": "text",
+              "label": "Scope of the funding",
+              "required": false,
+              "multiline": true
+            },
+            {
+              "name": "period",
+              "type": "text",
+              "label": "Funding period",
+              "required": false,
+              "multiline": false,
+              "placeholder": "e.g. Jan 2025 – Dec 2026"
+            }
+          ]
         }
       ]
     },
@@ -2388,44 +2390,46 @@
           "constraint": null
         },
         {
-          "name": "annex3_a3_3d",
-          "type": "text",
-          "label": "Current funder / donor name(s) supporting your coordinating body / network",
-          "hint": "Name of each current funder or donor. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "name": "annex3_funding_sources",
+          "type": "funding_sources",
+          "label": "Current funding sources",
+          "hint": "Add each current source of funding or support. You can add more than one.",
           "required": false,
-          "multiline": true,
+          "multiline": false,
           "relevant": null,
-          "constraint": null
-        },
-        {
-          "name": "annex3_a3_3e",
-          "type": "text",
-          "label": "Project / grant name(s)",
-          "hint": "The project or grant name the funding supports. If you have more than one funder, list one per line, in the same order across all four funding questions.",
-          "required": false,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
-        },
-        {
-          "name": "annex3_a3_3f",
-          "type": "text",
-          "label": "Scope of the funding",
-          "hint": "What the funding covers — e.g. thematic area, activities, districts, or amount. If you have more than one funder, list one per line, in the same order across all four funding questions.",
-          "required": false,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
-        },
-        {
-          "name": "annex3_a3_3g",
-          "type": "text",
-          "label": "Funding period",
-          "hint": "The funding period, e.g. Jan 2025 – Dec 2026. If you have more than one funder, list one per line, in the same order across all four funding questions.",
-          "required": false,
-          "multiline": true,
-          "relevant": null,
-          "constraint": null
+          "constraint": null,
+          "item_label": "funding source",
+          "sub_fields": [
+            {
+              "name": "funder_name",
+              "type": "text",
+              "label": "Funder / donor name",
+              "required": true,
+              "multiline": false
+            },
+            {
+              "name": "project_name",
+              "type": "text",
+              "label": "Project / grant name",
+              "required": false,
+              "multiline": false
+            },
+            {
+              "name": "scope",
+              "type": "text",
+              "label": "Scope of the funding",
+              "required": false,
+              "multiline": true
+            },
+            {
+              "name": "period",
+              "type": "text",
+              "label": "Funding period",
+              "required": false,
+              "multiline": false,
+              "placeholder": "e.g. Jan 2025 – Dec 2026"
+            }
+          ]
         }
       ]
     },

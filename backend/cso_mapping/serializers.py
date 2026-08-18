@@ -22,8 +22,12 @@ from .models import CsoMappingDraft, CsoMappingSubmission
 from .schema import (
     CORE_BOOL_FIELDS,
     CORE_TEXT_FIELDS,
+    FUNDING_ITEM_KEYS,
+    FUNDING_ITEM_REQUIRED_KEYS,
+    FUNDING_SOURCES_TYPE,
     MAX_ANSWER_LENGTH,
     MAX_DRAFT_BYTES,
+    MAX_FUNDING_ITEMS,
     choice_names,
     comment_prefix,
     field_is_active,
@@ -31,6 +35,59 @@ from .schema import (
     load_schema,
     strip_inactive_branch_answers,
 )
+
+
+def _funding_spec(field):
+    """The allowed keys, required keys, required label and item label for a
+    funding-sources field — all read from the schema (``sub_fields``), so the
+    record layout is config-driven. Falls back to the module defaults only if a
+    field somehow ships without sub-fields."""
+    subs = field.get("sub_fields") or []
+    keys = [sf["name"] for sf in subs if isinstance(sf, dict) and sf.get("name")]
+    required = [
+        sf["name"] for sf in subs if isinstance(sf, dict) and sf.get("name") and sf.get("required")
+    ]
+    required_label = next(
+        (sf.get("label") for sf in subs if isinstance(sf, dict) and sf.get("required")), None
+    )
+    return (
+        keys or list(FUNDING_ITEM_KEYS),
+        required or list(FUNDING_ITEM_REQUIRED_KEYS),
+        required_label or "a name",
+        field.get("item_label") or "funding source",
+    )
+
+
+def _clean_funding_items(field, raw_items):
+    """Sanitize a funding-sources answer into a list of {key: str} dicts.
+
+    Returns ``(items, error)``. Empty records are dropped; every kept record must
+    carry the required key(s). The key set is taken from the schema field, not
+    hard-coded. Values are trimmed and length-capped. Never raises.
+    """
+    keys, required_keys, required_label, item_label = _funding_spec(field)
+    if not isinstance(raw_items, list):
+        return [], None
+    if len(raw_items) > MAX_FUNDING_ITEMS:
+        return [], f"Please list at most {MAX_FUNDING_ITEMS} {item_label}s."
+    cleaned = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        obj = {}
+        for key in keys:
+            value = item.get(key, "")
+            value = "" if value is None else str(value).strip()
+            if len(value) > MAX_ANSWER_LENGTH:
+                return [], "This answer is too long."
+            if value:
+                obj[key] = value
+        if not obj:
+            continue  # a wholly blank record — ignore it
+        if any(not obj.get(key) for key in required_keys):
+            return [], f"Please provide {required_label} for each {item_label}."
+        cleaned.append(obj)
+    return cleaned, None
 
 # Max lengths for the CharField-backed core columns (must not exceed the model).
 CORE_MAXLEN = {
@@ -66,6 +123,13 @@ class PublicSubmissionSerializer(serializers.Serializer):
             for _section, field in iter_answerable_fields(schema)
             if field["type"] == "select_multiple"
         }
+        # Composite "funding sources" answers arrive as a list of objects and must
+        # keep that shape through relevance/validation (not be stringified).
+        funding_fields = {
+            field["name"]
+            for _section, field in iter_answerable_fields(schema)
+            if field["type"] == FUNDING_SOURCES_TYPE
+        }
         ctx: dict[str, object] = {}
         for key, value in data.items():
             if key in multi_fields:
@@ -75,6 +139,8 @@ class PublicSubmissionSerializer(serializers.Serializer):
                     ctx[key] = []
                 else:
                     ctx[key] = [str(value).strip()]
+            elif key in funding_fields:
+                ctx[key] = value if isinstance(value, list) else []
             else:
                 ctx[key] = ("" if value is None else str(value)).strip()
 
@@ -120,6 +186,19 @@ class PublicSubmissionSerializer(serializers.Serializer):
                 continue  # inactive branch — ignore any submitted value
 
             value = ctx.get(name, "")
+
+            # Funding sources: a list of small objects, stored in the answers blob.
+            if field["type"] == FUNDING_SOURCES_TYPE:
+                cleaned, funding_error = _clean_funding_items(field, value)
+                if funding_error:
+                    errors[name] = funding_error
+                    continue
+                if field.get("required") and not cleaned:
+                    errors[name] = "This field is required."
+                    continue
+                if cleaned:
+                    answers[name] = cleaned
+                continue
 
             # Multi-select: a list of choice names, stored in the answers blob.
             if field["type"] == "select_multiple":
@@ -269,6 +348,15 @@ class DraftWriteSerializer(serializers.ModelSerializer):
             field = fields_by_name.get(name)
             if field is None:
                 continue  # unknown key — ignored (stripped on save), not an error
+            if field["type"] == FUNDING_SOURCES_TYPE:
+                if not isinstance(raw, list):
+                    raise serializers.ValidationError(f"'{name}' must be a list.")
+                for item in raw:
+                    if isinstance(item, dict) and any(
+                        v is not None and len(str(v)) > MAX_ANSWER_LENGTH for v in item.values()
+                    ):
+                        raise serializers.ValidationError(f"'{name}' is too long.")
+                continue
             if field["type"] == "select_multiple":
                 items = raw if isinstance(raw, list) else ([] if raw in (None, "") else [raw])
                 if sum(len(str(i)) for i in items) > MAX_ANSWER_LENGTH:

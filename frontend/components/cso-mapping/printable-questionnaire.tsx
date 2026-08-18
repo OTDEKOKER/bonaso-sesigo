@@ -71,7 +71,28 @@ function PrintField({ field, number }: { field: Field; number: number | null }) 
         <p className="mt-0.5 text-xs italic text-slate-500">Answer only if applicable.</p>
       ) : null}
 
-      {isSelect ? (
+      {field.type === "funding_sources" ? (
+        <div className="mt-2 space-y-3">
+          {[0, 1].map((n) => (
+            <div key={n} className="break-inside-avoid rounded border border-slate-300 p-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {field.item_label || "funding source"} {n + 1}
+              </p>
+              <div className="mt-1 space-y-2">
+                {(field.sub_fields ?? []).map((sub) => (
+                  <div key={sub.name}>
+                    <span className="text-xs text-slate-600">
+                      {sub.label}
+                      {sub.required ? " *" : ""}
+                    </span>
+                    {sub.multiline ? <WriteBox /> : <WriteLine />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : isSelect ? (
         <>
           {field.type === "select_multiple" ? (
             <p className="mt-1 text-xs text-slate-500">Select all that apply.</p>

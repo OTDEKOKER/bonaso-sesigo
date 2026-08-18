@@ -15,6 +15,7 @@ import {
   MessageSquarePlus,
   Navigation,
   Pencil,
+  Plus,
   RotateCcw,
   Send,
   Trash2,
@@ -27,9 +28,11 @@ import {
   type Answers,
   type Field,
   type FormSchema,
+  type FundingItem,
   type Section,
   LOCATION_ERROR_KEY,
   answerComments,
+  asFundingItems,
   asList,
   buildPayload,
   commentKey,
@@ -138,6 +141,21 @@ function choiceLabel(field: Field, value: string): string {
 
 /** A single display string for any answer: multi-select joined, choices labelled. */
 function displayValue(field: Field, value: AnswerValue | undefined): string {
+  if (field.type === "funding_sources") {
+    const subs = field.sub_fields ?? []
+    const keys = subs.length ? subs.map((s) => s.name) : ["funder_name", "project_name", "scope", "period"]
+    const labelOf = (k: string) => subs.find((s) => s.name === k)?.label ?? k
+    return asFundingItems(value)
+      .map((it, i) => {
+        const parts = keys
+          .map((k) => [labelOf(k), String(it[k] ?? "").trim()] as const)
+          .filter(([, v]) => v)
+          .map(([l, v]) => `${l}: ${v}`)
+        return parts.length ? `${i + 1}. ${parts.join("; ")}` : ""
+      })
+      .filter(Boolean)
+      .join("\n")
+  }
   if (field.type === "select_multiple") {
     return asList(value)
       .map((v) => choiceLabel(field, v))
@@ -1321,6 +1339,123 @@ function LocationCapture({
   )
 }
 
+/**
+ * Composite "funding sources" field: one record shown by default, with a
+ * plus button to add more (each extra record can be removed). Each record's
+ * sub-fields are defined by `field.sub_fields`. The stored answer is a list of
+ * `{sub_field_name: value}` records; empty records are pruned before submit.
+ */
+function FundingSources({
+  field,
+  value,
+  error,
+  hintId,
+  describedBy,
+  onChange,
+}: {
+  field: Field
+  value: AnswerValue | undefined
+  error?: string
+  hintId?: string
+  describedBy?: string
+  onChange: (value: AnswerValue) => void
+}) {
+  const subs = field.sub_fields ?? []
+  const stored = asFundingItems(value)
+  // Always show at least one record; the respondent adds more with the + button.
+  const rows: FundingItem[] = stored.length ? stored : [{}]
+  const itemLabel = field.item_label || "funding source"
+
+  const commit = (next: FundingItem[]) => onChange(next as unknown as AnswerValue)
+  const setCell = (index: number, key: string, val: string) =>
+    commit(rows.map((row, i) => (i === index ? { ...row, [key]: val } : row)))
+  const addRow = () => commit([...rows, {}])
+  const removeRow = (index: number) => commit(rows.filter((_, i) => i !== index))
+
+  return (
+    <fieldset id={`cso-field-${field.name}`} aria-describedby={describedBy}>
+      <legend className="text-sm font-semibold text-slate-800">
+        {field.label}
+        {field.required ? <span className="ml-0.5 text-red-500">*</span> : null}
+      </legend>
+      {field.hint ? (
+        <p id={hintId} className="mt-0.5 text-xs text-slate-500">
+          {field.hint}
+        </p>
+      ) : null}
+
+      <div className="mt-2 flex flex-col gap-3">
+        {rows.map((row, index) => (
+          <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            {rows.length > 1 ? (
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {itemLabel} {index + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  aria-label={`Remove ${itemLabel} ${index + 1}`}
+                  className="inline-flex items-center gap-1 rounded text-xs font-medium text-red-600 hover:text-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Remove
+                </button>
+              </div>
+            ) : null}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {subs.map((sub) => {
+                const id = `${field.name}-${index}-${sub.name}`
+                const spanFull = sub.multiline ? "sm:col-span-2" : ""
+                return (
+                  <label key={sub.name} className={`text-sm font-medium text-slate-700 ${spanFull}`}>
+                    {sub.label}
+                    {sub.required ? <span className="ml-0.5 text-red-500">*</span> : null}
+                    {sub.multiline ? (
+                      <textarea
+                        id={id}
+                        rows={2}
+                        value={String(row[sub.name] ?? "")}
+                        placeholder={sub.placeholder ?? undefined}
+                        onChange={(e) => setCell(index, sub.name, e.target.value)}
+                        className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none focus:border-[#356a8d] focus:ring-2 focus:ring-[#356a8d]/30"
+                      />
+                    ) : (
+                      <input
+                        id={id}
+                        type="text"
+                        value={String(row[sub.name] ?? "")}
+                        placeholder={sub.placeholder ?? undefined}
+                        onChange={(e) => setCell(index, sub.name, e.target.value)}
+                        className="mt-1 block min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none focus:border-[#356a8d] focus:ring-2 focus:ring-[#356a8d]/30"
+                      />
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={addRow}
+        className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-dashed border-[#356a8d]/60 px-4 py-2 text-sm font-semibold text-[#356a8d] transition-colors hover:bg-[#eef4f8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#356a8d]/50"
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Add another {itemLabel}
+      </button>
+
+      {error ? (
+        <p className="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+          <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          {error}
+        </p>
+      ) : null}
+    </fieldset>
+  )
+}
+
 function FieldControl({
   field,
   value,
@@ -1363,6 +1498,19 @@ function FieldControl({
       {error}
     </p>
   ) : null
+
+  if (field.type === "funding_sources") {
+    return (
+      <FundingSources
+        field={field}
+        value={value}
+        error={error}
+        hintId={hintId}
+        describedBy={describedBy}
+        onChange={onChange}
+      />
+    )
+  }
 
   if (field.type === "select_multiple") {
     const choices = field.choices ?? []

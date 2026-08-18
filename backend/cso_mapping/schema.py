@@ -91,9 +91,17 @@ def load_schema() -> dict:
     return _bundled_schema()
 
 
+# A composite, repeatable field ("Funding sources" style): its answer is a LIST
+# of small objects, one per record. The sub-fields are fixed and known to both
+# the backend (validation/storage/export) and the frontend renderer.
+FUNDING_SOURCES_TYPE = "funding_sources"
+FUNDING_ITEM_KEYS = ("funder_name", "project_name", "scope", "period")
+FUNDING_ITEM_REQUIRED_KEYS = ("funder_name",)
+MAX_FUNDING_ITEMS = 20
+
 # Field types the editor + renderer understand, and the relevance operators the
 # evaluator supports. Kept in sync with field_is_active / the frontend renderer.
-EDITABLE_FIELD_TYPES = {"text", "select_one", "select_multiple", "note"}
+EDITABLE_FIELD_TYPES = {"text", "select_one", "select_multiple", "note", FUNDING_SOURCES_TYPE}
 # Field types whose answer is a LIST of choice names (not a scalar string).
 MULTI_SELECT_TYPES = {"select_multiple"}
 # eq/ne compare a scalar; "selected" tests membership of a value in a
@@ -201,6 +209,24 @@ def validate_schema(data) -> None:
                         f"Question '{name}': a multiple-choice question needs a valid "
                         "choice list."
                     )
+            if ftype == FUNDING_SOURCES_TYPE:
+                subs = f.get("sub_fields")
+                if not isinstance(subs, list) or not subs:
+                    errors.append(
+                        f"Question '{name}': a funding-sources question needs sub-fields."
+                    )
+                else:
+                    for sf in subs:
+                        sub_name = sf.get("name") if isinstance(sf, dict) else None
+                        if not sub_name or not _FIELD_NAME_RE.match(sub_name):
+                            errors.append(
+                                f"Question '{name}': each funding sub-field needs a valid name."
+                            )
+                        elif sf.get("type") not in ("text", "select_one"):
+                            errors.append(
+                                f"Question '{name}': funding sub-field '{sub_name}' has an "
+                                "unsupported type."
+                            )
             _check_condition(f.get("relevant"), all_names, f"Question '{name}'", errors)
 
     missing = CORE_FIELDS - all_names
@@ -270,6 +296,26 @@ def choice_label(schema: dict, list_name: str, name: str) -> str:
 def display_answer(schema: dict, field: dict, value) -> str:
     """Render a stored answer for export/display: multi-select joined, choices labelled."""
     ftype = field.get("type")
+    if ftype == FUNDING_SOURCES_TYPE:
+        items = value if isinstance(value, list) else []
+        labels = {
+            sf["name"]: sf.get("label", sf["name"])
+            for sf in (field.get("sub_fields") or [])
+            if isinstance(sf, dict) and sf.get("name")
+        }
+        keys = list(labels) or list(FUNDING_ITEM_KEYS)
+        lines = []
+        for i, item in enumerate(items, 1):
+            if not isinstance(item, dict):
+                continue
+            parts = [
+                f"{labels.get(k, k)}: {str(item.get(k, '') or '').strip()}"
+                for k in keys
+                if str(item.get(k, "") or "").strip()
+            ]
+            if parts:
+                lines.append(f"{i}. " + "; ".join(parts))
+        return "\n".join(lines)
     if ftype == "select_multiple":
         items = value if isinstance(value, list) else ([] if value in (None, "") else [value])
         return ", ".join(choice_label(schema, field.get("list", ""), v) for v in items)
