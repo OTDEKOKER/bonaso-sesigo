@@ -1118,6 +1118,14 @@ function LocationCapture({
   const [errMsg, setErrMsg] = useState<string | null>(null)
   const capturing = status === "capturing"
 
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualLat, setManualLat] = useState(
+    typeof answers.latitude === "string" ? answers.latitude : "",
+  )
+  const [manualLng, setManualLng] = useState(
+    typeof answers.longitude === "string" ? answers.longitude : "",
+  )
+
   const capture = () => {
     setErrMsg(null)
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
@@ -1145,6 +1153,52 @@ function LocationCapture({
       },
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
     )
+  }
+
+  // Manual entry: apply typed coordinates. When both are valid they are stored
+  // (method "manual_entry"); while incomplete/invalid the stored coordinate is
+  // cleared so an unfinished manual entry cannot pass the required-location gate.
+  const applyManual = (nextLat: string, nextLng: string) => {
+    setManualLat(nextLat)
+    setManualLng(nextLng)
+    const lat = Number(nextLat)
+    const lng = Number(nextLng)
+    const valid =
+      nextLat.trim() !== "" &&
+      nextLng.trim() !== "" &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    if (valid) {
+      onCapture({
+        latitude: nextLat.trim(),
+        longitude: nextLng.trim(),
+        location_accuracy: "",
+        location_captured_at: new Date().toISOString(),
+        location_capture_method: "manual_entry",
+      })
+      setErrMsg(null)
+      setStatus("success")
+    } else {
+      onCapture({ latitude: "", longitude: "" })
+      if (status === "success") setStatus("idle")
+    }
+  }
+
+  const toggleManual = () => {
+    setManualOpen((open) => {
+      const next = !open
+      if (next) {
+        // Preload with any coordinate already captured (e.g. via GPS) so the
+        // respondent can adjust rather than retype.
+        setManualLat(typeof answers.latitude === "string" ? answers.latitude : "")
+        setManualLng(typeof answers.longitude === "string" ? answers.longitude : "")
+      }
+      return next
+    })
   }
 
   const showGeoError = status === "error" && !!errMsg
@@ -1190,6 +1244,57 @@ function LocationCapture({
           </span>
         ) : null}
       </div>
+
+      {/* Manual coordinate entry — for when GPS is unavailable or the office is
+          being located from a map / known coordinates. */}
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={toggleManual}
+          aria-expanded={manualOpen}
+          aria-controls="cso-manual-coords"
+          className="inline-flex items-center gap-1.5 rounded text-sm font-medium text-[#356a8d] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#356a8d]/50"
+        >
+          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+          {manualOpen ? "Hide manual entry" : "Enter coordinates manually"}
+        </button>
+      </div>
+
+      {manualOpen ? (
+        <div id="cso-manual-coords" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs text-slate-500">
+            Enter the office coordinates in decimal degrees. In Botswana latitude
+            is negative — e.g. latitude <span className="font-mono">-24.6282</span>,
+            longitude <span className="font-mono">25.9231</span>.
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">
+              Latitude
+              <input
+                type="text"
+                inputMode="decimal"
+                value={manualLat}
+                onChange={(e) => applyManual(e.target.value, manualLng)}
+                placeholder="-24.6282"
+                aria-label="Latitude in decimal degrees"
+                className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#356a8d] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#356a8d]/30"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Longitude
+              <input
+                type="text"
+                inputMode="decimal"
+                value={manualLng}
+                onChange={(e) => applyManual(manualLat, e.target.value)}
+                placeholder="25.9231"
+                aria-label="Longitude in decimal degrees"
+                className="mt-1 min-h-[44px] w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#356a8d] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#356a8d]/30"
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
 
       {/* Accessible live region — announces progress/success independent of colour. */}
       <div id={`${LOCATION_ERROR_KEY}-status`} role="status" aria-live="polite" className="sr-only">

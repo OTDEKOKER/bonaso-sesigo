@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260806_v16",
+  "version": "20260818_v17",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -144,6 +144,135 @@
           "label": "Primary district or geographic area represented",
           "hint": "Select the primary local authority / health district of operation.",
           "required": true,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "district",
+          "choices": [
+            {
+              "name": "Bobirwa",
+              "label": "Bobirwa"
+            },
+            {
+              "name": "Boteti",
+              "label": "Boteti"
+            },
+            {
+              "name": "Charleshill",
+              "label": "Charleshill"
+            },
+            {
+              "name": "Chobe",
+              "label": "Chobe"
+            },
+            {
+              "name": "Ghanzi",
+              "label": "Ghanzi"
+            },
+            {
+              "name": "Goodhope",
+              "label": "Goodhope"
+            },
+            {
+              "name": "Greater Francistown",
+              "label": "Greater Francistown"
+            },
+            {
+              "name": "Greater Gaborone",
+              "label": "Greater Gaborone"
+            },
+            {
+              "name": "Jwaneng",
+              "label": "Jwaneng"
+            },
+            {
+              "name": "Kanye",
+              "label": "Kanye"
+            },
+            {
+              "name": "Kgalagadi North",
+              "label": "Kgalagadi North"
+            },
+            {
+              "name": "Kgalagadi South",
+              "label": "Kgalagadi South"
+            },
+            {
+              "name": "Kgatleng",
+              "label": "Kgatleng"
+            },
+            {
+              "name": "Letlhakeng",
+              "label": "Letlhakeng"
+            },
+            {
+              "name": "Lobatse",
+              "label": "Lobatse"
+            },
+            {
+              "name": "Mabutsane",
+              "label": "Mabutsane"
+            },
+            {
+              "name": "Mahalapye",
+              "label": "Mahalapye"
+            },
+            {
+              "name": "Mogoditshane-Thamaga",
+              "label": "Mogoditshane-Thamaga"
+            },
+            {
+              "name": "Molepolole",
+              "label": "Molepolole"
+            },
+            {
+              "name": "Moshupa",
+              "label": "Moshupa"
+            },
+            {
+              "name": "Ngami",
+              "label": "Ngami"
+            },
+            {
+              "name": "North East",
+              "label": "North East"
+            },
+            {
+              "name": "Okavango",
+              "label": "Okavango"
+            },
+            {
+              "name": "Palapye",
+              "label": "Palapye"
+            },
+            {
+              "name": "Phikwe",
+              "label": "Phikwe"
+            },
+            {
+              "name": "Ramotswa",
+              "label": "Ramotswa"
+            },
+            {
+              "name": "Serowe",
+              "label": "Serowe"
+            },
+            {
+              "name": "Tlokweng",
+              "label": "Tlokweng"
+            },
+            {
+              "name": "Tutume",
+              "label": "Tutume"
+            }
+          ]
+        },
+        {
+          "name": "implementing_districts",
+          "type": "select_multiple",
+          "label": "Other implementing sites (districts)",
+          "hint": "Select any other districts where you operate or implement services, apart from your primary district. Leave blank if you only operate in your primary district.",
+          "required": false,
           "multiline": false,
           "relevant": null,
           "constraint": null,
@@ -1095,6 +1224,46 @@
           "multiline": true,
           "relevant": null,
           "constraint": null
+        },
+        {
+          "name": "annex2_a2_3d",
+          "type": "text",
+          "label": "Current funder / donor name(s) supporting your organisation",
+          "hint": "Name of each current funder or donor. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_3e",
+          "type": "text",
+          "label": "Project / grant name(s)",
+          "hint": "The project or grant name the funding supports. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_3f",
+          "type": "text",
+          "label": "Scope of the funding",
+          "hint": "What the funding covers — e.g. thematic area, activities, districts, or amount. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex2_a2_3g",
+          "type": "text",
+          "label": "Funding period",
+          "hint": "The funding period, e.g. Jan 2025 – Dec 2026. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
         }
       ]
     },
@@ -1510,6 +1679,102 @@
           "label": "What strategies are in place to address the challenges?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        }
+      ]
+    },
+    {
+      "name": "annex2_support_needs",
+      "label": "Areas where your organisation requires support",
+      "relevant": {
+        "field": "respondent_type",
+        "op": "eq",
+        "value": "cso"
+      },
+      "fields": [
+        {
+          "name": "annex2_support_areas",
+          "type": "select_multiple",
+          "label": "In which areas does your organisation require support to strengthen its work?",
+          "hint": "Select all that apply — the types of support that would most help your organisation.",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "support_types",
+          "choices": [
+            {
+              "name": "governance_support",
+              "label": "Governance and policy support"
+            },
+            {
+              "name": "training",
+              "label": "Training and capacity building"
+            },
+            {
+              "name": "technical_assistance",
+              "label": "Technical assistance"
+            },
+            {
+              "name": "funding",
+              "label": "Funding or grant management"
+            },
+            {
+              "name": "monitoring_evaluation",
+              "label": "M&E and data support"
+            },
+            {
+              "name": "reporting",
+              "label": "Reporting support"
+            },
+            {
+              "name": "quality_assurance",
+              "label": "Quality assurance and supervision"
+            },
+            {
+              "name": "coordination",
+              "label": "Coordination and networking"
+            },
+            {
+              "name": "advocacy",
+              "label": "Advocacy and representation"
+            },
+            {
+              "name": "resource_mobilisation",
+              "label": "Resource mobilisation"
+            },
+            {
+              "name": "technology",
+              "label": "Technology or information systems"
+            },
+            {
+              "name": "other",
+              "label": "Other"
+            }
+          ]
+        },
+        {
+          "name": "annex2_support_areas_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "relevant": {
+            "field": "annex2_support_areas",
+            "op": "selected",
+            "value": "other"
+          },
+          "constraint": null
+        },
+        {
+          "name": "annex2_support_priority",
+          "type": "text",
+          "label": "Which of these are your most urgent priorities, and what specific support is needed?",
+          "hint": "Optional — briefly describe your top support needs.",
+          "required": false,
           "multiline": true,
           "relevant": null,
           "constraint": null
@@ -2118,6 +2383,46 @@
           "label": "What strategies are in place to address the resource gaps?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_3d",
+          "type": "text",
+          "label": "Current funder / donor name(s) supporting your coordinating body / network",
+          "hint": "Name of each current funder or donor. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_3e",
+          "type": "text",
+          "label": "Project / grant name(s)",
+          "hint": "The project or grant name the funding supports. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_3f",
+          "type": "text",
+          "label": "Scope of the funding",
+          "hint": "What the funding covers — e.g. thematic area, activities, districts, or amount. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
+          "multiline": true,
+          "relevant": null,
+          "constraint": null
+        },
+        {
+          "name": "annex3_a3_3g",
+          "type": "text",
+          "label": "Funding period",
+          "hint": "The funding period, e.g. Jan 2025 – Dec 2026. If you have more than one funder, list one per line, in the same order across all four funding questions.",
+          "required": false,
           "multiline": true,
           "relevant": null,
           "constraint": null

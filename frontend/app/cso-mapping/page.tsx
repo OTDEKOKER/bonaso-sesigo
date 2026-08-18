@@ -65,7 +65,10 @@ export default function CsoMappingIntroPage() {
             organisational and technical capacities, and identify gaps affecting effective
             participation in Primary Health Care Revitalisation. The information collected will
             support improved coordination, capacity strengthening, service planning and the
-            development of a national Health Service CSO Directory.
+            development of a national Health Service CSO Directory. Findings from this mapping
+            will be aggregated across participating organisations and may be presented or
+            published — for example in reports, dashboards and other outputs — to inform
+            coordination, planning and decision-making.
           </p>
 
           <div className="mt-5 rounded-xl border border-[#d6e3ec] bg-[#eef4f8] px-4 py-3">
@@ -81,9 +84,10 @@ export default function CsoMappingIntroPage() {
                 Directory.
               </p>
               <p>
-                Selected organisational information may be included in the directory. Personal
-                contact information and raw questionnaire responses will be accessible only to
-                authorised project personnel and will not be published without approval.
+                Selected organisational information may be included in the directory, and
+                aggregated findings from this mapping may be presented or published. Personal
+                contact information and individual raw questionnaire responses will be accessible
+                only to authorised project personnel and will not be published without approval.
               </p>
               <p>
                 You may decline to participate or stop before submitting the questionnaire. For
