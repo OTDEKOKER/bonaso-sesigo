@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260818_v18",
+  "version": "20260818_v19",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -909,7 +909,7 @@
         },
         {
           "name": "reporting_frequency",
-          "type": "select_one",
+          "type": "select_multiple",
           "label": "How frequently does your organisation normally report?",
           "hint": null,
           "required": true,
