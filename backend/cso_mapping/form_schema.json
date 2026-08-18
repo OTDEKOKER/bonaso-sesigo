@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260818_v19",
+  "version": "20260818_v20",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -141,7 +141,7 @@
         {
           "name": "primary_district",
           "type": "select_one",
-          "label": "Primary district or geographic area represented",
+          "label": "Primary district or geographic area represented (Headquarters)",
           "hint": "Select the primary local authority / health district of operation.",
           "required": true,
           "multiline": false,
@@ -480,6 +480,27 @@
             "value": "strategic_structure"
           },
           "constraint": null
+        },
+        {
+          "name": "q_ah0fy3e0",
+          "type": "select_one",
+          "label": "Is the organisational currently operational?",
+          "hint": null,
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "list": "list_mlem5djx",
+          "choices": [
+            {
+              "name": "option_1",
+              "label": "Yes"
+            },
+            {
+              "name": "option_2",
+              "label": "No"
+            }
+          ]
         }
       ]
     },
@@ -1108,9 +1129,51 @@
       "appearance": "field-list",
       "fields": [
         {
+          "name": "annex2_funding_sources",
+          "type": "funding_sources",
+          "label": "Current funding sources",
+          "hint": "Add each current source of funding or support. You can add more than one.",
+          "required": false,
+          "multiline": false,
+          "relevant": null,
+          "constraint": null,
+          "item_label": "funding source",
+          "sub_fields": [
+            {
+              "name": "funder_name",
+              "type": "text",
+              "label": "Funder / donor name",
+              "required": true,
+              "multiline": false
+            },
+            {
+              "name": "project_name",
+              "type": "text",
+              "label": "Project / grant name",
+              "required": false,
+              "multiline": false
+            },
+            {
+              "name": "scope",
+              "type": "text",
+              "label": "Scope of the funding",
+              "required": false,
+              "multiline": true
+            },
+            {
+              "name": "period",
+              "type": "text",
+              "label": "Funding period",
+              "required": false,
+              "multiline": false,
+              "placeholder": "e.g. Jan 2025 – Dec 2026"
+            }
+          ]
+        },
+        {
           "name": "annex2_a2_3a",
           "type": "select_multiple",
-          "label": "Which resources are available to support your service delivery?",
+          "label": "Which other resources are available to support your service delivery?",
           "hint": "Provide sufficient detail. Enter 'Not applicable' or 'Not known' only where necessary.",
           "required": true,
           "multiline": false,
@@ -1224,48 +1287,6 @@
           "multiline": true,
           "relevant": null,
           "constraint": null
-        },
-        {
-          "name": "annex2_funding_sources",
-          "type": "funding_sources",
-          "label": "Current funding sources",
-          "hint": "Add each current source of funding or support. You can add more than one.",
-          "required": false,
-          "multiline": false,
-          "relevant": null,
-          "constraint": null,
-          "item_label": "funding source",
-          "sub_fields": [
-            {
-              "name": "funder_name",
-              "type": "text",
-              "label": "Funder / donor name",
-              "required": true,
-              "multiline": false
-            },
-            {
-              "name": "project_name",
-              "type": "text",
-              "label": "Project / grant name",
-              "required": false,
-              "multiline": false
-            },
-            {
-              "name": "scope",
-              "type": "text",
-              "label": "Scope of the funding",
-              "required": false,
-              "multiline": true
-            },
-            {
-              "name": "period",
-              "type": "text",
-              "label": "Funding period",
-              "required": false,
-              "multiline": false,
-              "placeholder": "e.g. Jan 2025 – Dec 2026"
-            }
-          ]
         }
       ]
     },
@@ -4809,6 +4830,16 @@
       {
         "name": "other",
         "label": "Other"
+      }
+    ],
+    "list_mlem5djx": [
+      {
+        "name": "option_1",
+        "label": "Yes"
+      },
+      {
+        "name": "option_2",
+        "label": "No"
       }
     ]
   }
