@@ -591,16 +591,28 @@ class NarrativeReport(models.Model):
 
 
 class WorkbookLayout(models.Model):
-    """Coordinator-level ordering template for reporting workbooks.
+    """Coordinator-level reporting-workbook configuration (selection + order).
 
-    A layout ONLY controls the order (and section grouping) that indicators are
-    rendered in when a reporting workbook is generated. It deliberately carries
-    NO project / year / quarter / month / period-type: those are supplied at
-    download time to fetch the right data, never to define the saved order.
+    CORRECTED 2026-08 (audit): an earlier version of this docstring wrongly said a
+    layout "ONLY controls the order". It does NOT — at download time the layout is
+    the reporting CONTRACT. An organisation's *effective* workbook indicators are
+    its ``ProjectIndicatorAssignment`` set INTERSECTED with the indicators placed
+    in the resolved layout; an assigned indicator that is not placed is EXCLUDED
+    from the workbook (see ``projects.workbook_layout.order_plans_by_layout``). The
+    layout therefore controls BOTH which of the org's already-eligible indicators
+    appear AND their order/section grouping.
 
-    The layout belongs to a coordinator organization. All sub-organisations
-    under that coordinator inherit it when they download a workbook. A coordinator
-    may have at most one *active* layout per environment (``mode``).
+    It does NOT grant eligibility: a layout can only filter/reorder indicators the
+    organisation is already assigned. ``ProjectIndicatorAssignment`` remains the
+    sole source of reporting eligibility; the layout never widens it. It carries NO
+    project / year / quarter / month / period-type — those are supplied at download
+    time to fetch the data, never to define the saved selection/order.
+
+    The layout belongs to an organisation via ``coordinator_organization`` (usually
+    a coordinator, but any org may own one). A sub-organisation inherits its nearest
+    project-hierarchy ancestor's active layout when it has none of its own (see
+    ``resolve_layout_for_org``). At most one *active* layout per organisation per
+    environment (``mode``).
     """
 
     MODE_CHOICES = [
