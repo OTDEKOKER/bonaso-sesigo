@@ -204,6 +204,25 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # that will report has built and activated a layout.
 WORKBOOK_REQUIRE_LAYOUT = os.getenv('WORKBOOK_REQUIRE_LAYOUT', 'False').lower() == 'true'
 
+# Workbook-driven eligibility (opt-in PER PROJECT). When a project's id is listed
+# here, an organisation's reportable indicators become its resolved (own or
+# inherited coordinator) WorkbookLayout placed indicators, instead of the per-org
+# ProjectIndicatorAssignment set. Sub-grantees therefore inherit their
+# coordinator's workbook as their reporting set. See
+# projects.assignment_rules.get_assigned_indicator_ids_for_organization.
+#
+# EMPTY by default -> NO behaviour change anywhere; every project keeps per-org
+# assignment eligibility exactly as today. Enable a project only AFTER its
+# coordinator workbooks are verified complete (check_project_parity + the
+# workbook go/no-go show zero reported data outside a workbook). Safe fallback:
+# an org with no resolvable workbook keeps its existing assignment eligibility,
+# so enabling the flag can never strip eligibility from a workbook-less org.
+# Comma-separated project ids, e.g. WORKBOOK_ELIGIBILITY_PROJECT_IDS=3
+WORKBOOK_ELIGIBILITY_PROJECT_IDS = {
+    int(x) for x in os.getenv('WORKBOOK_ELIGIBILITY_PROJECT_IDS', '').replace(' ', '').split(',')
+    if x.strip().isdigit()
+}
+
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() == 'true'
 CORS_ALLOWED_ORIGINS = os.getenv(

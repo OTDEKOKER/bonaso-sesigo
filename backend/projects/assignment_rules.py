@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.conf import settings
 from django.db import DatabaseError
 from django.db.models import Q
 
@@ -74,6 +75,48 @@ def _has_project_indicator_targets(project_id: int) -> bool:
         return False
 
 
+def workbook_driven_eligibility_enabled(project) -> bool:
+    """Whether THIS project resolves eligibility from the coordinator workbook.
+
+    Opt-in per project via settings.WORKBOOK_ELIGIBILITY_PROJECT_IDS (empty by
+    default -> off everywhere, i.e. no behaviour change). See the setting's doc.
+    """
+    if project is None:
+        return False
+    ids = getattr(settings, 'WORKBOOK_ELIGIBILITY_PROJECT_IDS', None) or set()
+    try:
+        return int(project.id) in ids
+    except (TypeError, ValueError):
+        return False
+
+
+def _workbook_eligible_indicator_ids(project, organization_id: int) -> set[int] | None:
+    """Indicator ids an org may report under workbook-driven eligibility: the
+    placed indicators of its resolved (own or inherited coordinator) WorkbookLayout.
+
+    Returns ``None`` when no workbook resolves OR the resolved layout places no
+    indicators (headings-only/unconfigured) so the caller falls back to the
+    existing assignment logic — enabling the flag never strips eligibility from an
+    org that has no usable workbook. Mirrors ``order_plans_by_layout``'s "no
+    placed indicators -> keep the default set" behaviour.
+    """
+    from organizations.models import Organization
+    from .workbook_layout import resolve_layout_for_org
+
+    org = Organization.objects.filter(id=organization_id).first()
+    if org is None:
+        return None
+    mode = 'training' if getattr(project, 'is_training', False) else 'live'
+    try:
+        layout = resolve_layout_for_org(project, org, mode=mode)
+    except DatabaseError:
+        return None
+    if layout is None:
+        return None
+    placed = {it.indicator_id for it in layout.items.all() if it.indicator_id}
+    return placed or None
+
+
 def get_assigned_indicator_ids_for_organization(
     *,
     project: Project,
@@ -93,6 +136,15 @@ def get_assigned_indicator_ids_for_organization(
 
     if not is_organization_in_project_scope(project, organization_id):
         return set()
+
+    # Workbook-driven eligibility (opt-in per project). When enabled, an org's
+    # reportable indicators are its resolved (own or inherited coordinator)
+    # workbook's placed indicators. Falls through to the assignment logic below
+    # when no usable workbook resolves, so a workbook-less org is never stripped.
+    if workbook_driven_eligibility_enabled(project):
+        workbook_ids = _workbook_eligible_indicator_ids(project, organization_id)
+        if workbook_ids is not None:
+            return workbook_ids
 
     if _has_project_indicator_assignments(project_id):
         try:
