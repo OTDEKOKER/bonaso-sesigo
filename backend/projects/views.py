@@ -615,6 +615,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied('You do not have permission to set hierarchy for this organization.')
             desired_pairs.add((parent_id, child_id))
 
+        # Structural guard (circular / multiple-parent / inactive / cross-project).
+        # Rejects genuinely-invalid hierarchies before any write; never rewrites.
+        from .hierarchy_validation import validate_project_hierarchy_edges
+        hierarchy_error = validate_project_hierarchy_edges(project, desired_pairs)
+        if hierarchy_error:
+            return Response({'detail': hierarchy_error}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             if replace:
                 existing_active = list(
