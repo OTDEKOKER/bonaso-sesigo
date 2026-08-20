@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260820_v22",
+  "version": "20260820_v23",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -467,6 +467,20 @@
             "value": "registered"
           },
           "required": true,
+          "multiline": false,
+          "constraint": null
+        },
+        {
+          "hint": null,
+          "name": "q_r2tf7pkx_other",
+          "type": "text",
+          "label": "If “Other”, please specify",
+          "relevant": {
+            "op": "eq",
+            "field": "q_r2tf7pkx",
+            "value": "option_yqdh3c05"
+          },
+          "required": false,
           "multiline": false,
           "constraint": null
         },
