@@ -72,6 +72,8 @@ def build_valid_payload(respondent_type: str = "cso") -> dict:
             payload[name] = field["choices"][0]["name"]
         elif field["type"] == "select_multiple":
             payload[name] = [field["choices"][0]["name"]]
+        elif field["type"] == "funding_sources":
+            payload[name] = [{"funder_name": f"Funder for {name}"}]
         elif name == "respondent_email":
             payload[name] = "respondent@example.org"
         else:
@@ -396,9 +398,13 @@ class SchemaIntegrityTests(APITestCase):
                         ctx = {"consent": "yes", "respondent_type": rtype}
                         active = field_is_active(section, field, ctx)
                         if rtype == owner:
-                            # "Other — specify" follow-ups are only active once
-                            # their trigger option is chosen, so skip them here.
-                            if not field["name"].endswith("_other"):
+                            # Follow-ups gated on a sibling answer ("Other — specify",
+                            # the NCD sub-list, etc.) are only active once their trigger
+                            # option is chosen, so skip them here; branch-intro notes
+                            # gated on respondent_type are still checked.
+                            rel = field.get("relevant") or {}
+                            gated_on_sibling = bool(rel) and rel.get("field") != "respondent_type"
+                            if not gated_on_sibling:
                                 self.assertTrue(active, f"{field['name']} inactive for {owner}")
                         else:
                             self.assertFalse(active, f"{field['name']} leaked into {rtype}")

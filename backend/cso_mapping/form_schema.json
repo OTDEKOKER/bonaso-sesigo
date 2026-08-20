@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260818_v21",
+  "version": "20260820_v22",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -18,7 +18,7 @@
           "multiline": false,
           "relevant": null,
           "constraint": null,
-          "list": "yes_no",
+          "list": "consent_yesno",
           "choices": [
             {
               "name": "yes",
@@ -84,7 +84,7 @@
             },
             {
               "name": "strategic_structure",
-              "label": "DAC, DHMT, Government or other strategic-level structure"
+              "label": "DAC, PHC, Government or other strategic-level structure"
             }
           ]
         },
@@ -123,7 +123,7 @@
           "type": "text",
           "label": "Telephone number",
           "hint": "Optional contact for clarification.",
-          "required": false,
+          "required": true,
           "multiline": false,
           "relevant": null,
           "constraint": null
@@ -133,7 +133,7 @@
           "type": "text",
           "label": "Email address",
           "hint": "Optional contact for clarification.",
-          "required": false,
+          "required": true,
           "multiline": false,
           "relevant": null,
           "constraint": null
@@ -191,11 +191,11 @@
             },
             {
               "name": "Kgalagadi North",
-              "label": "Kgalagadi North"
+              "label": "Kgalagadi North(Hukuntsi)"
             },
             {
               "name": "Kgalagadi South",
-              "label": "Kgalagadi South"
+              "label": "Kgalagadi South (Tsabong)"
             },
             {
               "name": "Kgatleng",
@@ -231,7 +231,7 @@
             },
             {
               "name": "Ngami",
-              "label": "Ngami"
+              "label": "North-West"
             },
             {
               "name": "North East",
@@ -250,10 +250,6 @@
               "label": "Phikwe"
             },
             {
-              "name": "Sowa",
-              "label": "Sowa"
-            },
-            {
               "name": "Ramotswa",
               "label": "Ramotswa"
             },
@@ -265,13 +261,17 @@
               "name": "Tlokweng",
               "label": "Tlokweng"
             },
-           {
-              "name": "Tonota",
-              "label": "Tonota"
-            },
             {
               "name": "Tutume",
               "label": "Tutume"
+            },
+            {
+              "name": "option_k6usbsmx",
+              "label": "Sowa"
+            },
+            {
+              "name": "option_jrxqrvz6",
+              "label": "Tonota"
             }
           ]
         },
@@ -328,11 +328,11 @@
             },
             {
               "name": "Kgalagadi North",
-              "label": "Kgalagadi North"
+              "label": "Kgalagadi North(Hukuntsi)"
             },
             {
               "name": "Kgalagadi South",
-              "label": "Kgalagadi South"
+              "label": "Kgalagadi South (Tsabong)"
             },
             {
               "name": "Kgatleng",
@@ -368,7 +368,7 @@
             },
             {
               "name": "Ngami",
-              "label": "Ngami"
+              "label": "North-West"
             },
             {
               "name": "North East",
@@ -401,6 +401,14 @@
             {
               "name": "Tutume",
               "label": "Tutume"
+            },
+            {
+              "name": "option_k6usbsmx",
+              "label": "Sowa"
+            },
+            {
+              "name": "option_jrxqrvz6",
+              "label": "Tonota"
             }
           ]
         },
@@ -432,6 +440,35 @@
               "label": "Not known"
             }
           ]
+        },
+        {
+          "hint": null,
+          "list": "list_6tcrncwp",
+          "name": "q_r2tf7pkx",
+          "type": "select_one",
+          "label": "Where is the organisation registered?",
+          "choices": [
+            {
+              "name": "option_1",
+              "label": "Register of society"
+            },
+            {
+              "name": "option_2",
+              "label": "CIPA"
+            },
+            {
+              "name": "option_yqdh3c05",
+              "label": "Other"
+            }
+          ],
+          "relevant": {
+            "op": "eq",
+            "field": "registration_status",
+            "value": "registered"
+          },
+          "required": true,
+          "multiline": false,
+          "constraint": null
         },
         {
           "name": "registration_number",
@@ -466,7 +503,7 @@
           "type": "text",
           "label": "Physical address",
           "hint": null,
-          "required": false,
+          "required": true,
           "multiline": true,
           "relevant": {
             "field": "respondent_type",
@@ -480,7 +517,7 @@
           "type": "text",
           "label": "Number of years in operation",
           "hint": "Approximate number of years the organisation has been operating.",
-          "required": false,
+          "required": true,
           "multiline": false,
           "relevant": {
             "field": "respondent_type",
@@ -765,6 +802,37 @@
               "label": "Other"
             }
           ]
+        },
+        {
+          "hint": "Select all that apply.",
+          "list": "ncd_types",
+          "name": "annex2_a2_1e_ncd",
+          "type": "select_multiple",
+          "label": "Which non-communicable diseases do you provide services for?",
+          "choices": [
+            {
+              "name": "cardiovascular",
+              "label": "Cardiovascular diseases"
+            },
+            {
+              "name": "cancers",
+              "label": "Cancers"
+            },
+            {
+              "name": "chronic_respiratory",
+              "label": "Chronic respiratory diseases (e.g., asthma and COPD)"
+            },
+            {
+              "name": "diabetes",
+              "label": "Diabetes"
+            }
+          ],
+          "relevant": {
+            "op": "selected",
+            "field": "annex2_a2_1e",
+            "value": "ncd"
+          },
+          "required": false
         },
         {
           "name": "annex2_a2_1e_other",
@@ -2423,7 +2491,7 @@
           "type": "funding_sources",
           "label": "Current funding sources",
           "hint": "Add each current source of funding or support. You can add more than one.",
-          "required": false,
+          "required": true,
           "multiline": false,
           "relevant": null,
           "constraint": null,
@@ -3787,7 +3855,7 @@
       },
       {
         "name": "strategic_structure",
-        "label": "DAC, DHMT, Government or other strategic-level structure"
+        "label": "DAC, PHC, Government or other strategic-level structure"
       }
     ],
     "yes_no_unsure": [
@@ -3945,11 +4013,11 @@
       },
       {
         "name": "Kgalagadi North",
-        "label": "Kgalagadi North"
+        "label": "Kgalagadi North(Hukuntsi)"
       },
       {
         "name": "Kgalagadi South",
-        "label": "Kgalagadi South"
+        "label": "Kgalagadi South (Tsabong)"
       },
       {
         "name": "Kgatleng",
@@ -3985,7 +4053,7 @@
       },
       {
         "name": "Ngami",
-        "label": "Ngami"
+        "label": "North-West"
       },
       {
         "name": "North East",
@@ -4018,6 +4086,14 @@
       {
         "name": "Tutume",
         "label": "Tutume"
+      },
+      {
+        "name": "option_k6usbsmx",
+        "label": "Sowa"
+      },
+      {
+        "name": "option_jrxqrvz6",
+        "label": "Tonota"
       }
     ],
     "coverage_level": [
@@ -4848,6 +4924,48 @@
       {
         "name": "option_2",
         "label": "No"
+      }
+    ],
+    "list_6tcrncwp": [
+      {
+        "name": "option_1",
+        "label": "Register of society"
+      },
+      {
+        "name": "option_2",
+        "label": "CIPA"
+      },
+      {
+        "name": "option_yqdh3c05",
+        "label": "Other"
+      }
+    ],
+    "ncd_types": [
+      {
+        "name": "cardiovascular",
+        "label": "Cardiovascular diseases"
+      },
+      {
+        "name": "cancers",
+        "label": "Cancers"
+      },
+      {
+        "name": "chronic_respiratory",
+        "label": "Chronic respiratory diseases (e.g., asthma and COPD)"
+      },
+      {
+        "name": "diabetes",
+        "label": "Diabetes"
+      }
+    ],
+    "consent_yesno": [
+      {
+        "name": "yes",
+        "label": "Yes, I consent"
+      },
+      {
+        "name": "no",
+        "label": "No, I do not consent"
       }
     ]
   }

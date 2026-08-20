@@ -12,6 +12,7 @@ two places) when the XLSForm changes.
 """
 from __future__ import annotations
 
+import copy
 import json
 import re
 from functools import lru_cache
@@ -67,6 +68,30 @@ def _bundled_schema() -> dict:
         return json.load(fh)
 
 
+def _resolve_field_choices(schema: dict) -> dict:
+    """Fill each select field's inline ``choices`` from its shared ``choices[list]``.
+
+    The in-app form editor edits the *shared* choice lists (``schema["choices"][name]``),
+    while the questionnaire *renderer* reads each field's *inline* ``choices``. Without
+    reconciliation an added/edited/renamed option is honoured by validation and exports
+    (which already read the shared list via :func:`choice_names`/:func:`choice_label`)
+    but never renders — so districts, new questions, or label edits silently go missing.
+    Resolving here, at the single serving boundary, keeps the served schema
+    self-consistent so any form-editor change takes effect immediately with no per-field
+    re-embedding and no frontend change. Fields whose ``list`` has no shared entry keep
+    their inline choices untouched. Mutates ``schema`` in place — callers pass a copy.
+    """
+    shared = schema.get("choices") or {}
+    if not shared:
+        return schema
+    for section in schema.get("sections", []):
+        for field in section.get("fields", []):
+            name = field.get("list")
+            if name and name in shared:
+                field["choices"] = shared[name]
+    return schema
+
+
 def load_schema() -> dict:
     """Return the questionnaire schema currently served to respondents.
 
@@ -74,21 +99,23 @@ def load_schema() -> dict:
     can edit the form without a code deploy. If no active row exists yet (fresh
     database) or the DB is unreachable during a management command, fall back to
     the bundled file so the form is never blank. Read per call (small payload) so
-    an edit applies immediately across all gunicorn workers.
+    an edit applies immediately across all gunicorn workers. A copy is returned
+    (never the cached/ORM object) because :func:`_resolve_field_choices` mutates it.
     """
+    schema = None
     try:
         from .models import CsoMappingSchemaVersion
 
-        active = (
+        schema = (
             CsoMappingSchemaVersion.objects.filter(is_active=True)
             .values_list("schema", flat=True)
             .first()
         )
-        if active:
-            return active
     except Exception:  # DB not ready (migrate/checks) — use the bundled file.
-        pass
-    return _bundled_schema()
+        schema = None
+    if not schema:
+        schema = _bundled_schema()
+    return _resolve_field_choices(copy.deepcopy(schema))
 
 
 # A composite, repeatable field ("Funding sources" style): its answer is a LIST
