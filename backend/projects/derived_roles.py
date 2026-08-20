@@ -17,10 +17,18 @@ Rule (established from the live 2025/26 + 2026/27 audit):
                    project ``lead`` sitting ABOVE the coordinators, so it is a
                    parent-edge but must NOT be treated as a coordinator.
 
-    sub_grantee := the org is a CHILD of at least one active edge.
+    sub_grantee := the org is a CHILD of at least one active edge whose PARENT
+                   is NOT an overseer role (``lead`` / ``funder``).
+                   This mirrors the coordinator overseer-exclusion: an org
+                   sitting DIRECTLY under the lead/funder (e.g. the NSC 2026/27
+                   coordinators under BONASO) is a hierarchy child but is NOT a
+                   sub-grantee of that overseer — it is a coordinator. A child is
+                   only a sub-grantee when a real (non-overseer) parent grants
+                   down to it.
 
-An org may be BOTH (a coordinator that is itself under another coordinator — a
-legitimate middle tier, e.g. HPP/Mopipi in 2026/27). Coordinator status is
+An org may be BOTH (a coordinator that is itself under ANOTHER coordinator — a
+legitimate middle tier, e.g. HPP/Mopipi in 2026/27: coordinator by its own
+parent-edge, sub-grantee via a coordinator above it). Coordinator status is
 independent of whether the org also implements/reports (that is assignment /
 workbook driven, not hierarchy driven).
 """
@@ -64,6 +72,14 @@ def derive_role_flags(project) -> dict[int, dict]:
 
     parents = {int(p) for p, _ in edges}
     children = {int(c) for _, c in edges}
+    # A child is a sub-grantee ONLY when reached through a NON-overseer parent
+    # edge (symmetry with the coordinator rule, which excludes overseer parents).
+    # A child sitting directly under a lead/funder is therefore not a sub-grantee
+    # of that overseer. An org reached through both an overseer and a real
+    # coordinator still qualifies (it has at least one non-overseer parent edge).
+    sub_grantee_children = {
+        int(c) for p, c in edges if roles.get(int(p)) not in OVERSEER_ROLES
+    }
 
     result: dict[int, dict] = {}
     for org_id in roles:  # every ProjectOrganization member
@@ -71,14 +87,14 @@ def derive_role_flags(project) -> dict[int, dict]:
         is_coord = oid in parents and roles.get(oid) not in OVERSEER_ROLES
         result[oid] = {
             "is_coordinator": is_coord,
-            "is_sub_grantee": oid in children,
+            "is_sub_grantee": oid in sub_grantee_children,
         }
     # Include any org that appears only as an edge endpoint but has no PO row
     # (defensive; should not happen in clean data).
     for oid in parents | children:
         result.setdefault(int(oid), {
             "is_coordinator": int(oid) in parents and roles.get(int(oid)) not in OVERSEER_ROLES,
-            "is_sub_grantee": int(oid) in children,
+            "is_sub_grantee": int(oid) in sub_grantee_children,
         })
     return result
 

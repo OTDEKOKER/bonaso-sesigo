@@ -55,17 +55,26 @@ class DerivedRolesTest(TestCase):
     def test_coordinator_is_derived_from_parent_edge(self):
         flags = derive_role_flags(self.p)
         self.assertTrue(flags[self.coordA.id]["is_coordinator"])
-        self.assertTrue(flags[self.coordA.id]["is_sub_grantee"])   # coordA is under the lead
+        # Semantics correction (overseer exclusion): coordA sits directly under
+        # the LEAD, so it is NOT a sub-grantee of the overseer — it is a
+        # coordinator only. (Was asserted True under the pre-refinement rule that
+        # treated any hierarchy child as a sub-grantee.)
+        self.assertFalse(flags[self.coordA.id]["is_sub_grantee"])
 
     def test_subgrantee_leaf(self):
         flags = derive_role_flags(self.p)
         self.assertFalse(flags[self.subA1.id]["is_coordinator"])
         self.assertTrue(flags[self.subA1.id]["is_sub_grantee"])
 
-    def test_mid_tier_is_coordinator_and_subgrantee(self):
+    def test_mid_tier_under_lead_is_coordinator_not_subgrantee(self):
+        # midB is a parent of subB1 (coordinator) but its ONLY parent is the LEAD.
+        # Under the overseer-exclusion rule a child of the lead is not a
+        # sub-grantee, so midB is a coordinator only. (The genuine "coordinator
+        # that is ALSO a sub-grantee" case — a middle tier under ANOTHER
+        # coordinator — is covered in test_derived_roles_overseer.)
         flags = derive_role_flags(self.p)
         self.assertTrue(flags[self.midB.id]["is_coordinator"])     # parent of subB1
-        self.assertTrue(flags[self.midB.id]["is_sub_grantee"])     # child of lead
+        self.assertFalse(flags[self.midB.id]["is_sub_grantee"])    # only parent is the lead
 
     def test_convenience_helper(self):
         self.assertTrue(is_derived_coordinator(self.p, self.coordA.id))
