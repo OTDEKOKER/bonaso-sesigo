@@ -58,14 +58,29 @@ def _funding_spec(field):
     )
 
 
-def _clean_funding_items(field, raw_items):
-    """Sanitize a funding-sources answer into a list of {key: str} dicts.
+def _clean_funding_items(field, raw_items, schema):
+    """Sanitize a funding-sources answer into a list of records.
 
     Returns ``(items, error)``. Empty records are dropped; every kept record must
-    carry the required key(s). The key set is taken from the schema field, not
-    hard-coded. Values are trimmed and length-capped. Never raises.
+    carry the required key(s). The key set and each key's type are taken from the
+    schema field, not hard-coded. Scalar (text/select_one) values are trimmed and
+    length-capped; select_multiple values are kept as a validated list of choice
+    names. Never raises.
     """
     keys, required_keys, required_label, item_label = _funding_spec(field)
+    subs = field.get("sub_fields") or []
+    # Sub-fields whose value is a LIST of choice names, and their allowed choices.
+    multi_keys = {
+        sf["name"]: choice_names(schema, sf.get("list", ""))
+        for sf in subs
+        if isinstance(sf, dict) and sf.get("name") and sf.get("type") == "select_multiple"
+    }
+    # Single-choice sub-fields, validated against their choice list.
+    single_keys = {
+        sf["name"]: choice_names(schema, sf.get("list", ""))
+        for sf in subs
+        if isinstance(sf, dict) and sf.get("name") and sf.get("type") == "select_one"
+    }
     if not isinstance(raw_items, list):
         return [], None
     if len(raw_items) > MAX_FUNDING_ITEMS:
@@ -76,10 +91,25 @@ def _clean_funding_items(field, raw_items):
             continue
         obj = {}
         for key in keys:
-            value = item.get(key, "")
-            value = "" if value is None else str(value).strip()
+            raw = item.get(key, "")
+            if key in multi_keys:
+                vals = raw if isinstance(raw, list) else ([raw] if raw not in (None, "") else [])
+                vals = [str(v).strip() for v in vals if str(v).strip()]
+                if sum(len(v) for v in vals) > MAX_ANSWER_LENGTH:
+                    return [], "This answer is too long."
+                allowed = multi_keys[key]
+                if allowed and any(v not in allowed for v in vals):
+                    return [], "Invalid selection."
+                if vals:
+                    obj[key] = vals
+                continue
+            value = "" if raw is None else str(raw).strip()
             if len(value) > MAX_ANSWER_LENGTH:
                 return [], "This answer is too long."
+            if key in single_keys:
+                allowed = single_keys[key]
+                if value and allowed and value not in allowed:
+                    return [], "Invalid selection."
             if value:
                 obj[key] = value
         if not obj:
@@ -189,7 +219,7 @@ class PublicSubmissionSerializer(serializers.Serializer):
 
             # Funding sources: a list of small objects, stored in the answers blob.
             if field["type"] == FUNDING_SOURCES_TYPE:
-                cleaned, funding_error = _clean_funding_items(field, value)
+                cleaned, funding_error = _clean_funding_items(field, value, schema)
                 if funding_error:
                     errors[name] = funding_error
                     continue

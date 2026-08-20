@@ -79,15 +79,20 @@ function PrintField({ field, number }: { field: Field; number: number | null }) 
                 {field.item_label || "funding source"} {n + 1}
               </p>
               <div className="mt-1 space-y-2">
-                {(field.sub_fields ?? []).map((sub) => (
-                  <div key={sub.name}>
-                    <span className="text-xs text-slate-600">
-                      {sub.label}
-                      {sub.required ? " *" : ""}
-                    </span>
-                    {sub.multiline ? <WriteBox /> : <WriteLine />}
-                  </div>
-                ))}
+                {(field.sub_fields ?? []).map((sub) => {
+                  const isSelectSub =
+                    sub.type === "select_one" || sub.type === "select_multiple"
+                  return (
+                    <div key={sub.name}>
+                      <span className="text-xs text-slate-600">
+                        {sub.label}
+                        {sub.required ? " *" : ""}
+                        {sub.type === "select_multiple" ? " (list all that apply)" : ""}
+                      </span>
+                      {sub.multiline || isSelectSub ? <WriteBox /> : <WriteLine />}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ))}

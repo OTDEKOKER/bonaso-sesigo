@@ -1096,3 +1096,24 @@ class FundingSourcesTests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
         sub = CsoMappingSubmission.objects.latest("id")
         self.assertNotIn("annex2_funding_sources", sub.answers)
+
+    def test_districts_funded_multiselect_stored(self):
+        payload = build_valid_payload("cso")
+        payload["annex2_funding_sources"] = [
+            {"funder_name": "Global Fund", "districts": ["Bobirwa", "Chobe"]},
+        ]
+        resp = self.client.post(self.url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+        sub = CsoMappingSubmission.objects.latest("id")
+        item = sub.answers["annex2_funding_sources"][0]
+        self.assertEqual(item["funder_name"], "Global Fund")
+        self.assertEqual(item["districts"], ["Bobirwa", "Chobe"])
+
+    def test_districts_funded_rejects_unknown_district(self):
+        payload = build_valid_payload("cso")
+        payload["annex2_funding_sources"] = [
+            {"funder_name": "Global Fund", "districts": ["Atlantis"]},
+        ]
+        resp = self.client.post(self.url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("annex2_funding_sources", resp.data)

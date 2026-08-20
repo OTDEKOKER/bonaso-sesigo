@@ -53,9 +53,10 @@ export interface FormSchema {
   choices: Record<string, Choice[]>
 }
 
-// One record of a "funding_sources" composite answer (funder_name, project_name,
-// scope, period — all optional strings).
-export type FundingItem = Record<string, string>
+// One record of a "funding_sources" composite answer. Scalar sub-fields (text /
+// select_one) hold a string; a select_multiple sub-field (e.g. districts funded)
+// holds a list of choice names. All sub-values are optional.
+export type FundingItem = Record<string, string | string[]>
 
 // A single-choice / text answer is a string; a multi-select answer is a list of
 // choice names; a funding_sources answer is a list of records. All live in the
@@ -68,9 +69,14 @@ export function asFundingItems(value: AnswerValue | undefined): FundingItem[] {
   return Array.isArray(value) ? (value.filter((v) => typeof v === "object") as FundingItem[]) : []
 }
 
+/** Whether a single funding sub-value (string or choice list) is non-empty. */
+export function fundingSubHasValue(value: string | string[] | undefined): boolean {
+  return Array.isArray(value) ? value.length > 0 : String(value ?? "").trim() !== ""
+}
+
 /** Whether a funding record carries any non-empty value. */
 export function fundingItemHasContent(item: FundingItem | undefined): boolean {
-  return !!item && Object.values(item).some((v) => String(v ?? "").trim() !== "")
+  return !!item && Object.values(item).some(fundingSubHasValue)
 }
 
 /** Selected options of a (possibly multi-select) answer, as a string list. */
@@ -125,7 +131,7 @@ export function validateStep(section: Section, answers: Answers): Record<string,
       const itemLabel = field.item_label || "funding source"
       if (field.required && filled.length === 0) {
         errors[field.name] = `Please add at least one ${itemLabel}.`
-      } else if (filled.some((it) => requiredSubs.some((s) => !String(it[s.name] ?? "").trim()))) {
+      } else if (filled.some((it) => requiredSubs.some((s) => !fundingSubHasValue(it[s.name])))) {
         const label = requiredSubs[0]?.label ?? "the required field"
         errors[field.name] = `Please provide ${label} for each ${itemLabel}.`
       }
@@ -210,12 +216,20 @@ export function displayAnswer(field: Field, value: AnswerValue | undefined): str
   const label = (name: string) => field.choices?.find((c) => c.name === name)?.label ?? name
   if (field.type === "funding_sources") {
     const subs = field.sub_fields ?? []
-    const keys = subs.length ? subs.map((s) => s.name) : ["funder_name", "project_name", "scope", "period"]
-    const labelOf = (k: string) => subs.find((s) => s.name === k)?.label ?? k
+    const specs: { name: string; label: string; choices?: Choice[] }[] = subs.length
+      ? subs.map((s) => ({ name: s.name, label: s.label, choices: s.choices }))
+      : ["funder_name", "project_name", "scope", "period"].map((n) => ({ name: n, label: n }))
+    const labelChoice = (choices: Choice[] | undefined, v: string) =>
+      choices?.find((c) => c.name === v)?.label ?? v
+    const render = (spec: { choices?: Choice[] }, raw: string | string[] | undefined) => {
+      if (Array.isArray(raw)) return raw.map((v) => labelChoice(spec.choices, v)).join(", ")
+      const s = String(raw ?? "").trim()
+      return s && spec.choices ? labelChoice(spec.choices, s) : s
+    }
     return asFundingItems(value)
       .map((it, i) => {
-        const parts = keys
-          .map((k) => [labelOf(k), String(it[k] ?? "").trim()] as const)
+        const parts = specs
+          .map((spec) => [spec.label, render(spec, it[spec.name])] as const)
           .filter(([, v]) => v)
           .map(([l, v]) => `${l}: ${v}`)
         return parts.length ? `${i + 1}. ${parts.join("; ")}` : ""

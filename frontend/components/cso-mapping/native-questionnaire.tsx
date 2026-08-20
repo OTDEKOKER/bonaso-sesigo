@@ -36,6 +36,7 @@ import {
   asList,
   buildPayload,
   commentKey,
+  displayAnswer,
   fieldIsActive,
   fieldLabel,
   findNote,
@@ -142,19 +143,9 @@ function choiceLabel(field: Field, value: string): string {
 /** A single display string for any answer: multi-select joined, choices labelled. */
 function displayValue(field: Field, value: AnswerValue | undefined): string {
   if (field.type === "funding_sources") {
-    const subs = field.sub_fields ?? []
-    const keys = subs.length ? subs.map((s) => s.name) : ["funder_name", "project_name", "scope", "period"]
-    const labelOf = (k: string) => subs.find((s) => s.name === k)?.label ?? k
-    return asFundingItems(value)
-      .map((it, i) => {
-        const parts = keys
-          .map((k) => [labelOf(k), String(it[k] ?? "").trim()] as const)
-          .filter(([, v]) => v)
-          .map(([l, v]) => `${l}: ${v}`)
-        return parts.length ? `${i + 1}. ${parts.join("; ")}` : ""
-      })
-      .filter(Boolean)
-      .join("\n")
+    // Reuse the shared formatter so the review screen labels district (and any
+    // other select) sub-values exactly as the stored-answer display does.
+    return displayAnswer(field, value)
   }
   if (field.type === "select_multiple") {
     return asList(value)
@@ -1369,6 +1360,8 @@ function FundingSources({
   const commit = (next: FundingItem[]) => onChange(next as unknown as AnswerValue)
   const setCell = (index: number, key: string, val: string) =>
     commit(rows.map((row, i) => (i === index ? { ...row, [key]: val } : row)))
+  const setCellList = (index: number, key: string, vals: string[]) =>
+    commit(rows.map((row, i) => (i === index ? { ...row, [key]: vals } : row)))
   const addRow = () => commit([...rows, {}])
   const removeRow = (index: number) => commit(rows.filter((_, i) => i !== index))
 
@@ -1405,6 +1398,61 @@ function FundingSources({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {subs.map((sub) => {
                 const id = `${field.name}-${index}-${sub.name}`
+                // Multi-select sub-field (e.g. districts funded): a scrollable
+                // checkbox list storing a list of choice names on the record.
+                if (sub.type === "select_multiple") {
+                  const choices = sub.choices ?? []
+                  const selected = Array.isArray(row[sub.name]) ? (row[sub.name] as string[]) : []
+                  const toggle = (name: string) =>
+                    setCellList(
+                      index,
+                      sub.name,
+                      selected.includes(name)
+                        ? selected.filter((v) => v !== name)
+                        : [...selected, name],
+                    )
+                  return (
+                    <fieldset key={sub.name} className="sm:col-span-2">
+                      <legend className="text-sm font-medium text-slate-700">
+                        {sub.label}
+                        {sub.required ? <span className="ml-0.5 text-red-500">*</span> : null}
+                      </legend>
+                      {sub.hint ? (
+                        <p className="mt-0.5 text-xs text-slate-500">{sub.hint}</p>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-slate-500">Select all that apply.</p>
+                      )}
+                      <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2">
+                        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                          {choices.map((choice) => {
+                            const isSel = selected.includes(choice.name)
+                            return (
+                              <label
+                                key={choice.name}
+                                className={`flex min-h-[36px] cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm transition-colors ${
+                                  isSel
+                                    ? "bg-[#eef4f8] text-[#2b5872]"
+                                    : "text-slate-700 hover:bg-slate-50"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSel}
+                                  onChange={() => toggle(choice.name)}
+                                  className="h-4 w-4 accent-[#356a8d]"
+                                />
+                                {choice.label}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      {selected.length ? (
+                        <p className="mt-1 text-xs text-slate-500">{selected.length} selected</p>
+                      ) : null}
+                    </fieldset>
+                  )
+                }
                 const spanFull = sub.multiline ? "sm:col-span-2" : ""
                 return (
                   <label key={sub.name} className={`text-sm font-medium text-slate-700 ${spanFull}`}>

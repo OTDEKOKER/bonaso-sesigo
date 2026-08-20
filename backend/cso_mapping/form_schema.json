@@ -1,6 +1,6 @@
 {
   "id_string": "bonaso_cso_mca_annex_2_3_4",
-  "version": "20260820_v23",
+  "version": "20260820_v24",
   "title": "Botswana Health Service CSO Mapping and Capacity Assessment",
   "default_language": "English (en)",
   "sections": [
@@ -1257,6 +1257,143 @@
               "required": false,
               "multiline": false,
               "placeholder": "e.g. Jan 2025 – Dec 2026"
+            },
+            {
+              "name": "districts",
+              "type": "select_multiple",
+              "label": "District(s) funded / supported",
+              "hint": "Select every district this funding covers. Leave blank if it is not district-specific.",
+              "required": false,
+              "multiline": false,
+              "relevant": null,
+              "constraint": null,
+              "list": "district",
+              "choices": [
+                {
+                  "name": "Bobirwa",
+                  "label": "Bobirwa"
+                },
+                {
+                  "name": "Boteti",
+                  "label": "Boteti"
+                },
+                {
+                  "name": "Charleshill",
+                  "label": "Charleshill"
+                },
+                {
+                  "name": "Chobe",
+                  "label": "Chobe"
+                },
+                {
+                  "name": "Ghanzi",
+                  "label": "Ghanzi"
+                },
+                {
+                  "name": "Goodhope",
+                  "label": "Goodhope"
+                },
+                {
+                  "name": "Greater Francistown",
+                  "label": "Greater Francistown"
+                },
+                {
+                  "name": "Greater Gaborone",
+                  "label": "Greater Gaborone"
+                },
+                {
+                  "name": "Jwaneng",
+                  "label": "Jwaneng"
+                },
+                {
+                  "name": "Kanye",
+                  "label": "Kanye"
+                },
+                {
+                  "name": "Kgalagadi North",
+                  "label": "Kgalagadi North(Hukuntsi)"
+                },
+                {
+                  "name": "Kgalagadi South",
+                  "label": "Kgalagadi South (Tsabong)"
+                },
+                {
+                  "name": "Kgatleng",
+                  "label": "Kgatleng"
+                },
+                {
+                  "name": "Letlhakeng",
+                  "label": "Letlhakeng"
+                },
+                {
+                  "name": "Lobatse",
+                  "label": "Lobatse"
+                },
+                {
+                  "name": "Mabutsane",
+                  "label": "Mabutsane"
+                },
+                {
+                  "name": "Mahalapye",
+                  "label": "Mahalapye"
+                },
+                {
+                  "name": "Mogoditshane-Thamaga",
+                  "label": "Mogoditshane-Thamaga"
+                },
+                {
+                  "name": "Molepolole",
+                  "label": "Molepolole"
+                },
+                {
+                  "name": "Moshupa",
+                  "label": "Moshupa"
+                },
+                {
+                  "name": "Ngami",
+                  "label": "North-West"
+                },
+                {
+                  "name": "North East",
+                  "label": "North East"
+                },
+                {
+                  "name": "Okavango",
+                  "label": "Okavango"
+                },
+                {
+                  "name": "Palapye",
+                  "label": "Palapye"
+                },
+                {
+                  "name": "Phikwe",
+                  "label": "Phikwe"
+                },
+                {
+                  "name": "Ramotswa",
+                  "label": "Ramotswa"
+                },
+                {
+                  "name": "Serowe",
+                  "label": "Serowe"
+                },
+                {
+                  "name": "Tlokweng",
+                  "label": "Tlokweng"
+                },
+                {
+                  "name": "Tutume",
+                  "label": "Tutume"
+                },
+                {
+                  "name": "option_k6usbsmx",
+                  "label": "Sowa"
+                },
+                {
+                  "name": "option_jrxqrvz6",
+                  "label": "Tonota"
+                }
+              ]
             }
           ]
         },
@@ -2539,6 +2676,143 @@
               "required": false,
               "multiline": false,
               "placeholder": "e.g. Jan 2025 – Dec 2026"
+            },
+            {
+              "name": "districts",
+              "type": "select_multiple",
+              "label": "District(s) funded / supported",
+              "hint": "Select every district this funding covers. Leave blank if it is not district-specific.",
+              "required": false,
+              "multiline": false,
+              "relevant": null,
+              "constraint": null,
+              "list": "district",
+              "choices": [
+                {
+                  "name": "Bobirwa",
+                  "label": "Bobirwa"
+                },
+                {
+                  "name": "Boteti",
+                  "label": "Boteti"
+                },
+                {
+                  "name": "Charleshill",
+                  "label": "Charleshill"
+                },
+                {
+                  "name": "Chobe",
+                  "label": "Chobe"
+                },
+                {
+                  "name": "Ghanzi",
+                  "label": "Ghanzi"
+                },
+                {
+                  "name": "Goodhope",
+                  "label": "Goodhope"
+                },
+                {
+                  "name": "Greater Francistown",
+                  "label": "Greater Francistown"
+                },
+                {
+                  "name": "Greater Gaborone",
+                  "label": "Greater Gaborone"
+                },
+                {
+                  "name": "Jwaneng",
+                  "label": "Jwaneng"
+                },
+                {
+                  "name": "Kanye",
+                  "label": "Kanye"
+                },
+                {
+                  "name": "Kgalagadi North",
+                  "label": "Kgalagadi North(Hukuntsi)"
+                },
+                {
+                  "name": "Kgalagadi South",
+                  "label": "Kgalagadi South (Tsabong)"
+                },
+                {
+                  "name": "Kgatleng",
+                  "label": "Kgatleng"
+                },
+                {
+                  "name": "Letlhakeng",
+                  "label": "Letlhakeng"
+                },
+                {
+                  "name": "Lobatse",
+                  "label": "Lobatse"
+                },
+                {
+                  "name": "Mabutsane",
+                  "label": "Mabutsane"
+                },
+                {
+                  "name": "Mahalapye",
+                  "label": "Mahalapye"
+                },
+                {
+                  "name": "Mogoditshane-Thamaga",
+                  "label": "Mogoditshane-Thamaga"
+                },
+                {
+                  "name": "Molepolole",
+                  "label": "Molepolole"
+                },
+                {
+                  "name": "Moshupa",
+                  "label": "Moshupa"
+                },
+                {
+                  "name": "Ngami",
+                  "label": "North-West"
+                },
+                {
+                  "name": "North East",
+                  "label": "North East"
+                },
+                {
+                  "name": "Okavango",
+                  "label": "Okavango"
+                },
+                {
+                  "name": "Palapye",
+                  "label": "Palapye"
+                },
+                {
+                  "name": "Phikwe",
+                  "label": "Phikwe"
+                },
+                {
+                  "name": "Ramotswa",
+                  "label": "Ramotswa"
+                },
+                {
+                  "name": "Serowe",
+                  "label": "Serowe"
+                },
+                {
+                  "name": "Tlokweng",
+                  "label": "Tlokweng"
+                },
+                {
+                  "name": "Tutume",
+                  "label": "Tutume"
+                },
+                {
+                  "name": "option_k6usbsmx",
+                  "label": "Sowa"
+                },
+                {
+                  "name": "option_jrxqrvz6",
+                  "label": "Tonota"
+                }
+              ]
             }
           ]
         }

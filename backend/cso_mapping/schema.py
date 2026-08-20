@@ -89,6 +89,14 @@ def _resolve_field_choices(schema: dict) -> dict:
             name = field.get("list")
             if name and name in shared:
                 field["choices"] = shared[name]
+            # Composite funding-sources sub-fields carry their own select lists;
+            # resolve those too so a choice-list edit reaches them (e.g. districts).
+            for sub in field.get("sub_fields") or []:
+                if not isinstance(sub, dict):
+                    continue
+                sub_name = sub.get("list")
+                if sub_name and sub_name in shared:
+                    sub["choices"] = shared[sub_name]
     return schema
 
 
@@ -249,11 +257,20 @@ def validate_schema(data) -> None:
                             errors.append(
                                 f"Question '{name}': each funding sub-field needs a valid name."
                             )
-                        elif sf.get("type") not in ("text", "select_one"):
+                            continue
+                        sub_type = sf.get("type")
+                        if sub_type not in ("text", "select_one", "select_multiple"):
                             errors.append(
                                 f"Question '{name}': funding sub-field '{sub_name}' has an "
                                 "unsupported type."
                             )
+                        elif sub_type in ("select_one", "select_multiple"):
+                            lst = sf.get("list")
+                            if not lst or lst not in choices:
+                                errors.append(
+                                    f"Question '{name}': funding sub-field '{sub_name}' needs a "
+                                    "valid choice list."
+                                )
             _check_condition(f.get("relevant"), all_names, f"Question '{name}'", errors)
 
     missing = CORE_FIELDS - all_names
@@ -325,21 +342,29 @@ def display_answer(schema: dict, field: dict, value) -> str:
     ftype = field.get("type")
     if ftype == FUNDING_SOURCES_TYPE:
         items = value if isinstance(value, list) else []
-        labels = {
-            sf["name"]: sf.get("label", sf["name"])
+        # (name, label, type, list) per sub-field so select sub-fields render as
+        # labelled choices (and multi-selects as a comma-joined list), not raw codes.
+        specs = [
+            (sf["name"], sf.get("label", sf["name"]), sf.get("type"), sf.get("list", ""))
             for sf in (field.get("sub_fields") or [])
             if isinstance(sf, dict) and sf.get("name")
-        }
-        keys = list(labels) or list(FUNDING_ITEM_KEYS)
+        ] or [(k, k, "text", "") for k in FUNDING_ITEM_KEYS]
         lines = []
         for i, item in enumerate(items, 1):
             if not isinstance(item, dict):
                 continue
-            parts = [
-                f"{labels.get(k, k)}: {str(item.get(k, '') or '').strip()}"
-                for k in keys
-                if str(item.get(k, "") or "").strip()
-            ]
+            parts = []
+            for sub_name, sub_label, sub_type, sub_list in specs:
+                raw = item.get(sub_name)
+                if sub_type == "select_multiple":
+                    vals = raw if isinstance(raw, list) else ([] if raw in (None, "") else [raw])
+                    text = ", ".join(choice_label(schema, sub_list, v) for v in vals)
+                elif sub_type == "select_one":
+                    text = choice_label(schema, sub_list, raw) if raw else ""
+                else:
+                    text = str(raw or "").strip()
+                if text:
+                    parts.append(f"{sub_label}: {text}")
             if parts:
                 lines.append(f"{i}. " + "; ".join(parts))
         return "\n".join(lines)
