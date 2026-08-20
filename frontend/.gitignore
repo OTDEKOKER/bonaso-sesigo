@@ -26,6 +26,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# test runner artifacts
+/test-results/
+
 # capacitor / android
 /android/.gradle/
 /android/.idea/
