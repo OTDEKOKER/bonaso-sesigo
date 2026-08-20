@@ -204,6 +204,25 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # that will report has built and activated a layout.
 WORKBOOK_REQUIRE_LAYOUT = os.getenv('WORKBOOK_REQUIRE_LAYOUT', 'False').lower() == 'true'
 
+# Project-hierarchy source of truth (staged migration; see documentation/
+# SESIGO_HIERARCHY_AND_IMPLEMENTATION_PLAN_2026-06-09.md). Controls where the
+# hierarchy-derived reads (coordinator/sub-grantee role, and — in later stages —
+# org visibility scope) get their answer:
+#   'global'  (DEFAULT) -> legacy behaviour EXACTLY: coordinator/sub-grantee status
+#             reads the stored ProjectOrganization.is_coordinator/is_sub_grantee
+#             booleans, and org scope reads the global Organization.parent tree.
+#   'project' -> canonical: coordinator/sub-grantee status is DERIVED from the
+#             ProjectOrganizationHierarchy edges (projects.derived_roles), and
+#             (in the Rep-1 stage) org scope resolves through the project
+#             hierarchy (projects.scope.get_user_project_scope).
+# Default 'global' => ZERO behaviour change anywhere until an operator opts in
+# per-environment AFTER parity is verified (projects.derived_roles.coordinator_org_ids
+# and the check_project_parity / dry_run_hierarchy_canonicalization commands read
+# this flag). Read it via projects.derived_roles.hierarchy_source().
+HIERARCHY_SOURCE = os.getenv('HIERARCHY_SOURCE', 'global').strip().lower()
+if HIERARCHY_SOURCE not in ('global', 'project'):
+    HIERARCHY_SOURCE = 'global'
+
 # Workbook-driven eligibility (opt-in PER PROJECT). When a project's id is listed
 # here, an organisation's reportable indicators become its resolved (own or
 # inherited coordinator) WorkbookLayout placed indicators, instead of the per-org

@@ -89,3 +89,74 @@ def is_derived_coordinator(project, organization_id: int) -> bool:
 
 def is_derived_sub_grantee(project, organization_id: int) -> bool:
     return bool(derive_role_flags(project).get(int(organization_id), {}).get("is_sub_grantee"))
+
+
+# ---------------------------------------------------------------------------
+# Canonical, flag-gated read-through API (Rep 3b cutover).
+#
+# Runtime consumers that need "who are the coordinators / sub-grantees in this
+# project?" call these instead of filtering the stored boolean directly. The
+# HIERARCHY_SOURCE setting decides the answer:
+#   'global'  (DEFAULT) -> the stored is_coordinator / is_sub_grantee booleans,
+#             returning EXACTLY the same set the legacy
+#             ``filter(is_coordinator=True[, is_active=True])`` produced.
+#   'project' -> derived from the canonical ProjectOrganizationHierarchy edges
+#             (derive_role_flags), intersected with active PO membership when
+#             ``active_only`` (mirrors the legacy active filter).
+#
+# The stored booleans are left in place and keep being maintained by the
+# project-setup write path — these helpers only change where *reads* resolve
+# from, and only when the flag is flipped. ``project`` accepts a Project instance
+# or a project id.
+# ---------------------------------------------------------------------------
+
+def hierarchy_source() -> str:
+    """The active hierarchy source ('global' | 'project'); default 'global'."""
+    from django.conf import settings
+
+    value = str(getattr(settings, "HIERARCHY_SOURCE", "global") or "global").strip().lower()
+    return value if value in ("global", "project") else "global"
+
+
+def _active_org_ids(project) -> set[int]:
+    return set(
+        ProjectOrganization.objects.filter(
+            project=project, is_active=True
+        ).values_list("organization_id", flat=True)
+    )
+
+
+def _stored_role_org_ids(project, field: str, *, active_only: bool) -> set[int]:
+    qs = ProjectOrganization.objects.filter(project=project, **{field: True})
+    if active_only:
+        qs = qs.filter(is_active=True)
+    return set(qs.values_list("organization_id", flat=True))
+
+
+def coordinator_org_ids(project, *, active_only: bool = True) -> set[int]:
+    """Canonical set of coordinator org ids for ``project`` (flag-gated).
+
+    'global' (default): orgs with the stored is_coordinator boolean (byte-for-byte
+    the legacy filter). 'project': orgs that are a parent edge in the canonical
+    ProjectOrganizationHierarchy and not an overseer role (derive_role_flags).
+    ``active_only`` mirrors the legacy ``is_active=True`` filter.
+    """
+    if project is None:
+        return set()
+    if hierarchy_source() == "project":
+        ids = {oid for oid, f in derive_role_flags(project).items() if f.get("is_coordinator")}
+        return ids & _active_org_ids(project) if active_only else ids
+    return _stored_role_org_ids(project, "is_coordinator", active_only=active_only)
+
+
+def sub_grantee_org_ids(project, *, active_only: bool = True) -> set[int]:
+    """Canonical set of sub-grantee org ids for ``project`` (flag-gated).
+
+    Mirrors :func:`coordinator_org_ids` for the child side of the hierarchy.
+    """
+    if project is None:
+        return set()
+    if hierarchy_source() == "project":
+        ids = {oid for oid, f in derive_role_flags(project).items() if f.get("is_sub_grantee")}
+        return ids & _active_org_ids(project) if active_only else ids
+    return _stored_role_org_ids(project, "is_sub_grantee", active_only=active_only)

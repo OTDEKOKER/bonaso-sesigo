@@ -54,6 +54,11 @@ def normalize_district(raw) -> str | None:
 def build_geographic_coverage(project_id: int) -> dict:
     """Exact org/coordinator presence per normalised district for a project."""
     pos = ProjectOrganization.objects.filter(project_id=project_id).select_related("organization")
+    # Rep 3b: canonical coordinator read-through. ``pos`` is not is_active-filtered,
+    # so active_only=False makes ``org_id in coord_ids`` equal the legacy
+    # per-row ``po.is_coordinator`` exactly under HIERARCHY_SOURCE='global'.
+    from projects.derived_roles import coordinator_org_ids
+    coord_ids = coordinator_org_ids(project_id, active_only=False)
     per = defaultdict(lambda: {"orgs": set(), "coordinators": set()})
     raw_labels: set[str] = set()
     orgs_with_coverage = 0
@@ -68,7 +73,7 @@ def build_geographic_coverage(project_id: int) -> dict:
             if not d:
                 continue
             per[d]["orgs"].add(po.organization_id)
-            if po.is_coordinator:
+            if po.organization_id in coord_ids:
                 per[d]["coordinators"].add(po.organization_id)
 
     districts = sorted(

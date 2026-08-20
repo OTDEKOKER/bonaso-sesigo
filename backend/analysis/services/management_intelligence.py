@@ -74,11 +74,11 @@ def build_coordinator_cards(project, year: int, quarter: str, *, coordinator_ids
 
     # Only ACTUAL coordinators get a card (the coordinator-target table also
     # holds sub-grantee rows). Further restrict to the caller's permission scope.
-    coord_org_ids = set(
-        ProjectOrganization.objects.filter(
-            project_id=project.id, is_coordinator=True,
-        ).values_list("organization_id", flat=True)
-    )
+    # Rep 3b: canonical coordinator read-through. No is_active filter historically,
+    # so active_only=False preserves the legacy set exactly under
+    # HIERARCHY_SOURCE='global'.
+    from projects.derived_roles import coordinator_org_ids
+    coord_org_ids = coordinator_org_ids(project, active_only=False)
     if coordinator_ids is not None:
         coord_org_ids &= set(coordinator_ids)
 

@@ -951,14 +951,17 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         this to list only actual coordinators, not every organization that
         happens to have a coordinator target assigned to it."""
         from projects.models import ProjectOrganization
+        from projects.derived_roles import coordinator_org_ids
 
         project_id = (request.query_params.get('project_id') or '').strip()
         if not project_id or project_id.lower() == 'all':
             return Response([])
 
+        # Rep 3b: canonical coordinator read-through (stored booleans under
+        # HIERARCHY_SOURCE='global', POH-derived under 'project').
         rows = ProjectOrganization.objects.filter(
             project_id=project_id,
-            is_coordinator=True,
+            organization_id__in=coordinator_org_ids(project_id, active_only=True),
             is_active=True,
         )
 
@@ -999,16 +1002,11 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
 
     def _project_coordinator_ids(self, project_id):
         """The org ids that are coordinators in this project (project hierarchy
-        role, ProjectOrganization.is_coordinator)."""
-        from projects.models import ProjectOrganization
+        role). Rep 3b: canonical read-through — stored is_coordinator booleans
+        under HIERARCHY_SOURCE='global', POH-derived under 'project'."""
+        from projects.derived_roles import coordinator_org_ids
 
-        return set(
-            ProjectOrganization.objects.filter(
-                project_id=project_id,
-                is_coordinator=True,
-                is_active=True,
-            ).values_list('organization_id', flat=True)
-        )
+        return coordinator_org_ids(project_id, active_only=True)
 
     def _is_rollup_request(self):
         """True when the caller is viewing "All coordinators" within a single

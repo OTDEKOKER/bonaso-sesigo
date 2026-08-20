@@ -2198,11 +2198,15 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
         # Coordinators defined for this project, restricted to what the caller may
         # access. ``_allowed_org_ids_for_user`` returns None for org admins (all).
         from projects.models import ProjectOrganization
+        from projects.derived_roles import coordinator_org_ids
         allowed = self._allowed_org_ids_for_user(project=project)
         coordinators = []
         seen_coord = set()
+        # Rep 3b: coordinator set via the canonical read-through (stored booleans
+        # under HIERARCHY_SOURCE='global', POH-derived under 'project').
+        coord_ids = coordinator_org_ids(project, active_only=True)
         for po in ProjectOrganization.objects.filter(
-            project=project, is_coordinator=True, is_active=True,
+            project=project, organization_id__in=coord_ids, is_active=True,
         ).select_related('organization'):
             org = po.organization
             if org is None or org.id in seen_coord:

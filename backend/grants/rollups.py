@@ -169,14 +169,12 @@ def quarterly_expenditure(grants, *, project=None, fiscal_year=None) -> dict:
 
     if project is not None:
         from organizations.models import Organization
-        from projects.models import ProjectOrganization
         from projects.scope import get_project_subtree_org_ids
+        from projects.derived_roles import coordinator_org_ids
 
-        coord_ids = list(
-            ProjectOrganization.objects.filter(
-                project=project, is_coordinator=True, is_active=True
-            ).values_list("organization_id", flat=True)
-        )
+        # Rep 3b: canonical coordinator read-through (stored booleans under
+        # HIERARCHY_SOURCE='global', POH-derived under 'project').
+        coord_ids = list(coordinator_org_ids(project, active_only=True))
         coord_names = dict(Organization.objects.filter(id__in=coord_ids).values_list("id", "name"))
         for coord_id in coord_ids:
             subtree = get_project_subtree_org_ids(project, coord_id)

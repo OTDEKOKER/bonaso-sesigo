@@ -340,11 +340,11 @@ class FigureGenerator:
         if cached is not None:
             return cached
         from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
-        coord_ids = list(
-            ProjectOrganization.objects.filter(
-                project=self.project, is_coordinator=True,
-            ).values_list('organization_id', flat=True)
-        )
+        from projects.derived_roles import coordinator_org_ids
+        # Rep 3b: canonical coordinator read-through. No is_active filter here
+        # historically, so active_only=False preserves the legacy set exactly
+        # under HIERARCHY_SOURCE='global'.
+        coord_ids = list(coordinator_org_ids(self.project, active_only=False))
         # Permission scope: a non-admin (e.g. a coordinator M&E officer) may only
         # see their own tree. Restrict the coordinators — and every org rolled up
         # under them — to the caller's allowed org scope, so figures grouped by
