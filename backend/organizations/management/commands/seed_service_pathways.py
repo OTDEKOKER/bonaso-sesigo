@@ -62,7 +62,7 @@ PATHWAYS: list[tuple[str, list[tuple[str, list[list[str]]]], list[str]]] = [
     ], []),
     ("GBV", [
         ("Screened", [["screened for gbv"]]),
-        ("Eligible", [["individuals eligible for gbv services"]]),
+        ("Eligible", [["eligible for gbv services"]]),
         ("Referred", [["referred for clinical services for gbv"],
                        ["referred for psychosocial support on gbv"],
                        ["referred for justice services for gbv"]]),
@@ -84,7 +84,7 @@ PATHWAYS: list[tuple[str, list[tuple[str, list[list[str]]]], list[str]]] = [
         ("Linked to care", [["received psychosocial support on gbv"]]),
     ], []),
     ("Justice", [
-        ("Eligible", [["eligible for legal aid"]]),
+        ("Eligible", [["eligible for justice services"]]),
         ("Referred", [["provided with legal aid"]]),
         ("Linked to care", [["linked to justice"]]),
     ], []),
@@ -110,17 +110,20 @@ class Command(BaseCommand):
                             help="Write the config. Without this flag the command only prints the plan.")
         parser.add_argument("--org", type=int, default=DEFAULT_ORG_ID,
                             help=f"Organisation id to configure (default {DEFAULT_ORG_ID} = BONASO).")
+        parser.add_argument("--project", type=int, default=PROJECT_ID,
+                            help=f"Project id to resolve indicators against (default {PROJECT_ID}).")
 
     def handle(self, *args, **options):
         apply = options["apply"]
         org_id = options["org"]
+        project_id = options["project"]
 
         org = Organization.objects.filter(id=org_id).first()
         if org is None:
             self.stderr.write(self.style.ERROR(f"Organisation {org_id} not found."))
             return
 
-        used_ids = set(Aggregate.objects.filter(project_id=PROJECT_ID).values_list("indicator_id", flat=True))
+        used_ids = set(Aggregate.objects.filter(project_id=project_id).values_list("indicator_id", flat=True))
         index = [
             {"id": i.id, "name": (i.name or "").lower(), "deprecated": bool(getattr(i, "is_deprecated", False))}
             for i in Indicator.objects.filter(id__in=used_ids)
@@ -139,7 +142,7 @@ class Command(BaseCommand):
         unresolved: list[str] = []
 
         self.stdout.write(self.style.MIGRATE_HEADING(
-            f"\nService pathways for org #{org.id} ({org.name}) — project {PROJECT_ID}\n"))
+            f"\nService pathways for org #{org.id} ({org.name}) — project {project_id}\n"))
 
         for label, stages, exclude in PATHWAYS:
             self.stdout.write(self.style.HTTP_INFO(f"[{label}]"))
