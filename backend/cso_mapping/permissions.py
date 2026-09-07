@@ -1,7 +1,6 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from organizations.access import training_view_mode
-from users.module_permissions import resolve_user_module_permissions
 
 MODULE = "cso_mapping"
 
@@ -38,8 +37,23 @@ class CanUseCsoMapping(BasePermission):
         # include_training resolve to mode "all", not "training", and are unaffected).
         if training_view_mode(request) == "training":
             return False
-        perms = resolve_user_module_permissions(user)
-        return _required_action(request, view) in perms.get(MODULE, [])
+        # "Admin" here means a Django superuser or the application's own `admin`
+        # role ONLY. The Django `is_staff` flag can sit on non-admin accounts and
+        # must NOT, on its own, unlock respondents' personal data (mirrors
+        # IsAdminRole; audit Fix A). We deliberately do NOT go through
+        # resolve_user_module_permissions here — its admin shortcut treats
+        # is_staff as full access, which would leak the submissions list.
+        if getattr(user, "is_superuser", False) or getattr(user, "role", None) == "admin":
+            return True
+        # Everyone else is deny-by-default and needs an EXPLICIT cso_mapping grant
+        # for the requested action, read straight from their stored permission rows
+        # (an admin assigning the module), never inferred from is_staff.
+        action = _required_action(request, view)
+        try:
+            row = user.module_permissions.filter(module=MODULE, is_enabled=True).first()
+        except Exception:
+            return False
+        return bool(row and action in (row.actions or []))
 
 
 class IsAdminRole(BasePermission):

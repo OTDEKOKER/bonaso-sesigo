@@ -163,7 +163,12 @@ class SubmissionCreateTests(APITestCase):
 
 
 class StaffAccessTests(APITestCase):
-    """Fix A: raw submissions are admin-only; is_staff alone must not grant access."""
+    """Fix A: raw submissions are admin-only; is_staff alone must not grant access.
+
+    Also pins the deny-by-default contract's only escape hatch: an explicit,
+    admin-assigned ``UserModulePermission`` grant, enforced per-action and honouring
+    ``is_enabled`` — read straight from the stored rows, never inferred from is_staff.
+    """
 
     def setUp(self):
         self.admin = User.objects.create_user(
@@ -248,6 +253,46 @@ class StaffAccessTests(APITestCase):
         self.assertTrue(any(h and "Nature/type of your organisation" in h for h in headers))
         # A category with no submissions still gets a header-only sheet.
         self.assertEqual(wb["Coordinating Bodies"].max_row, 1)
+
+    def _grant(self, user, actions, *, enabled=True):
+        from users.models import UserModulePermission
+
+        return UserModulePermission.objects.create(
+            user=user, module="cso_mapping", actions=actions, is_enabled=enabled,
+        )
+
+    def test_explicit_view_grant_allows_list(self):
+        # Deny-by-default is lifted ONLY by an explicit admin-assigned grant, read
+        # straight from the stored rows — a non-admin officer with a 'view' grant may
+        # read the submissions list.
+        self._grant(self.officer, ["view"])
+        self.assertEqual(self._list_status(self.officer), status.HTTP_200_OK)
+
+    def test_explicit_grant_is_action_scoped(self):
+        # A 'view'-only grant must NOT unlock 'export': the export action is enforced
+        # separately, so the grant is honoured per-action.
+        row = self._grant(self.officer, ["view"])
+        self.client.force_authenticate(self.officer)
+        self.assertEqual(
+            self.client.get(reverse("cso-submissions-list")).status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            self.client.get(reverse("cso-submissions-export")).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        # Adding 'export' to the same grant then unlocks the export action.
+        row.actions = ["view", "export"]
+        row.save(update_fields=["actions"])
+        self.assertEqual(
+            self.client.get(reverse("cso-submissions-export")).status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_disabled_grant_denied(self):
+        # A disabled row denies the module entirely, even with the action listed.
+        self._grant(self.officer, ["view"], enabled=False)
+        self.assertEqual(self._list_status(self.officer), status.HTTP_403_FORBIDDEN)
 
 
 class IdempotencyTests(APITestCase):
