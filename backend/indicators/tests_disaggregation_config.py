@@ -151,7 +151,9 @@ class SourceOfTruthTests(TestCase):
         )
         cfg = resolve_matrix_config(ind)
         self.assertTrue(cfg.has_disaggregates)
-        self.assertEqual(cfg.primary_values, ["FSW", "MSM"])      # from saved config
+        # KP VALUES come from the saved config (SSoT), but the key-population axis
+        # is rendered in the canonical order (MSM-first) regardless of stored order.
+        self.assertEqual(cfg.primary_values, ["MSM", "FSW"])
         self.assertEqual(cfg.secondary_values, ["Male", "Female"])
 
     def test_percentage_indicator_resolves_as_value(self):

@@ -321,6 +321,11 @@ def _is_sex_dimension(dim: dict) -> bool:
     return "sex" in tokens or "gender" in tokens
 
 
+def _is_kp_dimension(dim: dict) -> bool:
+    tokens = _dim_tokens(dim)
+    return "kp" in tokens or ("key" in tokens and "population" in tokens)
+
+
 @dataclass
 class MatrixConfig:
     has_disaggregates: bool
@@ -330,6 +335,22 @@ class MatrixConfig:
     secondary_values: list[str]
     band_label: str
     band_values: list[str]
+    # True when the primary axis is key-population and the secondary axis is sex.
+    # In that case the sexes shown are restricted per key population (MSM=Male,
+    # FSW=Female, others=both) — see secondaries_for. Default False keeps every
+    # non-KP/non-sex matrix unchanged.
+    primary_is_kp: bool = False
+    secondary_is_sex: bool = False
+
+    def secondaries_for(self, primary) -> list[str]:
+        """Secondary (sex) values to render for ``primary``. For a KP×sex matrix
+        this drops the meaningless combinations (MSM-Female, FSW-Male); otherwise
+        it is the full secondary list. Never changes stored keys — only which
+        always-zero cells are displayed."""
+        if self.primary_is_kp and self.secondary_is_sex:
+            from indicators.disaggregation import kp_valid_sexes
+            return kp_valid_sexes(primary, self.secondary_values)
+        return self.secondary_values
 
 
 def resolve_matrix_config(indicator) -> MatrixConfig:
@@ -387,6 +408,16 @@ def resolve_matrix_config(indicator) -> MatrixConfig:
     # band stored as both "0 - 4" and "0-4" renders as one column (not two).
     band_values = list(dict.fromkeys(normalize_band_label(b) for b in _values(age_dim, [NO_BAND])))
 
+    # Key-population axis: render in the canonical KP order (MSM-first …
+    # GENERAL POP. last) regardless of the order the values were stored in, so
+    # every indicator's workbook is consistent. Reorders display only — the
+    # stored (primary, secondary, band) keys are unchanged.
+    primary_is_kp = _is_kp_dimension(primary_dim) if primary_dim else False
+    secondary_is_sex = _is_sex_dimension(secondary_dim) if secondary_dim else False
+    if primary_is_kp:
+        from indicators.disaggregation import kp_order_index
+        primary_values = sorted(primary_values, key=kp_order_index)
+
     return MatrixConfig(
         has_disaggregates=True,
         primary_label=(primary_dim or {}).get("label") or "Category",
@@ -395,13 +426,19 @@ def resolve_matrix_config(indicator) -> MatrixConfig:
         secondary_values=secondary_values,
         band_label=(age_dim or {}).get("label") or "Value",
         band_values=band_values,
+        primary_is_kp=primary_is_kp,
+        secondary_is_sex=secondary_is_sex,
     )
 
 
 def iter_cells(cfg: MatrixConfig):
-    """Yield every (primary, secondary, band) input-cell coordinate."""
+    """Yield every (primary, secondary, band) input-cell coordinate.
+
+    For a KP×sex matrix the secondaries are restricted per KP (no MSM-Female /
+    FSW-Male cells); every other matrix yields the full cross-product.
+    """
     for primary in cfg.primary_values:
-        for secondary in cfg.secondary_values:
+        for secondary in cfg.secondaries_for(primary):
             for band in cfg.band_values:
                 yield primary, secondary, band
 
@@ -1499,7 +1536,7 @@ def _write_indicator_block(ws, start_row, plan: IndicatorPlan, cellmap_rows, dv,
     female_subs: list[str] = []
     for primary in primary_vals:
         kp_first = row
-        for secondary in sec_vals:
+        for secondary in cfg.secondaries_for(primary):
             if has_sex:
                 _style(ws.cell(row=row, column=COL_SEX, value=secondary), fill=_LABEL_FILL, font=_BOLD)
             elif not single_count:

@@ -34,7 +34,35 @@ STANDARD_AGE_BAND_VALUES = [
     "10-14", "15-19", "20-24", "25-29", "30-34", "35-39",
     "40-44", "45-49", "50-54", "55-59", "60-64", "65+",
 ]
-STANDARD_KP_VALUES = ["GENERAL POP.", "FSW", "MSM", "PWID", "PWUD", "PWD", "LGBTQI+"]
+# Canonical key-population order (maintainer decision): reported MSM-first, with
+# GENERAL POP. last. This is the single source of KP order everywhere KP renders
+# (reporting/coordinator workbooks, capture matrix); existing indicators are
+# reordered to this at RENDER time — no stored aggregate keys change.
+STANDARD_KP_VALUES = ["MSM", "FSW", "PWD", "PWID", "PWUD", "LGBTQI+", "GENERAL POP."]
+
+# Sexes each KP is reported for. MSM are male by definition; FSW are female; every
+# other KP reports both. Applied at RENDER only (suppresses the meaningless
+# MSM-Female / FSW-Male rows); it never drops or alters entered data (those cells
+# are always zero) and never changes the (primary, secondary, band) key mapping.
+KP_VALID_SEXES = {"MSM": ["Male"], "FSW": ["Female"]}
+
+
+def kp_order_index(kp) -> int:
+    """Sort key placing a KP in the canonical order; unknown KPs sort last."""
+    label = canonical_disaggregate_label(str(kp or "").strip())
+    try:
+        return STANDARD_KP_VALUES.index(label)
+    except ValueError:
+        return len(STANDARD_KP_VALUES)
+
+
+def kp_valid_sexes(kp, available):
+    """The subset of ``available`` sexes valid for this KP (MSM=Male, FSW=Female,
+    others=all), preserving ``available`` order. Unknown KP -> all available."""
+    allowed = KP_VALID_SEXES.get(canonical_disaggregate_label(str(kp or "").strip()))
+    if allowed is None:
+        return list(available)
+    return [s for s in available if s in allowed]
 
 # Known spelling variants of a disaggregate category -> its canonical label.
 # Keyed by a punctuation/space-insensitive fold so "General population",
