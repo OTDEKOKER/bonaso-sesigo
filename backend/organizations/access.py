@@ -24,8 +24,47 @@ def get_user_organization_ids(user, project=None, project_id=None) -> list[int]:
         )
         return sorted(scope or {organization.id})
 
+    # Rep-1 (flag-gated, DORMANT by default): under HIERARCHY_SOURCE='project' a
+    # user's org visibility is the union of their per-project ProjectOrganization
+    # Hierarchy subtree across the projects they are assigned to — the global
+    # Organization.parent tree is no longer consulted. Default 'global' preserves
+    # the legacy tree walk below EXACTLY (byte-for-byte), so nothing changes until
+    # an operator flips the flag per-environment after the parity harness is clean.
+    from projects.derived_roles import hierarchy_source
+    if hierarchy_source() == "project":
+        scoped = _project_scoped_org_ids(user)
+        if scoped is not None:
+            return sorted(scoped)
+        # scoped is None => indeterminate (admin, or user with no project
+        # assignments): fall through to the legacy tree so nobody is locked out.
+
     descendants = organization.get_descendants()
     return [organization.id] + [child.id for child in descendants]
+
+
+def _project_scoped_org_ids(user):
+    """Union of a user's POH subtree across their assigned projects (Rep-1).
+
+    Returns the set of org ids the user may see WITHOUT consulting the global
+    Organization.parent tree, or ``None`` when project scope is indeterminate
+    (a platform admin — who bypasses scoping anyway — or a user with no project
+    assignments) so the caller keeps the safe legacy behaviour. Never widens
+    beyond the union of the user's project subtrees; always includes their own
+    org so a member is never scoped to nothing.
+    """
+    from projects.scope import get_user_project_ids, get_user_project_scope
+    from projects.models import Project
+
+    project_ids = get_user_project_ids(user)  # None => admin (all projects)
+    if project_ids is None:
+        return None  # admin: bypasses org scoping; keep legacy path
+    if not project_ids:
+        return None  # no assignments yet: indeterminate -> keep legacy (no lockout)
+
+    scoped: set[int] = {user.organization_id}
+    for project in Project.objects.filter(id__in=project_ids):
+        scoped |= get_user_project_scope(user, project)
+    return scoped
 
 
 def is_organization_admin(user) -> bool:
