@@ -47,11 +47,15 @@ class FiscalAndTotalHelpersTests(TestCase):
         self.assertEqual(aggregate_total(None), 0.0)
 
     def test_performance_status_thresholds(self):
-        self.assertEqual(performance_status(0, None), 'no_target')
-        self.assertEqual(performance_status(100, None), 'no_target')
+        # Canonical RAG bands (SSoT): met >=100, on-track >=75, at-risk >=50,
+        # off-track <50; untargeted when no positive target / no achievement.
+        self.assertEqual(performance_status(0, None), 'untargeted')
+        self.assertEqual(performance_status(100, None), 'untargeted')
         self.assertEqual(performance_status(100, 100), 'met')
-        self.assertEqual(performance_status(100, 80), 'on_track')
-        self.assertEqual(performance_status(100, 79.9), 'behind')
+        self.assertEqual(performance_status(100, 80), 'on-track')
+        self.assertEqual(performance_status(100, 79.9), 'on-track')
+        self.assertEqual(performance_status(100, 60), 'at-risk')
+        self.assertEqual(performance_status(100, 40), 'off-track')
 
 
 class CoordinatorRollupTests(TestCase):
@@ -94,7 +98,7 @@ class CoordinatorRollupTests(TestCase):
         self.assertEqual(result['own_actual_value'], 100.0)
         self.assertAlmostEqual(result['achievement_percent'], 70.0)
         self.assertEqual(result['variance'], -60.0)
-        self.assertEqual(result['performance_status'], 'behind')
+        self.assertEqual(result['performance_status'], 'at-risk')
         self.assertEqual(len(result['child_contributions']), 1)
         self.assertEqual(result['child_contributions'][0]['organization_id'], self.child.id)
         self.assertEqual(result['child_contributions'][0]['actual_value'], 40.0)

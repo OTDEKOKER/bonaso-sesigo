@@ -40,7 +40,7 @@ export interface CoordinatorTarget {
   actual_value?: number;
   achievement_percent?: number | null;
   variance?: number | null;
-  performance_status?: "no_target" | "met" | "on_track" | "behind" | "pending";
+  performance_status?: "untargeted" | "met" | "on-track" | "at-risk" | "off-track" | "pending";
   child_contributions?: CoordinatorTargetChildContribution[];
   // Dynamic (derived) targets — resolved read metadata from the rollup engine.
   // resolved_target_value is the effective target (null when pending). target_source

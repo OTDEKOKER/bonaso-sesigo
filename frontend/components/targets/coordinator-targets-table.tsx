@@ -4,6 +4,7 @@ import { Pencil, Trash2 } from "lucide-react";
 
 import type { CoordinatorTarget } from "@/lib/api";
 import type { CoordinatorPerformanceRow, CoordinatorPerformanceStatus } from "@/components/targets/coordinator-targets-types";
+import { PERFORMANCE_STATUS_LABELS } from "@/components/dashboard/engine/performance-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -29,18 +30,25 @@ function formatPercent(value: number | null): string {
 }
 
 function getStatusLabel(status: CoordinatorPerformanceStatus): string {
-  if (status === "on_track") return "On Track";
-  if (status === "no_target") return "No Target";
   if (status === "pending") return "Pending";
-  return status === "met" ? "Met" : "Behind";
+  return PERFORMANCE_STATUS_LABELS[status];
 }
 
 function getStatusClassName(status: CoordinatorPerformanceStatus): string {
-  if (status === "met") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
-  if (status === "on_track") return "border-amber-500/30 bg-amber-500/10 text-amber-700";
-  if (status === "behind") return "border-rose-500/30 bg-rose-500/10 text-rose-700";
-  if (status === "pending") return "border-sky-500/30 bg-sky-500/10 text-sky-700";
-  return "border-border bg-muted/30 text-muted-foreground";
+  switch (status) {
+    case "met":
+      return "border-emerald-600/30 bg-emerald-600/10 text-emerald-700";
+    case "on-track":
+      return "border-green-500/30 bg-green-500/10 text-green-700";
+    case "at-risk":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700";
+    case "off-track":
+      return "border-rose-500/30 bg-rose-500/10 text-rose-700";
+    case "pending":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-700";
+    default: // untargeted
+      return "border-border bg-muted/30 text-muted-foreground";
+  }
 }
 
 export function CoordinatorTargetsTable(props: CoordinatorTargetsTableProps) {

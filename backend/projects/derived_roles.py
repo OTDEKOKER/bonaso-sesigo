@@ -176,3 +176,64 @@ def sub_grantee_org_ids(project, *, active_only: bool = True) -> set[int]:
         ids = {oid for oid, f in derive_role_flags(project).items() if f.get("is_sub_grantee")}
         return ids & _active_org_ids(project) if active_only else ids
     return _stored_role_org_ids(project, "is_sub_grantee", active_only=active_only)
+
+
+def coordinator_subtree_org_ids(
+    project,
+    coordinator_org_id,
+    *,
+    member_ids: set[int] | None = None,
+) -> set[int]:
+    """Org ids in ``coordinator_org_id``'s subtree WITHIN ``project`` (includes the
+    coordinator itself), intersected with the project's active membership.
+
+    Flag-gated so a caller that today walks the GLOBAL ``Organization.parent`` tree
+    keeps identical results until ``HIERARCHY_SOURCE`` is flipped:
+
+      'global' (DEFAULT) -> the coordinator + its global-tree descendants
+          (``Organization.get_descendants()``), intersected with active project
+          members. Byte-for-byte the legacy ``{coord} | coord.get_descendants()``
+          ∩ members set.
+      'project' -> the coordinator's subtree via ACTIVE ProjectOrganizationHierarchy
+          edges (:func:`projects.scope.get_project_subtree_org_ids`), intersected
+          with active members — the coordinator's cluster in THIS project's own
+          hierarchy, which may differ from any other project's.
+
+    ``member_ids`` is an optional precomputed set of active project member org ids
+    (the caller usually already has it). When omitted it is resolved from active
+    ``ProjectOrganization`` rows, falling back to the ``project.organizations`` M2M
+    for legacy projects with no PO rows — so the intersection can never widen the
+    result to an out-of-project org either way. Read-only; writes nothing.
+    """
+    if project is None or coordinator_org_id is None:
+        return set()
+    try:
+        coordinator_org_id = int(coordinator_org_id)
+    except (TypeError, ValueError):
+        return set()
+
+    if member_ids is None:
+        member_ids = _active_org_ids(project)
+        if not member_ids:
+            try:
+                member_ids = set(project.organizations.values_list("id", flat=True))
+            except DatabaseError:
+                member_ids = set()
+    member_ids = {int(m) for m in member_ids}
+
+    if hierarchy_source() == "project":
+        from .scope import get_project_subtree_org_ids
+
+        subtree = {int(i) for i in get_project_subtree_org_ids(project, coordinator_org_id)}
+    else:
+        from organizations.models import Organization
+
+        org = Organization.objects.filter(id=coordinator_org_id).first()
+        if org is None:
+            return set()
+        subtree = {coordinator_org_id} | {int(o.id) for o in org.get_descendants()}
+
+    # Always intersect with project membership (empty members -> empty set), so an
+    # org outside this project can never leak in — matching the legacy
+    # ``tree_ids & proj_org_ids`` semantics exactly.
+    return subtree & member_ids

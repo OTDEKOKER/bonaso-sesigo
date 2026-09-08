@@ -127,7 +127,7 @@ function mapTargetsToRows(targets: CoordinatorTarget[]): CoordinatorPerformanceR
         actualValue,
         achievementPercent,
         variance: typeof target.variance === "number" ? target.variance : actualValue - targetValue,
-        status: target.performance_status ?? "no_target",
+        status: target.performance_status ?? "untargeted",
         childContributions: target.child_contributions ?? [],
       } satisfies CoordinatorPerformanceRow;
     })

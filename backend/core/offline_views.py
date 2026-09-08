@@ -125,18 +125,38 @@ class OfflineBootstrapView(APIView):
             # the worker's own org + its parents/children within these projects
             po_qs = po_qs.filter(organization_id__in=org_ids)
 
+        # Canonical role/hierarchy read-through (flag-gated). Under
+        # HIERARCHY_SOURCE='global' (default) the offline package reports the
+        # stored per-project booleans and the worker's GLOBAL-tree coordinator /
+        # sub-grantees, byte-for-byte as before. Under 'project' both are derived
+        # from each in-scope project's own ProjectOrganizationHierarchy (which
+        # differs per project), so a worker who coordinates a different cluster in
+        # each project gets the right cluster per project.
+        from projects.derived_roles import hierarchy_source, derive_role_flags
+        project_scoped_roles = hierarchy_source() == "project"
+        derived_by_project: dict[int, dict] = {}
+        if project_scoped_roles:
+            derived_by_project = {p.id: derive_role_flags(p) for p in projects_qs}
+
         assignments = []
         coordinator_orgs = {}
         sub_grantees = {}
         district_set, locality_set, target_group_set = set(), set(), set()
         for po in po_qs:
+            if project_scoped_roles:
+                _flags = derived_by_project.get(po.project_id, {}).get(po.organization_id, {})
+                po_is_coordinator = bool(_flags.get("is_coordinator", po.is_coordinator))
+                po_is_sub_grantee = bool(_flags.get("is_sub_grantee", po.is_sub_grantee))
+            else:
+                po_is_coordinator = po.is_coordinator
+                po_is_sub_grantee = po.is_sub_grantee
             assignments.append({
                 "project_id": po.project_id,
                 "organization_id": po.organization_id,
                 "organization_name": po.organization.name,
                 "role": po.role,
-                "is_coordinator": po.is_coordinator,
-                "is_sub_grantee": po.is_sub_grantee,
+                "is_coordinator": po_is_coordinator,
+                "is_sub_grantee": po_is_sub_grantee,
                 "is_implementer": po.is_implementer,
                 "can_report_indicators": po.can_report_indicators,
                 "parent_assignment_id": po.parent_assignment_id,
@@ -150,15 +170,47 @@ class OfflineBootstrapView(APIView):
 
         # Coordinator org for the worker's assignments + allowed sub-grantees.
         if own_org is not None:
-            parent = own_org.parent
-            if parent is not None:
-                coordinator_orgs[parent.id] = {
-                    "id": parent.id, "code": parent.code, "name": parent.name, "type": parent.type,
-                }
-            for child in own_org.get_descendants():
-                sub_grantees[child.id] = {
-                    "id": child.id, "code": child.code, "name": child.name, "type": child.type,
-                }
+            if project_scoped_roles:
+                # Derive from each in-scope project's own hierarchy edges.
+                from projects.models import ProjectOrganizationHierarchy
+                from projects.scope import get_project_subtree_org_ids
+
+                coord_ref_ids: set[int] = set()
+                sub_ref_ids: set[int] = set()
+                for pid in project_ids:
+                    flags_map = derived_by_project.get(pid, {})
+                    # Coordinators OF the worker: active-edge parents of own_org
+                    # that are themselves coordinators in this project — a lead /
+                    # funder sitting directly above is excluded (it is not a
+                    # coordinator), mirroring derive_role_flags.
+                    parent_ids = ProjectOrganizationHierarchy.objects.filter(
+                        project_id=pid, is_active=True, child_organization_id=own_org.id,
+                    ).values_list("parent_organization_id", flat=True)
+                    for parent_id in parent_ids:
+                        if flags_map.get(int(parent_id), {}).get("is_coordinator"):
+                            coord_ref_ids.add(int(parent_id))
+                    # Sub-grantees UNDER the worker: its project-hierarchy subtree.
+                    sub_ref_ids |= {int(i) for i in get_project_subtree_org_ids(pid, own_org.id)}
+                sub_ref_ids.discard(own_org.id)
+
+                for org in Organization.objects.filter(id__in=coord_ref_ids):
+                    coordinator_orgs[org.id] = {
+                        "id": org.id, "code": org.code, "name": org.name, "type": org.type,
+                    }
+                for org in Organization.objects.filter(id__in=sub_ref_ids):
+                    sub_grantees[org.id] = {
+                        "id": org.id, "code": org.code, "name": org.name, "type": org.type,
+                    }
+            else:
+                parent = own_org.parent
+                if parent is not None:
+                    coordinator_orgs[parent.id] = {
+                        "id": parent.id, "code": parent.code, "name": parent.name, "type": parent.type,
+                    }
+                for child in own_org.get_descendants():
+                    sub_grantees[child.id] = {
+                        "id": child.id, "code": child.code, "name": child.name, "type": child.type,
+                    }
 
         # --- Indicators assigned to these projects + forms/validation -------
         pi_qs = ProjectIndicator.objects.filter(

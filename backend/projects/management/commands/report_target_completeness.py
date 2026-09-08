@@ -30,7 +30,7 @@ from django.core.management.base import BaseCommand, CommandError
 from analysis.models import CoordinatorTarget
 from indicators.models import Indicator
 from organizations.models import Organization
-from projects.models import Project, ProjectOrganization, WorkbookLayout
+from projects.models import Project, WorkbookLayout
 
 
 def _canonical(indicator_id, cache):
@@ -64,11 +64,11 @@ class Command(BaseCommand):
         canon_cache: dict = {}
 
         # Coordinators of this project (those that own a reporting workbook layout).
-        coordinator_ids = list(
-            ProjectOrganization.objects.filter(
-                project=project, is_coordinator=True, is_active=True,
-            ).values_list('organization_id', flat=True)
-        )
+        # Canonical coordinator read-through: stored is_coordinator booleans under
+        # HIERARCHY_SOURCE='global' (byte-for-byte the legacy filter), POH-derived
+        # under 'project'. active_only=True mirrors the legacy is_active=True filter.
+        from projects.derived_roles import coordinator_org_ids
+        coordinator_ids = sorted(coordinator_org_ids(project, active_only=True))
         org_names = dict(Organization.objects.filter(id__in=coordinator_ids).values_list('id', 'name'))
 
         # Placed (reportable) canonical indicators per coordinator, from the active layout.

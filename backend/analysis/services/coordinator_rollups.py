@@ -15,8 +15,10 @@ Parity with the prior client logic is deliberate and exact:
   * Approved aggregates only (the client fetched ``status=approved``).
   * Indicator matched on canonical id (alias/deprecated-duplicate safe).
   * ``actual`` split into the coordinator's own org vs each child org.
-  * Status thresholds: met >= 100, on_track >= 80, else behind; no_target when
-    target <= 0.
+  * Status: classified by the canonical RAG source of truth
+    (:mod:`analysis.services.performance_status`) — met >= 100, on-track >= 75,
+    at-risk >= 50, off-track < 50, and ``untargeted`` when target <= 0 or the
+    achievement is not computable. (Was met/on_track>=80/behind + ``no_target``.)
 
 Public API
 ----------
@@ -39,6 +41,8 @@ from datetime import date
 from aggregates.models import Aggregate
 from organizations.models import Organization
 from projects.hierarchy import resolve_organization_scope_with_project_hierarchy
+
+from .performance_status import classify_performance
 
 
 def fiscal_quarter_range(year, quarter) -> tuple[date, date]:
@@ -85,13 +89,18 @@ def aggregate_total(value) -> float:
 
 
 def performance_status(target_value: float, achievement_percent) -> str:
-    if target_value <= 0 or achievement_percent is None:
-        return 'no_target'
-    if achievement_percent >= 100:
-        return 'met'
-    if achievement_percent >= 80:
-        return 'on_track'
-    return 'behind'
+    """Coordinator performance status, aligned to the canonical RAG source of
+    truth (:mod:`analysis.services.performance_status`): met >= 100,
+    on-track >= 75, at-risk >= 50, off-track < 50, and ``untargeted`` when there
+    is no positive target or no computable achievement (formerly ``no_target``).
+
+    This makes the Targets page/exports classify identically to the dashboards
+    and funder reports. The ``pending`` state (a derived target whose source
+    indicator has not reported yet) is a coordinator-only concept handled by the
+    caller in :func:`compute_target_actuals`, not here.
+    """
+    targeted = target_value is not None and target_value > 0
+    return classify_performance(achievement_percent, targeted=targeted)
 
 
 def compute_target_actuals(targets) -> dict[int, dict]:

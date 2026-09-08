@@ -229,6 +229,26 @@ export default function ExecutiveDashboardPage() {
   }, [openCard, rows]);
   const isOrgCard = openCard === "reporting" || openCard === "completeness";
 
+  // Hide-when-empty: a content panel vanishes (like Programme Figures already does)
+  // when it has nothing to show for the current scope/period, so the executive view
+  // stays dense instead of a wall of "No data" cards. The KPI strip, filter cascade
+  // and Reset stay always-on. Each grid row is also suppressed when all its panels
+  // are hidden, so no empty gaps remain. Programme Performance keeps showing while
+  // loading (so the layout doesn't flash) and only hides once loaded with no rows.
+  const showProgramme = isLoading || rows.length > 0;
+  const showTrend = trend.length > 0 && Boolean(trendXKey);
+  const showCompliance = complianceTotal > 0;
+  const showPaceMix = statusMix.length > 0;
+  const showTopOrgs = topOrgs.length > 0;
+  const showAttention = attention.length > 0;
+  const showByCoordinator = reportingAnalysis.byCoordinator.length > 0;
+  const showByDistrict = reportingAnalysis.byDistrict.length > 0;
+  const showNotSubmitted = notReportedOrganizations.length > 0;
+  const showSubmissions = recentSubmissions.length > 0;
+  const showPerfTrendRow = showProgramme || showTrend;
+  const showComplianceRow = showCompliance || showPaceMix || showTopOrgs || showAttention;
+  const showReportingRow = showByCoordinator || showByDistrict || showNotSubmitted;
+
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <div>
@@ -290,7 +310,9 @@ export default function ExecutiveDashboardPage() {
       </div>
 
       {/* Programme Performance + Trend */}
+      {showPerfTrendRow && (
       <div className="grid gap-4 lg:grid-cols-3">
+        {showProgramme && (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:col-span-2">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Programme Performance (vs expected-to-date · {periodPct}% elapsed)</h2>
@@ -347,6 +369,8 @@ export default function ExecutiveDashboardPage() {
             </div>
           )}
         </div>
+        )}
+        {showTrend && (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Volume Trend <span className="font-normal text-muted-foreground">(top indicators, raw counts)</span></h2>
           {trend.length > 0 && trendXKey ? (
@@ -365,7 +389,9 @@ export default function ExecutiveDashboardPage() {
             <p className="py-10 text-center text-sm text-muted-foreground">No trend data in scope.</p>
           )}
         </div>
+        )}
       </div>
+      )}
 
       {/* Programme Figures — config-driven funder-report figures for the current
           project (hidden when no project is selected or none is configured).
@@ -382,7 +408,9 @@ export default function ExecutiveDashboardPage() {
       />
 
       {/* Compliance donut + Performance mix + Top Orgs + Attention */}
+      {showComplianceRow && (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {showCompliance && (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold text-foreground">Reporting Compliance</h2>
           <div className="relative h-[220px] w-full min-w-0 overflow-hidden">
@@ -408,7 +436,9 @@ export default function ExecutiveDashboardPage() {
             ))}
           </div>
         </div>
+        )}
 
+        {showPaceMix && (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold text-foreground">Indicator Pace Mix</h2>
           {statusMix.length === 0 ? (
@@ -443,7 +473,9 @@ export default function ExecutiveDashboardPage() {
             </>
           )}
         </div>
+        )}
 
+        {showTopOrgs && (
         <MiniPanel title="Top Performing Organisations">
           {topOrgs.length === 0 ? <EmptyRow text="No organisation targets in scope." /> : (
             <table className="w-full text-sm">
@@ -459,7 +491,9 @@ export default function ExecutiveDashboardPage() {
             </table>
           )}
         </MiniPanel>
+        )}
 
+        {showAttention && (
         <MiniPanel title="Indicators Behind Pace">
           {attention.length === 0 ? <EmptyRow text="No indicators behind pace. 🎉" /> : (
             <table className="w-full text-sm">
@@ -475,12 +509,16 @@ export default function ExecutiveDashboardPage() {
             </table>
           )}
         </MiniPanel>
+        )}
       </div>
+      )}
 
       {/* Reporting gaps by coordinator + district + the non-reporting exception list
           — the two dimensions (coordinator, district) that were previously only
           filterable, plus who has NOT submitted, so gaps are actionable at a glance. */}
+      {showReportingRow && (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {showByCoordinator && (
         <MiniPanel title="Reporting by Coordinator (worst first)">
           {reportingAnalysis.byCoordinator.length === 0 ? <EmptyRow text="No coordinators in scope." /> : (
             <table className="w-full text-sm">
@@ -503,7 +541,9 @@ export default function ExecutiveDashboardPage() {
             </table>
           )}
         </MiniPanel>
+        )}
 
+        {showByDistrict && (
         <MiniPanel title="Reporting by District (worst first)">
           {reportingAnalysis.byDistrict.length === 0 ? <EmptyRow text="No districts in scope." /> : (
             <table className="w-full text-sm">
@@ -526,7 +566,9 @@ export default function ExecutiveDashboardPage() {
             </table>
           )}
         </MiniPanel>
+        )}
 
+        {showNotSubmitted && (
         <MiniPanel title={`Not Yet Submitted (${notReportedOrganizations.length})`}>
           {notReportedOrganizations.length === 0 ? <EmptyRow text="Every organisation in scope has submitted. 🎉" /> : (
             <ul className="max-h-[220px] space-y-1 overflow-y-auto text-sm">
@@ -536,9 +578,12 @@ export default function ExecutiveDashboardPage() {
             </ul>
           )}
         </MiniPanel>
+        )}
       </div>
+      )}
 
       {/* Recent Submissions */}
+      {showSubmissions && (
       <MiniPanel title="Recent Data Submissions">
         {recentSubmissions.length === 0 ? <EmptyRow text="No submissions in scope." /> : (
           <table className="w-full text-sm">
@@ -565,6 +610,7 @@ export default function ExecutiveDashboardPage() {
           </table>
         )}
       </MiniPanel>
+      )}
 
       <Dialog open={openCard !== null} onOpenChange={(o) => { if (!o) setOpenCard(null); }}>
         <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">

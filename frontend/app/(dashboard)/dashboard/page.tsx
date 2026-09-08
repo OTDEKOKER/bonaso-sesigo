@@ -49,6 +49,7 @@ import { useAuth } from "@/lib/contexts/auth-context";
 import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import { organizationsService, usersService } from "@/lib/api";
 import { ServicePathwayConfigDialog } from "@/components/dashboard/service-pathway-config-dialog";
+import { HomeActionStrip } from "@/components/dashboard/home-action-strip";
 import {
   useAllIndicators,
   useAllAggregates,
@@ -1986,6 +1987,8 @@ function DashboardPageContent({
 
   return (
     <div className="mx-auto w-full max-w-[1440px] min-w-0 space-y-6 overflow-x-hidden px-3 pb-8 sm:px-4 lg:px-6">
+      {/* Task-oriented "what needs you" strip — additive, self-hides when empty. */}
+      <HomeActionStrip />
       <Dialog open={preferencesOpen} onOpenChange={setPreferencesOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>

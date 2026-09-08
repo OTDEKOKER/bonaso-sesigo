@@ -202,7 +202,7 @@ class CoordinatorTargetSerializer(serializers.ModelSerializer):
         return self._actuals(obj).get('variance', 0.0)
 
     def get_performance_status(self, obj):
-        return self._actuals(obj).get('performance_status', 'no_target')
+        return self._actuals(obj).get('performance_status', 'untargeted')
 
     def get_child_contributions(self, obj):
         return self._actuals(obj).get('child_contributions', [])

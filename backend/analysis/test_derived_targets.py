@@ -70,7 +70,7 @@ class DerivedTargetTests(TestCase):
         self.assertEqual(res['target_value'], 200.0)
         self.assertEqual(res['actual_value'], 60.0)
         self.assertEqual(res['achievement_percent'], 30.0)
-        self.assertEqual(res['performance_status'], 'behind')
+        self.assertEqual(res['performance_status'], 'off-track')
         self.assertIsNone(res['target_source'])
         self.assertFalse(res['target_pending'])
 

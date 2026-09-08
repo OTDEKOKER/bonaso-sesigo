@@ -33,6 +33,10 @@ import {
   LifeBuoy,
   ClipboardList,
   Wallet,
+  Gauge,
+  Compass,
+  LineChart,
+  LayoutGrid,
 } from "lucide-react"
 import {
   Collapsible,
@@ -207,20 +211,72 @@ function applyTrainingHrefs(
   }))
 }
 
-const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode; badge?: number; children?: { title: string; href: string }[] }> = [
+// Intent-based grouping. Every route below is identical to the previous flat
+// nav; only the section a link sits under (and, for the old Dashboard/Insights/
+// Reports parents, whether it is a top-level link vs a collapsible child)
+// changed. The old "Dashboard", "Insights" and "Reports" parents were dissolved:
+// internal analysis (Analytics, Saved Dashboards) joins ANALYZE; funder
+// deliverables stay together under REPORT. Training Mode + Support moved to the
+// utility footer (rendered separately below). CSO Mapping is injected into
+// RECORD at render time because its children and visibility are dynamic.
+type NavSection = "analyze" | "record" | "report" | "manage"
+
+const SECTION_ORDER: { key: NavSection; label: string }[] = [
+  { key: "analyze", label: "Analyze" },
+  { key: "record", label: "Record" },
+  { key: "report", label: "Report" },
+  { key: "manage", label: "Manage" },
+]
+
+const baseNavigation: Array<{ section: NavSection; title: string; href: string; icon: React.ReactNode; badge?: number; children?: { title: string; href: string }[] }> = [
+  // ANALYZE — consume numbers
+  { section: "analyze", title: "Home", href: "/dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+  { section: "analyze", title: "Executive", href: "/executive", icon: <Gauge className="h-4 w-4" /> },
+  { section: "analyze", title: "Explore", href: "/explore", icon: <Compass className="h-4 w-4" /> },
+  { section: "analyze", title: "Analytics", href: "/analysis/reports", icon: <LineChart className="h-4 w-4" /> },
+  { section: "analyze", title: "Saved Dashboards", href: "/analysis/dashboards", icon: <LayoutGrid className="h-4 w-4" /> },
+
+  // RECORD — capture data
   {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: <LayoutDashboard className="h-4 w-4" />,
+    section: "record",
+    title: "Respondents",
+    href: "/respondents",
+    icon: <UserSquare2 className="h-4 w-4" />,
     children: [
-      { title: "Home", href: "/dashboard" },
-      { title: "Executive Dashboard", href: "/executive" },
-      { title: "Explore", href: "/explore" },
+      { title: "All Respondents", href: "/respondents" },
+      { title: "Interactions", href: "/respondents/interactions" },
     ],
   },
-  { title: "Organizations", href: "/organizations", icon: <Building2 className="h-4 w-4" /> },
-  { title: "Users", href: "/users", icon: <Users className="h-4 w-4" /> },
   {
+    section: "record",
+    title: "Aggregates",
+    href: "/aggregates",
+    icon: <Table2 className="h-4 w-4" />,
+    children: [{ title: "All Aggregates", href: "/aggregates" }],
+  },
+  { section: "record", title: "Events", href: "/events", icon: <CalendarDays className="h-4 w-4" /> },
+  { section: "record", title: "Social Media", href: "/social", icon: <Share2 className="h-4 w-4" /> },
+  { section: "record", title: "Batch Record", href: "/batch-record", icon: <FileSpreadsheet className="h-4 w-4" /> },
+  // CSO Mapping is injected into RECORD at render time (dynamic children + gating).
+
+  // REPORT — produce funder deliverables
+  { section: "report", title: "Funder Reports", href: "/funder-reports", icon: <FileBarChart className="h-4 w-4" /> },
+  { section: "report", title: "Report Builder", href: "/funder-reports/builder", icon: <FileBarChart className="h-4 w-4" /> },
+  { section: "report", title: "Reporting Periods", href: "/reporting-periods", icon: <CalendarDays className="h-4 w-4" /> },
+  {
+    section: "report",
+    title: "Uploads",
+    href: "/uploads",
+    icon: <Upload className="h-4 w-4" />,
+    children: [
+      { title: "All Uploads", href: "/uploads" },
+      { title: "All Imports", href: "/uploads/imports" },
+    ],
+  },
+
+  // MANAGE — configure master data
+  {
+    section: "manage",
     title: "Projects",
     href: "/projects",
     icon: <FolderKanban className="h-4 w-4" />,
@@ -231,6 +287,7 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
     ],
   },
   {
+    section: "manage",
     title: "Indicators",
     href: "/indicators",
     icon: <Target className="h-4 w-4" />,
@@ -240,65 +297,16 @@ const baseNavigation: Array<{ title: string; href: string; icon: React.ReactNode
     ],
   },
   {
+    section: "manage",
     title: "Targets",
     href: "/targets/coordinators",
     icon: <Target className="h-4 w-4" />,
     children: [{ title: "Coordinator Targets", href: "/targets/coordinators" }],
   },
-  {
-    title: "Respondents",
-    href: "/respondents",
-    icon: <UserSquare2 className="h-4 w-4" />,
-    children: [
-      { title: "All Respondents", href: "/respondents" },
-      { title: "Interactions", href: "/respondents/interactions" },
-    ],
-  },
-  {
-    title: "Aggregates",
-    href: "/aggregates",
-    icon: <Table2 className="h-4 w-4" />,
-    children: [{ title: "All Aggregates", href: "/aggregates" }],
-  },
-  { title: "Events", href: "/events", icon: <CalendarDays className="h-4 w-4" /> },
-  { title: "Social Media", href: "/social", icon: <Share2 className="h-4 w-4" /> },
-  { title: "Clients", href: "/clients", icon: <Building className="h-4 w-4" /> },
-  { title: "Grants", href: "/grants", icon: <Wallet className="h-4 w-4" /> },
-  { title: "Training Mode", href: "/login?mode=training", icon: <BookOpen className="h-4 w-4" /> },
-  { title: "Batch Record", href: "/batch-record", icon: <FileSpreadsheet className="h-4 w-4" /> },
-  {
-    title: "Uploads",
-    href: "/uploads",
-    icon: <Upload className="h-4 w-4" />,
-    children: [
-      { title: "All Uploads", href: "/uploads" },
-      { title: "All Imports", href: "/uploads/imports" },
-    ],
-  },
-  {
-    title: "Insights",
-    href: "/analysis",
-    icon: <FileBarChart className="h-4 w-4" />,
-    children: [
-      { title: "Analytics", href: "/analysis/reports" },
-      { title: "Dashboards", href: "/analysis/dashboards" },
-    ],
-  },
-  {
-    title: "Reports",
-    href: "/funder-reports",
-    icon: <FileBarChart className="h-4 w-4" />,
-    children: [
-      { title: "Generate Report", href: "/funder-reports" },
-      { title: "Report Builder", href: "/funder-reports/builder" },
-    ],
-  },
-  {
-    title: "Reporting Periods",
-    href: "/reporting-periods",
-    icon: <CalendarDays className="h-4 w-4" />,
-  },
-  { title: "Support", href: "/support", icon: <LifeBuoy className="h-4 w-4" /> },
+  { section: "manage", title: "Organizations", href: "/organizations", icon: <Building2 className="h-4 w-4" /> },
+  { section: "manage", title: "Clients", href: "/clients", icon: <Building className="h-4 w-4" /> },
+  { section: "manage", title: "Grants", href: "/grants", icon: <Wallet className="h-4 w-4" /> },
+  { section: "manage", title: "Users", href: "/users", icon: <Users className="h-4 w-4" /> },
 ]
 
 export function AppSidebar() {
@@ -309,6 +317,9 @@ export function AppSidebar() {
   const { canView, can } = useModulePermissions()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const canViewSystemStatus = user?.role === "admin"
+  // Training Mode + Support live in the utility footer now; resolve the Support
+  // href through the training-mode rewriter exactly as the main nav items are.
+  const supportHref = toTrainingHref("/support", isTrainingMode)
   // A nav entry is visible when its route has no module gate, or the user may
   // view that module. (No-op for users an admin hasn't explicitly configured.)
   // Memoized on `canView` (stable per-user) so it isn't reallocated each render.
@@ -386,36 +397,65 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {visibleNavigation.map((item) => (
-          <NavItem
-            key={item.href}
-            title={item.title}
-            href={item.href}
-            icon={item.icon}
-            badge={item.badge}
-            isActive={pathname === item.href || pathname?.startsWith(item.href + "/")}
-            subItems={item.children}
-          />
-        ))}
-        {!isTrainingMode && canView("cso_mapping") && (
-          <NavItem
-            title="CSO Mapping"
-            href="/cso-mapping-submissions"
-            icon={<ClipboardList className="h-4 w-4" />}
-            isActive={pathname?.startsWith("/cso-mapping") ?? false}
-            subItems={[
-              { title: "Submissions", href: "/cso-mapping-submissions" },
-              { title: "Map", href: "/cso-mapping-map" },
-              ...(can("cso_mapping", "edit")
-                ? [{ title: "Questionnaire Editor", href: "/cso-mapping-form-editor" }]
-                : []),
-            ]}
-          />
-        )}
+        {SECTION_ORDER.map(({ key, label }) => {
+          const sectionItems = visibleNavigation.filter((item) => item.section === key)
+          // CSO Mapping renders at the end of RECORD (dynamic children + gating).
+          const showCso = key === "record" && !isTrainingMode && canView("cso_mapping")
+          if (sectionItems.length === 0 && !showCso) return null
+          return (
+            <div key={key} className="space-y-1 pt-3 first:pt-0">
+              <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                {label}
+              </p>
+              {sectionItems.map((item) => (
+                <NavItem
+                  key={item.href}
+                  title={item.title}
+                  href={item.href}
+                  icon={item.icon}
+                  badge={item.badge}
+                  isActive={pathname === item.href || pathname?.startsWith(item.href + "/")}
+                  subItems={item.children}
+                />
+              ))}
+              {showCso && (
+                <NavItem
+                  title="CSO Mapping"
+                  href="/cso-mapping-submissions"
+                  icon={<ClipboardList className="h-4 w-4" />}
+                  isActive={pathname?.startsWith("/cso-mapping") ?? false}
+                  subItems={[
+                    { title: "Submissions", href: "/cso-mapping-submissions" },
+                    { title: "Map", href: "/cso-mapping-map" },
+                    ...(can("cso_mapping", "edit")
+                      ? [{ title: "Questionnaire Editor", href: "/cso-mapping-form-editor" }]
+                      : []),
+                  ]}
+                />
+              )}
+            </div>
+          )
+        })}
       </nav>
 
       {/* Bottom section */}
       <div className="border-t border-sidebar-border p-3">
+        {isNavVisible("/login?mode=training") && (
+          <NavItem
+            title="Training Mode"
+            href={toTrainingHref("/login?mode=training", isTrainingMode)}
+            icon={<BookOpen className="h-4 w-4" />}
+            isActive={false}
+          />
+        )}
+        {isNavVisible("/support") && (
+          <NavItem
+            title="Support"
+            href={supportHref}
+            icon={<LifeBuoy className="h-4 w-4" />}
+            isActive={pathname === supportHref || (pathname?.startsWith(supportHref + "/") ?? false)}
+          />
+        )}
         {canViewSystemStatus && (
           <NavItem
             title="System Status"

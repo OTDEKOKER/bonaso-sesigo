@@ -54,7 +54,28 @@ const nextConfig = {
           value: csp,
         });
       }
-      return [{ source: '/:path*', headers }];
+
+      // Immutable caching for static, non-user-specific assets only. JS/CSS
+      // chunks under /_next/static are content-hashed (Next already marks them
+      // immutable); this adds the same for shared public images, fonts and the
+      // static map GeoJSON (fetched on every CSO-map load). Deliberately EXCLUDES
+      // .js / .json so the service worker and web manifest keep revalidating and
+      // can ship updates.
+      //
+      // Authenticated data is NEVER cached at this layer — it flows through
+      // /api/*, which is per-user / per-project / per-mode and is marked
+      // private/no-store per request by the backend
+      // (core.middleware.ApiCacheControlMiddleware). It must never be shared- or
+      // edge-cached.
+      const immutableStaticAssets = {
+        source: '/:all*(svg|jpg|jpeg|png|gif|ico|webp|avif|geojson|woff|woff2|ttf|otf)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      };
+
+      return [
+        { source: '/:path*', headers },
+        immutableStaticAssets,
+      ];
     },
   } : {}),
 

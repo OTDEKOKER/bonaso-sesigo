@@ -42,10 +42,16 @@ class Organization(models.Model):
         return f"{self.name} ({self.code})"
 
     def get_descendants(self):
-        descendants = list(self.children.all())
-        for child in self.children.all():
-            descendants.extend(child.get_descendants())
-        return descendants
+        # Descendant lookups previously recursed one query per node. Resolve the
+        # id set from the cached org-tree adjacency (organizations.tree_cache)
+        # and hydrate in a single query, preserving the "returns Organization
+        # objects" contract callers rely on (serializers, offline snapshot).
+        from .tree_cache import descendant_ids
+
+        ids = descendant_ids(self.id)
+        if not ids:
+            return []
+        return list(Organization.objects.filter(id__in=ids))
 
     def get_ancestors(self):
         ancestors = []

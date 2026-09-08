@@ -1,5 +1,6 @@
 import http from 'node:http'
 import https from 'node:https'
+import { Readable } from 'node:stream'
 
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
@@ -132,20 +133,29 @@ async function handleRequest(request: NextRequest) {
         headers: buildRequestHeaders(request, targetUrl, body?.length ?? 0),
       },
       (upstreamResponse) => {
-        const chunks: Buffer[] = []
+        const status = upstreamResponse.statusCode ?? 502
+        const headers = buildResponseHeaders(upstreamResponse.headers)
 
-        upstreamResponse.on('data', (chunk) => {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-        })
+        // Stream the upstream body straight through instead of buffering it
+        // whole with Buffer.concat. Large downloads (full-programme workbooks,
+        // Excel exports, encrypted backups) previously materialised the entire
+        // file in this container's memory per concurrent request — a real spike
+        // against the host's RAM headroom (audit O1). Streaming keeps proxy
+        // memory flat regardless of payload size.
+        //
+        // HEAD/204/304 carry no body: drain the socket and return an empty body.
+        if (request.method === 'HEAD' || status === 204 || status === 304) {
+          upstreamResponse.resume()
+          resolve(new Response(null, { status, headers }))
+          return
+        }
 
-        upstreamResponse.on('end', () => {
-          resolve(
-            new Response(request.method === 'HEAD' ? null : Buffer.concat(chunks), {
-              status: upstreamResponse.statusCode ?? 502,
-              headers: buildResponseHeaders(upstreamResponse.headers),
-            }),
-          )
-        })
+        resolve(
+          new Response(Readable.toWeb(upstreamResponse) as unknown as ReadableStream, {
+            status,
+            headers,
+          }),
+        )
       },
     )
 

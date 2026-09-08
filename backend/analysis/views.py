@@ -35,6 +35,8 @@ from projects.scope import (
     user_can_access_project,
     filter_queryset_by_assigned_projects,
 )
+from .cache import cached_analytics_response
+from .home_actions import build_home_actions
 from .serializers import ReportSerializer, SavedQuerySerializer, ScheduledReportSerializer, CoordinatorTargetSerializer
 from .services.coordinator_rollups import get_coordinator_performance, performance_status as coordinator_performance_status, fiscal_quarter_range, compute_actuals_for_specs
 from .services.management_intelligence import build_coordinator_cards
@@ -1366,7 +1368,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                     row.get('own_contribution', 0.0),
                     row.get('subgrantee_contribution', 0.0),
                     '' if achievement is None else round(achievement, 2),
-                    row.get('performance_status', 'no_target'),
+                    row.get('performance_status', 'untargeted'),
                 ])
             record_audit_event(
                 action='export',
@@ -1394,7 +1396,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
                 payload.get('own_contribution', 0.0),
                 payload.get('subgrantee_contribution', 0.0),
                 '' if achievement is None else round(achievement, 2),
-                payload.get('performance_status', 'no_target'),
+                payload.get('performance_status', 'untargeted'),
             ])
 
         record_audit_event(
@@ -2587,10 +2589,16 @@ def management_intelligence(request):
 
     coordinator_ids = None if is_organization_admin(user) else get_user_project_scope(user, project_obj)
 
-    payload = build_coordinator_cards(
-        project_obj, int(year), quarter, coordinator_ids=coordinator_ids,
+    # Cache the heavy card composition (rollups + derived targets + reporting
+    # state + flags) leak-safely by (user, mode, query). Only reached after the
+    # project-access check, so an error/denied path is never cached.
+    return cached_analytics_response(
+        request,
+        'management_intelligence',
+        lambda: build_coordinator_cards(
+            project_obj, int(year), quarter, coordinator_ids=coordinator_ids,
+        ),
     )
-    return Response(payload)
 
 
 @api_view(['GET'])
@@ -2617,7 +2625,48 @@ def geographic_coverage(request):
     if project_obj is None or not user_can_access_project(user, project_obj):
         return Response({'detail': 'Project not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    payload = build_geographic_coverage(project_obj.id)
-    payload['project'] = {'id': project_obj.id, 'code': project_obj.code, 'name': project_obj.name}
-    return Response(payload)
+    def _produce():
+        payload = build_geographic_coverage(project_obj.id)
+        payload['project'] = {'id': project_obj.id, 'code': project_obj.code, 'name': project_obj.name}
+        return payload
+
+    # Project-wide, non-PII presence data — cached leak-safely by (user, mode,
+    # query) after the project-access check.
+    return cached_analytics_response(request, 'geographic_coverage', _produce)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def home_actions(request):
+    """Role-aware "what needs you" action counts for the home page.
+
+    Each count is scoped to the caller exactly as its own module is (org subtree,
+    project assignment, live/training). Cards that do not apply — or whose count
+    is zero — are omitted, so the strip stays quiet when there is nothing to do.
+    Cached briefly per (user, mode, query)."""
+    user = request.user
+    include_training = is_training_only_request(request)
+    raw_project = request.query_params.get('project')
+    try:
+        project_id = int(raw_project) if raw_project is not None else None
+    except (TypeError, ValueError):
+        return Response({'detail': 'Invalid project id.'}, status=status.HTTP_400_BAD_REQUEST)
+    if project_id is None:
+        project_id = get_default_project_id(user, include_training=include_training)
+    project_obj = Project.objects.filter(id=project_id).first() if project_id else None
+    # An inaccessible project only drops the project-specific card; the
+    # user-scoped cards (reviews / flags) still apply.
+    if project_obj is not None and not user_can_access_project(user, project_obj):
+        project_obj = None
+
+    def _produce():
+        return {
+            'actions': build_home_actions(request, project_obj),
+            'project': (
+                {'id': project_obj.id, 'code': project_obj.code, 'name': project_obj.name}
+                if project_obj is not None else None
+            ),
+        }
+
+    return cached_analytics_response(request, 'home_actions', _produce, ttl=30)
 

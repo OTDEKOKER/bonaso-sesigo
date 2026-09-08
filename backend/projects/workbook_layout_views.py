@@ -196,13 +196,19 @@ def _auto_assign_layout_indicators(layout):
         pool = ongoing or projects
         project = max(pool, key=lambda p: (p.start_date or date.min))
 
-        tree_ids = {coord.id} | {o.id for o in coord.get_descendants()}
         proj_org_ids = set(
             ProjectOrganization.objects.filter(
                 project=project, is_active=True,
             ).values_list("organization_id", flat=True)
         )
-        org_ids = tree_ids & proj_org_ids
+        # The coordinator's cluster WITHIN this project. Flag-gated read-through:
+        # the coordinator + its global-tree descendants ∩ project members under
+        # HIERARCHY_SOURCE='global' (byte-for-byte the legacy set), or the
+        # coordinator's ProjectOrganizationHierarchy subtree ∩ members under
+        # 'project' — so a global-tree child that belongs to a DIFFERENT
+        # coordinator in this project never receives its indicators.
+        from .derived_roles import coordinator_subtree_org_ids
+        org_ids = coordinator_subtree_org_ids(project, coord.id, member_ids=proj_org_ids)
         if not org_ids:
             return
 

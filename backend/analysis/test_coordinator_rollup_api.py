@@ -119,9 +119,9 @@ class CoordinatorRollupServiceTests(CoordinatorTargetTableMixin, TestCase):
 
     def test_status_thresholds(self):
         cases = [
-            (100, 'met'),     # >=100%
-            (85, 'on_track'),  # >=80%
-            (50, 'behind'),    # <80%
+            (100, 'met'),        # >=100%
+            (85, 'on-track'),    # >=75%
+            (50, 'at-risk'),     # >=50%, <75%
         ]
         for total, expected in cases:
             with self.subTest(expected=expected):
@@ -136,7 +136,7 @@ class CoordinatorRollupServiceTests(CoordinatorTargetTableMixin, TestCase):
         self._agg(self.coord, 50)
         target = self._target(target_value=0)
         payload = get_coordinator_performance([target])[target.id]
-        self.assertEqual(payload['performance_status'], 'no_target')
+        self.assertEqual(payload['performance_status'], 'untargeted')
         self.assertIsNone(payload['achievement_percent'])
 
     def test_named_api_wrappers(self):
@@ -211,7 +211,7 @@ class CoordinatorTargetApiTests(CoordinatorTargetTableMixin, TestCase):
         self.assertEqual(row['own_contribution'], 100.0)
         self.assertEqual(row['subgrantee_contribution'], 40.0)
         self.assertAlmostEqual(row['achievement_percent'], 70.0)
-        self.assertEqual(row['performance_status'], 'behind')
+        self.assertEqual(row['performance_status'], 'at-risk')
 
     def test_export_matches_list_values(self):
         self._agg(self.coord, 150)
@@ -361,7 +361,7 @@ class CoordinatorTargetApiTests(CoordinatorTargetTableMixin, TestCase):
         self.assertEqual(row['target_value'], 300.0)          # 100 + 200, child's 999 excluded
         self.assertEqual(row['actual_value'], 230.0)          # 80 + 150
         self.assertAlmostEqual(row['achievement_percent'], 230.0 / 300.0 * 100)
-        self.assertEqual(row['performance_status'], 'behind')
+        self.assertEqual(row['performance_status'], 'on-track')
         contributions = {c['organization_id']: c['actual_value'] for c in row['child_contributions']}
         self.assertEqual(contributions, {self.coord.id: 80.0, self.other_coord.id: 150.0})
 
