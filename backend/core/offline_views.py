@@ -28,6 +28,7 @@ from organizations.access import (
     apply_training_filter_to_projects,
     training_view_mode,
 )
+from users.permissions import IsDataEntryUser
 
 
 def _quarter_periods(start: date, end: date):
@@ -63,9 +64,16 @@ def _quarter_periods(start: date, end: date):
 
 
 class OfflineBootstrapView(APIView):
-    """GET /api/offline/bootstrap/ -> the caller's offline data package."""
+    """GET /api/offline/bootstrap/ -> the caller's offline data package.
 
-    permission_classes = [IsAuthenticated]
+    The package includes respondents (personal data: unique_id + full name), so
+    it is gated to data-handling roles. ``IsDataEntryUser`` admits admins and the
+    Manager/Officer/Collector roles and denies external ``client`` (read-only
+    funder) and unknown roles — org scope alone must never expose personal data
+    to a non-data role (audit finding; mirrors the RespondentViewSet gate).
+    """
+
+    permission_classes = [IsAuthenticated, IsDataEntryUser]
 
     def get(self, request):
         from projects.models import (

@@ -72,3 +72,47 @@ class OfflineBootstrapTests(APITestCase):
         codes = {p["code"] for p in data["projects"]}
         self.assertEqual(codes, {"TRAIN"})
         self.assertIn("Youth", data["target_groups"])
+
+    # ------------------------------------------------------------------
+    # Respondent-access protection (Phase 1). The offline package carries
+    # respondent personal data (unique_id + full name), so it must be gated to
+    # data-handling roles — org scope alone must never expose personal data to an
+    # external ``client`` (read-only funder) or an unknown role.
+    # ------------------------------------------------------------------
+    def test_bootstrap_denied_for_client_role(self):
+        client_user = User.objects.create_user(
+            username="funder", email="f@example.com", password="pw", role="client",
+            organization=self.org,
+        )
+        self.client.force_authenticate(client_user)
+        self.assertEqual(self.client.get("/api/offline/bootstrap/").status_code, 403)
+
+    def test_bootstrap_allowed_for_data_roles(self):
+        for role in ("officer", "manager", "collector"):
+            u = User.objects.create_user(
+                username=f"u_{role}", email=f"{role}@example.com", password="pw",
+                role=role, organization=self.org,
+            )
+            self.client.force_authenticate(u)
+            self.assertEqual(
+                self.client.get("/api/offline/bootstrap/").status_code, 200,
+                msg=f"{role} should reach offline bootstrap",
+            )
+
+    def test_respondent_pii_only_reachable_by_data_role(self):
+        from respondents.models import Respondent
+        Respondent.objects.create(
+            unique_id="R-1", first_name="Jane", last_name="Doe", organization=self.org,
+        )
+        # Data role (collector) receives the respondent (personal data present).
+        self.client.force_authenticate(self.user)
+        data = self.client.get("/api/offline/bootstrap/").json()
+        labels = {r["label"] for r in data["respondents"]}
+        self.assertTrue(any("Jane Doe" in lbl for lbl in labels))
+        # Client role is denied the whole package -> never receives the PII.
+        client_user = User.objects.create_user(
+            username="funder2", email="f2@example.com", password="pw", role="client",
+            organization=self.org,
+        )
+        self.client.force_authenticate(client_user)
+        self.assertEqual(self.client.get("/api/offline/bootstrap/").status_code, 403)
