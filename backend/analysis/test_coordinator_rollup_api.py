@@ -19,7 +19,7 @@ import io
 from datetime import date
 
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from aggregates.models import Aggregate
@@ -147,6 +147,11 @@ class CoordinatorRollupServiceTests(CoordinatorTargetTableMixin, TestCase):
         self.assertEqual(compute_target_actuals([target])[target.id]['actual_value'], 120.0)
 
 
+# These tests validate the coordinator-target rollup + math using the stored
+# is_coordinator flag as the coordinator selector, so pin the stored-flag source.
+# The POH-derived coordinator path (HIERARCHY_SOURCE='project') is covered by
+# projects.test_hierarchy_service and the coordinator_org_ids project-mode tests.
+@override_settings(HIERARCHY_SOURCE="global")
 class CoordinatorTargetApiTests(CoordinatorTargetTableMixin, TestCase):
     """API + export + audit + permission/training regression."""
 

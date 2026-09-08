@@ -31,6 +31,7 @@ def _org(name, parent=None):
     return Organization.objects.create(name=name, code=f"R1{next(_N)}", type="ngo", parent=parent)
 
 
+@override_settings(HIERARCHY_SOURCE="global")
 class Rep1OrgScopeTest(TestCase):
     @classmethod
     def setUpTestData(cls):

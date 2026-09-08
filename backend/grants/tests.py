@@ -30,6 +30,16 @@ class GrantsScopeTests(TestCase):
         cls.child_a = Organization.objects.create(name="Child A", code="G-A-C", type="ngo", parent=cls.coord_a)
         cls.coord_b = Organization.objects.create(name="Coord B", code="G-B", type="regional")
 
+        # Project hierarchy mirroring the global tree, so org scoping resolves the
+        # same {coord_a, child_a} subtree under both HIERARCHY_SOURCE=global (tree)
+        # and =project (POH).
+        ProjectOrganization.objects.create(project=cls.proj, organization=cls.coord_a, role="coordinator", is_active=True)
+        ProjectOrganization.objects.create(project=cls.proj, organization=cls.child_a, role="sub_grantee", is_active=True)
+        ProjectOrganization.objects.create(project=cls.proj, organization=cls.coord_b, role="coordinator", is_active=True)
+        ProjectOrganizationHierarchy.objects.create(
+            project=cls.proj, parent_organization=cls.coord_a, child_organization=cls.child_a, is_active=True,
+        )
+
         # Users
         cls.admin = User.objects.create_user(username="g_admin", email="g_admin@x.com", password="x", role="admin")
         cls.finance = User.objects.create_user(username="g_fin", email="g_fin@x.com", password="x", role="officer", organization=cls.coord_a)

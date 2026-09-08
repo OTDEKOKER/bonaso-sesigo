@@ -32,8 +32,10 @@ def _org(name, code):
 
 
 class HierarchySourceFlagTest(TestCase):
+    @override_settings(HIERARCHY_SOURCE="global")
     def test_default_is_global(self):
-        # No override → settings default.
+        # 'global' resolves to 'global' (pinned so the suite is deterministic even
+        # when run with a HIERARCHY_SOURCE=project env override).
         self.assertEqual(hierarchy_source(), "global")
 
     @override_settings(HIERARCHY_SOURCE="project")
@@ -45,6 +47,7 @@ class HierarchySourceFlagTest(TestCase):
         self.assertEqual(hierarchy_source(), "global")
 
 
+@override_settings(HIERARCHY_SOURCE="global")
 class Rep3bParityTest(TestCase):
     @classmethod
     def setUpTestData(cls):

@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
 from organizations.models import Organization
-from projects.models import Project, ProjectIndicator, ProjectOrganization
+from projects.models import Project, ProjectIndicator, ProjectOrganization, ProjectOrganizationHierarchy
 from indicators.models import Indicator
 
 User = get_user_model()
@@ -40,6 +40,17 @@ class OfflineBootstrapTests(APITestCase):
         ProjectOrganization.objects.create(
             project=cls.live_proj, organization=cls.org, role="sub_grantee",
             districts=["Gaborone"], localities=["Block 6"], is_training=False,
+        )
+        # Project hierarchy mirroring the global coord->org->sub tree so the
+        # coordinator / sub-grantee resolution is identical under HIERARCHY_SOURCE
+        # =global (parent tree) and =project (POH-derived).
+        ProjectOrganization.objects.create(project=cls.live_proj, organization=cls.coord, role="coordinator", is_active=True)
+        ProjectOrganization.objects.create(project=cls.live_proj, organization=cls.sub, role="sub_grantee", is_active=True)
+        ProjectOrganizationHierarchy.objects.create(
+            project=cls.live_proj, parent_organization=cls.coord, child_organization=cls.org, is_active=True,
+        )
+        ProjectOrganizationHierarchy.objects.create(
+            project=cls.live_proj, parent_organization=cls.org, child_organization=cls.sub, is_active=True,
         )
 
     def test_bootstrap_requires_auth(self):
