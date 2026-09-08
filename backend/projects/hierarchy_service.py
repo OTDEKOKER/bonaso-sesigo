@@ -128,6 +128,27 @@ def get_project_scope(project, organization) -> set[int]:
     return set(get_project_subtree_org_ids(pid, oid)) & members
 
 
+def get_project_rollup_coordinator(project, organization) -> int | None:
+    """The coordinator org id that ``organization`` rolls up to in this project.
+
+    The org itself if it is a POH coordinator, else its nearest POH ancestor that
+    is a coordinator, else ``None``. Coordinator status is POH-derived (parent of
+    a non-overseer edge) — NOT inferred from organisation names — so it is
+    correct per programme year (e.g. HPP/Mopipi are coordinators in NSC 2026/27
+    even though they are not in any hardcoded name list).
+    """
+    from projects.derived_roles import derive_role_flags
+
+    pid, oid = _id(project), _id(organization)
+    coords = {o for o, f in derive_role_flags(pid).items() if f.get("is_coordinator")}
+    if oid in coords:
+        return oid
+    for ancestor in get_project_ancestors(pid, oid):
+        if ancestor in coords:
+            return ancestor
+    return None
+
+
 def get_project_role(project, organization) -> dict:
     """POH-derived programme role for ``organization`` in ``project``.
 

@@ -133,6 +133,18 @@ class HierarchyServiceTest(TestCase):
         self.assertEqual(hs.get_project_parent(self.pa, self.orgX), self.bonela.id)
         self.assertEqual(hs.get_project_scope(self.pa, self.bonela), {self.bonela.id, self.orgX.id})
 
+    # ---- rollup coordinator resolution (POH, not name-based) ----
+    def test_rollup_coordinator_from_poh(self):
+        # A sub-grantee rolls up to its coordinator ancestor.
+        self.assertEqual(hs.get_project_rollup_coordinator(self.pa, self.orgX), self.bonela.id)
+        self.assertEqual(hs.get_project_rollup_coordinator(self.pa, self.sub1), self.coordA.id)
+        # A coordinator rolls up to itself.
+        self.assertEqual(hs.get_project_rollup_coordinator(self.pa, self.coordA), self.coordA.id)
+        # The lead is not a coordinator -> None.
+        self.assertIsNone(hs.get_project_rollup_coordinator(self.pa, self.bonaso))
+        # Same org, different rollup coordinator per project (the invariant).
+        self.assertEqual(hs.get_project_rollup_coordinator(self.pb, self.orgX), self.hpp.id)
+
     # ---- inactive edges are ignored ----
     def test_inactive_edges_excluded(self):
         ProjectOrganizationHierarchy.objects.filter(

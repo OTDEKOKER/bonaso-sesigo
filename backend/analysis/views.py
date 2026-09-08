@@ -238,7 +238,26 @@ def _is_coordinator_portfolio_organization(subject):
     return _get_effective_organization_type(subject.get('name'), subject.get('type')) == 'coordinator'
 
 
-def _resolve_coordinator_rollup_organization(organization_id, fallback_label, organization_by_id):
+def _resolve_coordinator_rollup_organization(organization_id, fallback_label, organization_by_id, project_id=None):
+    # Rep-1 / §8: under HIERARCHY_SOURCE='project' the coordinator an org rolls up
+    # to is resolved from the PROJECT's own ProjectOrganizationHierarchy (parent
+    # walk + POH-derived coordinator status), NOT from organisation names or the
+    # global Organization.parent tree. Default 'global' keeps the legacy name-based
+    # walk below byte-for-byte. Requires a concrete project (rollups across all
+    # projects fall back to the legacy path).
+    if organization_id and project_id is not None:
+        from projects.derived_roles import hierarchy_source
+        if hierarchy_source() == "project":
+            from projects.hierarchy_service import get_project_rollup_coordinator
+            coord_id = get_project_rollup_coordinator(project_id, organization_id)
+            if coord_id:
+                label = str(
+                    (organization_by_id.get(int(coord_id)) or {}).get('name')
+                    or fallback_label or 'Unassigned org'
+                )
+                return {'key': str(coord_id), 'label': label}
+            # No POH coordinator for this org -> fall through to the legacy path.
+
     if not organization_id:
         return {
             'key': f'name:{fallback_label or "Unassigned org"}',
@@ -2393,13 +2412,27 @@ class DashboardView(viewsets.ViewSet):
 
         organization_by_id = _get_organization_rollup_catalog()
 
+        # Rep-1 / §8: coordinator set from the project's POH (derived role) under
+        # HIERARCHY_SOURCE='project'; otherwise the legacy name-based classifier.
+        from projects.derived_roles import hierarchy_source, coordinator_org_ids
+        _poh_coord_ids = (
+            coordinator_org_ids(project_id, active_only=False)
+            if (project_id is not None and hierarchy_source() == "project")
+            else None
+        )
+
+        def _is_rollup_coordinator(organization):
+            if _poh_coord_ids is not None:
+                return int(organization.get('id') or 0) in _poh_coord_ids
+            return _is_coordinator_portfolio_organization(organization)
+
         coordinator_rollup_organizations = [
             {
                 'key': str(organization.get('id')),
                 'label': str(organization.get('name') or 'Unassigned org'),
             }
             for organization in organization_by_id.values()
-            if _is_coordinator_portfolio_organization(organization)
+            if _is_rollup_coordinator(organization)
             and (
                 effective_org_ids is None
                 or int(organization.get('id') or 0) in effective_org_ids
@@ -2439,6 +2472,7 @@ class DashboardView(viewsets.ViewSet):
                     organization_id=organization_id_int,
                     fallback_label=organization_label,
                     organization_by_id=organization_by_id,
+                    project_id=project_id,
                 )
                 rollup_by_organization_id[organization_id_int] = rollup
             organization_key = rollup['key']
