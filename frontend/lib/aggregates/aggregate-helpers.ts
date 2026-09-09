@@ -115,6 +115,7 @@ export const KEY_POPULATIONS = [
   "FSW",
   "PWD",
   "PWID",
+  "PWUD",
   "LGBTQI+",
   "GENERAL POP.",
 ] as const;
