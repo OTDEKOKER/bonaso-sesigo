@@ -34,6 +34,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   computeEntryMatrixTotal,
+  getSecondaryValuesForPrimary,
   type AggregateEntryMatrixConfig,
   type MatrixInputValues,
 } from "@/lib/aggregates/aggregate-helpers";
@@ -552,7 +553,7 @@ export function AggregateEntryDialog(props: AggregateEntryDialogProps) {
                             </thead>
                             <tbody>
                               {config.primaryValues.map((primaryValue) =>
-                                config.secondaryValues.map((secondaryValue) => (
+                                getSecondaryValuesForPrimary(config, primaryValue).map((secondaryValue) => (
                                   <tr
                                     key={`${indicatorId}-${primaryValue}-${secondaryValue}`}
                                     className="bg-background"

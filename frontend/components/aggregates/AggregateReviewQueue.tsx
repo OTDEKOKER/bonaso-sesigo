@@ -36,6 +36,7 @@ import {
   getAggregateTotal,
   getBandsForTotals,
   getAggregateEntryMatrixConfig,
+  getSecondaryValuesForPrimary,
   getDisaggregates,
   getIndicatorDisaggregateGroups,
   getPeriodLabel,
@@ -685,7 +686,7 @@ export function AggregateReviewQueue(props: AggregateReviewQueueProps) {
               </thead>
               <tbody>
                 {config.primaryValues.map((primaryValue) =>
-                  config.secondaryValues.map((secondaryValue) => (
+                  getSecondaryValuesForPrimary(config, primaryValue).map((secondaryValue) => (
                     <tr key={`${primaryValue}-${secondaryValue}`} className="bg-background">
                       <td className="border-b border-r border-border px-1.5 py-1 font-medium whitespace-nowrap">
                         {primaryValue}

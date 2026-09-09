@@ -962,10 +962,15 @@ export function normalizeMatrixDisaggregatesForIndicator(
 export function buildEmptyEntryMatrix(config: AggregateEntryMatrixConfig): MatrixInputValues {
   if (!config.hasDisaggregates) return {};
 
+  // NB: seed ALL secondary cells (incl. MSM-Female / FSW-Male). External code
+  // populates the matrix by (primary, secondary, band) key, so those keys must
+  // exist to avoid a crash. The invalid combinations are dropped at submit
+  // (buildEntryMatrixPayload) and hidden at render (getSecondaryValuesForPrimary),
+  // not here.
   const matrix: MatrixInputValues = {};
   for (const primaryValue of config.primaryValues) {
     matrix[primaryValue] = {};
-    for (const secondaryValue of getSecondaryValuesForPrimary(config, primaryValue)) {
+    for (const secondaryValue of config.secondaryValues) {
       matrix[primaryValue][secondaryValue] = {};
       for (const bandValue of config.bandValues) {
         matrix[primaryValue][secondaryValue][bandValue] = "";

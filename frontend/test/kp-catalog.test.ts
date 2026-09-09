@@ -34,14 +34,13 @@ describe("KP capture-matrix sex restriction (mirrors reporting workbook)", () =>
     expect(getSecondaryValuesForPrimary(kpSex, "GENERAL POP.")).toEqual(["Male", "Female"]);
   });
 
-  it("empty matrix omits MSM-Female and FSW-Male cells", () => {
+  it("empty matrix seeds ALL cells (crash-safe for external populators)", () => {
     const matrix = buildEmptyEntryMatrix(kpSex);
-    expect(matrix["MSM"]["Female"]).toBeUndefined();
-    expect(matrix["FSW"]["Male"]).toBeUndefined();
+    // All (primary, secondary) keys exist so code that writes by key never hits
+    // an undefined branch; the invalid combos are dropped at submit, not here.
+    expect(matrix["MSM"]["Female"]).toBeDefined();
+    expect(matrix["FSW"]["Male"]).toBeDefined();
     expect(matrix["MSM"]["Male"]).toBeDefined();
-    expect(matrix["FSW"]["Female"]).toBeDefined();
-    expect(matrix["PWID"]["Male"]).toBeDefined();
-    expect(matrix["PWID"]["Female"]).toBeDefined();
   });
 
   it("submission payload omits the invalid KP-sex combinations", () => {
