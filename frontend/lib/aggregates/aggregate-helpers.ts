@@ -71,6 +71,9 @@ export type AggregateEntryMatrixConfig = {
   secondaryValues: string[];
   bandLabel: string;
   bandValues: string[];
+  // True when the secondary axis is sex; enables the per-KP sex restriction
+  // (MSM=Male-only, FSW=Female-only). Optional/absent -> no restriction.
+  secondaryIsSex?: boolean;
 };
 
 export type IndicatorDisaggregationInput = {
@@ -123,6 +126,29 @@ export const KEY_POPULATIONS = [
 export const MATRIX_AGE_BANDS = [...AGE_RANGES, AYP_BAND_LABEL] as const;
 
 export const MATRIX_SEXES = ["Male", "Female"] as const;
+
+// Sexes each KP is reported for: MSM are male by definition, FSW are female, every
+// other KP reports both. Mirrors backend indicators.disaggregation.KP_VALID_SEXES.
+const KP_VALID_SEXES: Record<string, readonly string[]> = {
+  MSM: ["Male"],
+  FSW: ["Female"],
+};
+
+/**
+ * Secondary (sex) values to show for a given primary (KP) in the capture matrix.
+ * When the secondary axis is sex, MSM shows Male only and FSW shows Female only;
+ * every other KP (and any non-sex secondary axis) shows the full list. This drops
+ * the meaningless MSM-Female / FSW-Male cells — matching the reporting workbook.
+ */
+export function getSecondaryValuesForPrimary(
+  config: AggregateEntryMatrixConfig,
+  primaryValue: string,
+): string[] {
+  if (!config.secondaryIsSex) return config.secondaryValues;
+  const allowed = KP_VALID_SEXES[primaryValue];
+  if (!allowed) return config.secondaryValues;
+  return config.secondaryValues.filter((sex) => allowed.includes(sex));
+}
 
 export const AGGREGATE_WORKBOOK_TOPIC_DEFINITIONS: AggregateWorkbookTopicDefinition[] = [
   {
@@ -851,6 +877,7 @@ export function getAggregateEntryMatrixConfig(
     secondaryValues,
     bandLabel: ageDimension?.label || "Value",
     bandValues,
+    secondaryIsSex: !!secondaryDimension && isSexDimension(secondaryDimension),
   };
 }
 
@@ -938,7 +965,7 @@ export function buildEmptyEntryMatrix(config: AggregateEntryMatrixConfig): Matri
   const matrix: MatrixInputValues = {};
   for (const primaryValue of config.primaryValues) {
     matrix[primaryValue] = {};
-    for (const secondaryValue of config.secondaryValues) {
+    for (const secondaryValue of getSecondaryValuesForPrimary(config, primaryValue)) {
       matrix[primaryValue][secondaryValue] = {};
       for (const bandValue of config.bandValues) {
         matrix[primaryValue][secondaryValue][bandValue] = "";
@@ -957,7 +984,7 @@ export function computeEntryMatrixTotal(
 
   let total = 0;
   for (const primaryValue of config.primaryValues) {
-    for (const secondaryValue of config.secondaryValues) {
+    for (const secondaryValue of getSecondaryValuesForPrimary(config, primaryValue)) {
       for (const bandValue of config.bandValues) {
         const parsed = parseNumberInput(
           matrixValues[primaryValue]?.[secondaryValue]?.[bandValue] ?? "",
@@ -977,7 +1004,7 @@ export function buildEntryMatrixPayload(
 
   for (const primaryValue of config.primaryValues) {
     payload[primaryValue] = {};
-    for (const secondaryValue of config.secondaryValues) {
+    for (const secondaryValue of getSecondaryValuesForPrimary(config, primaryValue)) {
       payload[primaryValue][secondaryValue] = {};
       for (const bandValue of config.bandValues) {
         payload[primaryValue][secondaryValue][bandValue] = parseNumberInput(

@@ -63,15 +63,18 @@ function compareAgeBandValues(left: string, right: string) {
 }
 
 const SEX_ORDER = ["male", "female", "other", "unknown"];
+// Canonical KP order (matches backend STANDARD_KP_VALUES): MSM-first, GENERAL POP.
+// last, PWUD included. Lowercased + spelling variants for analytics sort folding.
 const KEY_POPULATION_ORDER = [
-  "general pop.",
-  "general population",
-  "fsw",
   "msm",
+  "fsw",
+  "pwd",
   "pwid",
   "pwid/pwids",
-  "pwd",
+  "pwud",
   "lgbtqi+",
+  "general pop.",
+  "general population",
   "unknown",
 ];
 

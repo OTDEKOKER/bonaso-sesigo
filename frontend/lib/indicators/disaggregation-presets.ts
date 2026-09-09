@@ -108,7 +108,9 @@ export const DISAGGREGATION_PRESETS: Record<
   key_population: {
     key: "key_population",
     label: "Key Population",
-    values: ["GENERAL POP.", "FSW", "MSM", "PWID", "PWD", "LGBTQI+"],
+    // Canonical KP order (matches backend indicators.disaggregation.STANDARD_KP_VALUES):
+    // MSM-first, GENERAL POP. last, all 7 including PWUD.
+    values: ["MSM", "FSW", "PWD", "PWID", "PWUD", "LGBTQI+", "GENERAL POP."],
   },
 
   alcohol_use: {
