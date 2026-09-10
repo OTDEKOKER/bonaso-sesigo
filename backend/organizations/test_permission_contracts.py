@@ -59,11 +59,19 @@ class RoleCapabilityContractTests(SimpleTestCase):
         self.assertTrue(can_review_aggregates(user))
         self.assertTrue(can_approve_aggregates(user))
 
-    def test_staff_is_treated_as_admin(self):
-        user = _StubUser(role="officer", is_staff=True)
-        self.assertTrue(is_organization_admin(user))
-        self.assertTrue(can_submit_aggregates(user))
-        self.assertTrue(can_approve_aggregates(user))
+    def test_staff_flag_alone_grants_no_elevation(self):
+        # ``is_staff`` is Django's admin-site LOGIN flag, not this app's admin
+        # (audit Fix A, generalised). An officer who also has ``is_staff`` must have
+        # EXACTLY a plain officer's capabilities — no cross-org "admin sees all" and
+        # no admin-only approve power may leak in through the flag.
+        staff = _StubUser(role="officer", is_staff=True)
+        plain = _StubUser(role="officer")
+        self.assertFalse(is_organization_admin(staff))
+        self.assertEqual(is_organization_admin(staff), is_organization_admin(plain))
+        self.assertEqual(can_submit_aggregates(staff), can_submit_aggregates(plain))
+        self.assertEqual(can_review_aggregates(staff), can_review_aggregates(plain))
+        self.assertEqual(can_approve_aggregates(staff), can_approve_aggregates(plain))
+        self.assertFalse(can_approve_aggregates(staff))
 
     def test_client_cannot_submit(self):
         self.assertFalse(can_submit_aggregates(_StubUser(role="client")))

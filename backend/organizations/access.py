@@ -68,7 +68,12 @@ def _project_scoped_org_ids(user):
 
 
 def is_organization_admin(user) -> bool:
-    return bool(user and (user.is_superuser or user.is_staff or user.role == "admin"))
+    # "Admin" is a Django superuser or this application's own ``admin`` role ONLY.
+    # The Django ``is_staff`` flag merely grants Django-admin-site login and can sit
+    # on ordinary accounts; it must NOT, on its own, unlock the cross-org "admin
+    # sees everything / skip scoping" path used across the API (audit Fix A,
+    # generalised). Mirrors cso_mapping.permissions.IsAdminRole.
+    return bool(user and (user.is_superuser or user.role == "admin"))
 
 
 def can_review_aggregates(user) -> bool:

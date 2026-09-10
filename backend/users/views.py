@@ -689,7 +689,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         """Return assignable permissions for admins."""
         user = request.user
-        if not (user.is_superuser or user.is_staff or user.role == 'admin'):
+        if not (user.is_superuser or user.role == 'admin'):
             return Response({'detail': 'You do not have permission to view permissions.'}, status=status.HTTP_403_FORBIDDEN)
 
         permissions = Permission.objects.select_related('content_type').order_by(

@@ -111,10 +111,13 @@ ROLE_MODULE_DEFAULTS: dict[str, dict[str, list[str]]] = {
 
 
 def _is_admin(user) -> bool:
+    # Superuser or the app's own ``admin`` role ONLY. Django ``is_staff`` grants
+    # Django-admin-site login and must not, by itself, resolve to "every module,
+    # every action" — that would hand a non-admin the whole permission catalog
+    # (including cso_mapping / grants). See audit Fix A; mirrors is_organization_admin.
     return bool(
         user and (
             getattr(user, 'is_superuser', False)
-            or getattr(user, 'is_staff', False)
             or getattr(user, 'role', None) == 'admin'
         )
     )

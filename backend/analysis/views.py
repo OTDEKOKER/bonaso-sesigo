@@ -932,7 +932,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         qs = self.queryset
         qs = apply_training_filter(qs, self.request, project_lookup='project')
         user = self.request.user
-        if not (user.is_superuser or user.is_staff or getattr(user, 'role', None) == 'admin'):
+        if not (user.is_superuser or getattr(user, 'role', None) == 'admin'):
             # Project-assignment gate first: only targets for assigned projects.
             qs = filter_queryset_by_assigned_projects(qs, user, 'project_id')
             if getattr(user, 'organization', None):
@@ -992,7 +992,7 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
         # descendants) so a coordinator M&E officer sees only their own coordinator,
         # not every coordinator in the project. Admins are unaffected (bypass).
         user = request.user
-        if not (user.is_superuser or user.is_staff or getattr(user, 'role', None) == 'admin'):
+        if not (user.is_superuser or getattr(user, 'role', None) == 'admin'):
             rows = filter_queryset_by_assigned_projects(rows, user, 'project_id')
             allowed_org_ids = set(get_user_organization_ids(user) or [])
             if allowed_org_ids:

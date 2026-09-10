@@ -107,7 +107,7 @@ class IndicatorViewSet(viewsets.ModelViewSet):
         queryset = apply_training_filter_via_projects(queryset, self.request)
 
         user = self.request.user
-        if user.is_superuser or user.is_staff or user.role == 'admin':
+        if user.is_superuser or user.role == 'admin':
             return queryset
         elif user.organization:
             # An indicator is tagged with its workbook reporting roster — the
@@ -400,7 +400,7 @@ class IndicatorAliasViewSet(viewsets.ModelViewSet):
             'indicator', 'created_by'
         )
         user = self.request.user
-        if user.is_superuser or user.is_staff or user.role == 'admin':
+        if user.is_superuser or user.role == 'admin':
             return queryset
         elif user.organization:
             return queryset.filter(
@@ -451,7 +451,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                 ),
             )
         user = self.request.user
-        if user.is_superuser or user.is_staff or user.role == 'admin':
+        if user.is_superuser or user.role == 'admin':
             return queryset
         elif user.organization:
             return queryset.filter(
@@ -584,7 +584,7 @@ class QuestionViewSet(viewsets.ModelViewSet):
             assessments_count=Count('assessments', distinct=True),
         )
         user = self.request.user
-        if user.is_superuser or user.is_staff or user.role == 'admin':
+        if user.is_superuser or user.role == 'admin':
             return queryset
         elif user.organization:
             return queryset.filter(
