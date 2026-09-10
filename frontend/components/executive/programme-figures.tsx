@@ -36,10 +36,20 @@ export function ProgrammeFigures({
   projectId,
   periodStart,
   periodEnd,
+  coordinatorId,
+  organizationId,
+  district,
+  indicatorId,
 }: {
   projectId?: number | null;
   periodStart?: string;
   periodEnd?: string;
+  // Executive filters. When set (not "all") they narrow every figure; selecting a
+  // coordinator also drills the compliance matrix down to that coordinator's CSOs.
+  coordinatorId?: string;
+  organizationId?: string;
+  district?: string;
+  indicatorId?: string;
 }) {
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [templateId, setTemplateId] = useState<number | null>(null);
@@ -106,7 +116,17 @@ export function ProgrammeFigures({
     setLoading(true);
     setError(null);
     funderReportsService
-      .previewFigure(figureId, { project: projectId, period_start: periodStart, period_end: periodEnd })
+      .previewFigure(figureId, {
+        project: projectId,
+        period_start: periodStart,
+        period_end: periodEnd,
+        // Scope-safe: the backend intersects these with the caller's allowed scope,
+        // so they can only narrow, never widen. Omit "all" (no filter).
+        ...(coordinatorId && coordinatorId !== "all" ? { coordinator: [coordinatorId] } : {}),
+        ...(organizationId && organizationId !== "all" ? { organization: [organizationId] } : {}),
+        ...(district && district !== "all" ? { district: [district] } : {}),
+        ...(indicatorId && indicatorId !== "all" ? { indicator: [indicatorId] } : {}),
+      })
       .then((figure) => {
         if (alive) setGenerated(figure);
       })
@@ -119,7 +139,7 @@ export function ProgrammeFigures({
     return () => {
       alive = false;
     };
-  }, [figureId, projectId, periodStart, periodEnd]);
+  }, [figureId, projectId, periodStart, periodEnd, coordinatorId, organizationId, district, indicatorId]);
 
   // No project selected, or no funder report configured for it → stay hidden.
   if (!projectId || templates.length === 0) return null;

@@ -406,7 +406,8 @@ class FigureGenerator:
 
     # ── compliance (reporting submission status) ─────────────────────────────────
     def _compliance_result(self) -> dict:
-        """Per-coordinator × quarter reporting-submission status. Sourced from raw
+        """Per-coordinator × quarter reporting-submission status (drills to one row
+        per sub-organisation when a single coordinator is in scope). Sourced from raw
         ``Aggregate`` SUBMISSIONS (not AggregateFact, not indicators) checked
         against the admin ``ReportingPeriod`` window + the quarter-completion floor.
         Status per cell: submitted / late / not_submitted / not_opened / na."""
@@ -414,7 +415,7 @@ class FigureGenerator:
         from aggregates.models import Aggregate
         from aggregates import reporting_control as rc
 
-        cmap = self._coordinator_map()
+        cmap = self._coordinator_map()  # {org_id -> coordinator_org_id}
         coord_orgs: dict = defaultdict(set)
         for org_id, coord_id in cmap.items():
             coord_orgs[coord_id].add(org_id)
@@ -424,11 +425,32 @@ class FigureGenerator:
             self.period_start.year if self.period_start.month >= 4 else self.period_start.year - 1)
         today = date.today()
         quarters = [1, 2, 3, 4]
-        coord_names = dict(
-            Organization.objects.filter(id__in=list(coord_orgs)).values_list('id', 'name'))
+
+        # Grouping follows scope. Drill the matrix down to one row per
+        # sub-organisation when the scope has been EXPLICITLY restricted to at most a
+        # single coordinator — i.e. a coordinator filter, an organisation filter, or
+        # a non-admin limited to their own tree (org_ids is not None). When a
+        # coordinator is in scope its whole subtree is enumerated; when the filter
+        # targets sub-org(s) with no coordinator among them, fall back to the
+        # requested orgs that actually belong to the project. An unrestricted call
+        # (admin/funder, org_ids is None) always keeps the per-coordinator funder
+        # view — even a single-coordinator project — so the export stays
+        # coordinator-level.
+        if self.org_ids is not None and len(coord_orgs) <= 1:
+            scope_org_ids = set(cmap) or (
+                set(self.org_ids) & set(self.project.organizations.values_list('id', flat=True)))
+            row_units = [(oid, {oid}) for oid in scope_org_ids]
+            grouping = Dimension.ORGANIZATION
+        else:
+            row_units = [(cid, orgs) for cid, orgs in coord_orgs.items()]
+            grouping = Dimension.COORDINATOR
+
+        unit_names = dict(
+            Organization.objects.filter(
+                id__in=[u for u, _ in row_units]).values_list('id', 'name'))
 
         rows = []
-        for coord_id in sorted(coord_orgs, key=lambda c: (coord_names.get(c) or '')):
+        for unit_id, org_set in sorted(row_units, key=lambda ru: (unit_names.get(ru[0]) or '')):
             cells = []
             for q in quarters:
                 ps, pe = rw.quarter_period_range(q, fiscal_year)
@@ -436,7 +458,7 @@ class FigureGenerator:
                 # covers both quarterly workbooks and monthly submissions.
                 first = (
                     Aggregate.objects.filter(
-                        project=self.project, organization_id__in=coord_orgs[coord_id],
+                        project=self.project, organization_id__in=org_set,
                         period_start__gte=ps, period_end__lte=pe,
                     ).order_by('created_at').values_list('created_at', flat=True).first()
                 )
@@ -444,7 +466,9 @@ class FigureGenerator:
                 elapsed = rw.period_has_fully_elapsed(pe, today)
                 cells.append({'quarter': f'Q{q}',
                               'status': self._compliance_status(first, period, elapsed)})
-            rows.append({'coordinator': coord_names.get(coord_id, f'Coordinator {coord_id}'),
+            # Row label reuses the 'coordinator' key so the matrix renderer (header
+            # "Coordinator / CSO") shows CSO names verbatim when drilled.
+            rows.append({'coordinator': unit_names.get(unit_id, f'Org {unit_id}'),
                          'cells': cells})
 
         if not rows:
@@ -456,7 +480,7 @@ class FigureGenerator:
             'figure_id': self.figure.id, 'figure_number': self.figure.figure_number,
             'title': self.figure.title, 'description': self.figure.description,
             'chart_type': ChartType.COMPLIANCE,
-            'grouping_dimension': Dimension.COORDINATOR,
+            'grouping_dimension': grouping,
             'secondary_grouping_dimension': Dimension.PERIOD,
             'categories': [], 'series': [],  # keep chart/export consumers safe
             'compliance': {'quarters': [f'Q{q}' for q in quarters],

@@ -201,6 +201,32 @@ class ComplianceTests(ReportBase):
             org_ids={self.org_a.id})["compliance"]["rows"]}
         self.assertEqual(scoped_rows, {"Alpha CSO"})
 
+    def test_compliance_drills_to_suborgs_when_scoped_to_one_coordinator(self):
+        """When scope is restricted to a single coordinator (a coordinator filter,
+        or a coordinator M&E's own tree), the matrix drills to one row per
+        sub-organisation instead of a single rolled-up coordinator row. An
+        unrestricted admin call stays per-coordinator (covered above)."""
+        from projects.models import ProjectOrganizationHierarchy
+        from datetime import date
+        sub = Organization.objects.create(name="Sub D", code="FR_SD", type="cso")
+        self.project.organizations.add(sub)
+        ProjectOrganization.objects.create(project=self.project, organization=self.org_a, is_coordinator=True, role="coordinator")
+        ProjectOrganization.objects.create(project=self.project, organization=sub, role="sub_grantee")
+        ProjectOrganizationHierarchy.objects.create(project=self.project, parent_organization=self.org_a, child_organization=sub, is_active=True)
+        # A Q1 submission for the SUB only (not the coordinator org itself).
+        Aggregate.objects.create(indicator=self.ind_reach, project=self.project, organization=sub,
+                                 period_start=date(2024, 4, 1), period_end=date(2024, 6, 30),
+                                 value={"total": 7}, status="approved", created_by=self.admin)
+        fig = self._figure(chart_type=ChartType.COMPLIANCE, grouping_dimension=Dimension.COORDINATOR)
+        out = generate_figure(fig, project=self.project, period_start=date(2024, 4, 1), period_end=date(2024, 6, 30),
+                              org_ids={self.org_a.id, sub.id})
+        self.assertEqual(out["grouping_dimension"], Dimension.ORGANIZATION)
+        rows = {r["coordinator"]: {c["quarter"]: c["status"] for c in r["cells"]} for r in out["compliance"]["rows"]}
+        # One row per org in the tree (coordinator + its sub), not a single rollup.
+        self.assertEqual(set(rows), {"Alpha CSO", "Sub D"})
+        self.assertEqual(rows["Sub D"]["Q1"], "submitted")          # the sub reported
+        self.assertEqual(rows["Alpha CSO"]["Q1"], "not_submitted")  # coordinator org itself did not
+
 
 class CoordinatorGroupingTests(ReportBase):
     def test_group_by_coordinator_rolls_up_suborgs(self):

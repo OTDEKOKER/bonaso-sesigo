@@ -134,6 +134,7 @@ export interface PeriodQuery {
   key_population?: string[];
   message_type?: (number | string)[];
   service_category?: (number | string)[];
+  indicator?: (number | string)[];
   indicator_group?: (number | string)[];
 }
 

@@ -394,17 +394,22 @@ export default function ExecutiveDashboardPage() {
       )}
 
       {/* Programme Figures — config-driven funder-report figures for the current
-          project (hidden when no project is selected or none is configured).
-          These are PROJECT+PERIOD scoped only (funder-report engine); they do not
-          follow the coordinator/organisation/district/indicator filters, so we say
-          so when one of those is active to avoid a false "filtered" impression. */}
+          project (hidden when no project is selected or none is configured). They
+          follow the coordinator/organisation filters; picking a coordinator drills
+          the reporting-compliance matrix down to that coordinator's CSOs. (District
+          filtering isn't available for these aggregate-fact figures.) The funder
+          export (generated unfiltered) stays coordinator-level. */}
       {(filters.coordinatorId !== "all" || filters.organizationId !== "all" || filters.district !== "all" || filters.indicatorId !== "all") ? (
-        <p className="-mb-1 text-[11px] text-muted-foreground">Programme Figures below are project-level (funder-report figures) and are not narrowed by the coordinator/organisation/district/indicator filters.</p>
+        <p className="-mb-1 text-[11px] text-muted-foreground">Programme Figures below follow the coordinator and organisation filters &mdash; selecting a coordinator breaks the reporting-compliance table down into its CSOs.</p>
       ) : null}
       <ProgrammeFigures
         projectId={filters.projectId !== "all" ? Number(filters.projectId) : null}
         periodStart={filters.dateFrom || undefined}
         periodEnd={filters.dateTo || undefined}
+        coordinatorId={filters.coordinatorId}
+        organizationId={filters.organizationId}
+        district={filters.district}
+        indicatorId={filters.indicatorId}
       />
 
       {/* Compliance donut + Performance mix + Top Orgs + Attention */}
