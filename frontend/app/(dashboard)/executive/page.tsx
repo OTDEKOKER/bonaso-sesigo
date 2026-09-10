@@ -16,16 +16,11 @@ import {
   Users,
 } from "lucide-react";
 import {
-  CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -42,6 +37,7 @@ import {
 import { downloadMetricsCsv } from "@/lib/dashboard/export-metrics";
 import { useExecutiveData, DEFAULT_EXECUTIVE_FILTERS, type ExecutiveFilters } from "@/lib/executive/use-executive-data";
 import { ProgrammeFigures } from "@/components/executive/programme-figures";
+import { ServicePathwayCardsPanel } from "@/components/dashboard/executive-dashboard-board";
 
 function fyPresets(now = new Date()) {
   const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
@@ -178,13 +174,6 @@ export default function ExecutiveDashboardPage() {
     () => [...(insights.organizations ?? [])].filter((o) => Number(o.target) > 0).sort((a, b) => b.percentage - a.percentage).slice(0, 5),
     [insights.organizations],
   );
-  const trend = (insights.trend ?? []) as Array<Record<string, number | string>>;
-  const trendSeries = (insights.trendSeries ?? []) as Array<{ color: string; key: string; label: string }>;
-  const trendXKey = useMemo(() => {
-    if (!trend.length) return undefined;
-    const keys = new Set(trendSeries.map((s) => s.key));
-    return Object.keys(trend[0]).find((k) => !keys.has(k));
-  }, [trend, trendSeries]);
   // Reporting is now indicator-level completeness (reported vs EXPECTED org×indicator
   // cells), with org submission as the compliance split.
   const completeness = reportingAnalysis.completenessPct;
@@ -236,7 +225,7 @@ export default function ExecutiveDashboardPage() {
   // are hidden, so no empty gaps remain. Programme Performance keeps showing while
   // loading (so the layout doesn't flash) and only hides once loaded with no rows.
   const showProgramme = isLoading || rows.length > 0;
-  const showTrend = trend.length > 0 && Boolean(trendXKey);
+  const showPathway = filters.projectId !== "all";
   const showCompliance = complianceTotal > 0;
   const showPaceMix = statusMix.length > 0;
   const showTopOrgs = topOrgs.length > 0;
@@ -245,7 +234,6 @@ export default function ExecutiveDashboardPage() {
   const showByDistrict = reportingAnalysis.byDistrict.length > 0;
   const showNotSubmitted = notReportedOrganizations.length > 0;
   const showSubmissions = recentSubmissions.length > 0;
-  const showPerfTrendRow = showProgramme || showTrend;
   const showComplianceRow = showCompliance || showPaceMix || showTopOrgs || showAttention;
   const showReportingRow = showByCoordinator || showByDistrict || showNotSubmitted;
 
@@ -309,11 +297,9 @@ export default function ExecutiveDashboardPage() {
           onClick={() => setOpenCard("total")} />
       </div>
 
-      {/* Programme Performance + Trend */}
-      {showPerfTrendRow && (
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Programme Performance */}
         {showProgramme && (
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm lg:col-span-2">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Programme Performance (vs expected-to-date · {periodPct}% elapsed)</h2>
             <Button variant="outline" size="sm" disabled={indicatorMetrics.length === 0}
@@ -370,28 +356,25 @@ export default function ExecutiveDashboardPage() {
           )}
         </div>
         )}
-        {showTrend && (
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Volume Trend <span className="font-normal text-muted-foreground">(top indicators, raw counts)</span></h2>
-          {trend.length > 0 && trendXKey ? (
-            <div className="h-[300px] w-full min-w-0 overflow-hidden">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                  <CartesianGrid vertical={false} stroke="hsl(var(--border) / 0.45)" />
-                  <XAxis dataKey={trendXKey} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickLine={false} axisLine={false} width={36} />
-                  <Tooltip />
-                  {trendSeries.map((s) => <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} dot={false} strokeWidth={2} />)}
-                </LineChart>
-              </ResponsiveContainer>
+        {/* Service Pathway (replaces Volume Trend) — follows the coordinator filter.
+            Renders the SELECTED coordinator/organisation's configured cascade; "All
+            Coordinators" shows a pick-a-coordinator prompt (each coordinator has its
+            own tailored pathway, so there is no single programme-wide one). */}
+        {showPathway && (
+          filters.coordinatorId === "all" && filters.organizationId === "all" ? (
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold text-foreground">Service Pathway</h2>
+              <p className="py-10 text-center text-sm text-muted-foreground">Select a coordinator to view its service pathway.</p>
+            </div>
+          ) : insights.servicePathways.length === 0 ? (
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold text-foreground">Service Pathway</h2>
+              <p className="py-10 text-center text-sm text-muted-foreground">No service pathway configured for the selected coordinator.</p>
             </div>
           ) : (
-            <p className="py-10 text-center text-sm text-muted-foreground">No trend data in scope.</p>
-          )}
-        </div>
+            <ServicePathwayCardsPanel hasError={false} isLoading={isLoading} items={insights.servicePathways} />
+          )
         )}
-      </div>
-      )}
 
       {/* Programme Figures — config-driven funder-report figures for the current
           project (hidden when no project is selected or none is configured). They

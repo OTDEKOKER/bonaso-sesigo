@@ -25,7 +25,7 @@ import { useAuth } from "@/lib/contexts/auth-context";
 import { useSessionMode } from "@/lib/contexts/session-mode-context";
 import { useAggregateVisibilityScope } from "@/app/(dashboard)/aggregates/hooks";
 import { buildOrganizationDescendantMap } from "@/lib/analytics/org-scope";
-import { buildHomeDashboardScreeningInsights } from "@/lib/dashboard/screening-insights";
+import { buildHomeDashboardScreeningInsights, type ConfiguredPathway } from "@/lib/dashboard/screening-insights";
 import { getQuarterBucket, formatQuarterBucket } from "@/lib/aggregates/quarter-buckets";
 import { getPerformanceStatus } from "@/components/dashboard/engine/performance-status";
 import { toSafeNumber } from "@/components/dashboard/engine/normalize-indicators";
@@ -348,6 +348,23 @@ export function useExecutiveData(filters: ExecutiveFilters) {
 
   const analyticsLoading = aggregatesLoading || indicatorsLoading;
 
+  // Service pathway for /executive follows the coordinator/organisation filter:
+  // render the SELECTED coordinator's (or org's) configured pathway only, so
+  // "All Coordinators" shows the pick-a-coordinator prompt rather than a mix of
+  // every coordinator's tailored cascade.
+  const servicePathwayConfig = useMemo<ConfiguredPathway[] | null>(() => {
+    const targetId =
+      filters.organizationId !== "all"
+        ? filters.organizationId
+        : filters.coordinatorId !== "all"
+          ? filters.coordinatorId
+          : null;
+    if (!targetId) return null;
+    const org = organizations.find((item) => String(item.id) === String(targetId));
+    const cfg = (org?.dashboard_config as { servicePathways?: unknown } | undefined)?.servicePathways;
+    return Array.isArray(cfg) && cfg.length > 0 ? (cfg as ConfiguredPathway[]) : null;
+  }, [organizations, filters.organizationId, filters.coordinatorId]);
+
   const insights = useMemo(() => {
     const fromQ = filters.dateFrom ? getQuarterBucket(filters.dateFrom) : null;
     const toQ = filters.dateTo ? getQuarterBucket(filters.dateTo) : null;
@@ -365,6 +382,7 @@ export function useExecutiveData(filters: ExecutiveFilters) {
       scopedOrganizationIds,
       selectedQuarter,
       includeHivPreventionMessageTypeByCso: false,
+      servicePathwayConfig,
       selectedProjectId: selectedProjectId || null,
       isLoading: analyticsLoading,
       hasError: Boolean(aggregatesError),
@@ -373,6 +391,7 @@ export function useExecutiveData(filters: ExecutiveFilters) {
     aggregatesData,
     indicatorsData,
     organizations,
+    servicePathwayConfig,
     activeProjects,
     scopedOrganizationIds,
     selectedProjectId,

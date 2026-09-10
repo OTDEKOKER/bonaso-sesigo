@@ -218,7 +218,7 @@ function formatProgressPercent(value: number) {
   });
 }
 
-function ServicePathwayCardsPanel({
+export function ServicePathwayCardsPanel({
   hasError,
   isLoading,
   items,
