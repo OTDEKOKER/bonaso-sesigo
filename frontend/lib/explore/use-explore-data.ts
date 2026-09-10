@@ -22,11 +22,20 @@ export function useExploreData(projectId: number | null = null) {
     status: "approved",
   });
   const { data: indicatorsData, isLoading: indicatorsLoading } = useAllIndicators({ is_active: "true" });
-  const { data: organizations } = useAllOrganizations();
+  const { data: organizationsData } = useAllOrganizations();
   const { data: projectsData } = useAllProjectDetails();
 
+  // useAllOrganizations / useAllProjectDetails return a paginated envelope
+  // ({ count, next, previous, results }), NOT a bare array — the same shape the
+  // home and executive dashboards unwrap via `?.results`. Passing the envelope
+  // straight into buildHomeDashboardScreeningInsights made the pipeline call
+  // `.map` on an object (organizationNameById), which threw and crashed the whole
+  // /explore page. The old `Array.isArray(projectsData)` guard was always false
+  // for the same reason, so activeProjects silently collapsed to [] (dropping all
+  // project targets) instead of erroring — fixed here too.
+  const organizations = useMemo(() => organizationsData?.results ?? [], [organizationsData]);
   const activeProjects = useMemo(
-    () => (Array.isArray(projectsData) ? projectsData.filter((project) => !project?.is_training) : []),
+    () => (projectsData?.results ?? []).filter((project) => !project?.is_training),
     [projectsData],
   );
 
@@ -38,7 +47,7 @@ export function useExploreData(projectId: number | null = null) {
         organizations,
         activeProjects,
         scopedOrganizationIds: undefined,
-        selectedProjectId: projectId,
+        selectedProjectId: projectId != null ? String(projectId) : null,
         includeHivPreventionMessageTypeByCso: false,
         isLoading: aggregatesLoading || indicatorsLoading,
         hasError: Boolean(aggregatesError),
