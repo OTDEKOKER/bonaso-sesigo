@@ -1143,9 +1143,20 @@ class CoordinatorTargetViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def rollup(self, request):
         """Per-indicator rollup across the project's coordinators (the "All
-        coordinators" view). See ``_coordinator_rollup_rows`` for the mechanics."""
-        results = self._coordinator_rollup_rows()
-        return Response({'count': len(results), 'next': None, 'previous': None, 'results': results})
+        coordinators" view). See ``_coordinator_rollup_rows`` for the mechanics.
+
+        This aggregates every coordinator target in the project (~6k rows) and is
+        the page's most expensive call, so cache it leak-safely by (user, mode,
+        query) with a short TTL — a newly-approved aggregate or target edit is
+        reflected within the TTL without explicit invalidation. All permission /
+        scope filtering happens inside ``_coordinator_rollup_rows`` (scoped
+        queryset) and the cache key includes the user id, so a cached payload can
+        never cross scopes. The CSV export calls ``_coordinator_rollup_rows``
+        directly (not this action), so exports are always computed fresh."""
+        def _produce():
+            results = self._coordinator_rollup_rows()
+            return {'count': len(results), 'next': None, 'previous': None, 'results': results}
+        return cached_analytics_response(request, 'coordinator_rollup', _produce)
 
     @action(detail=False, methods=['get'])
     def options(self, request):
