@@ -36,6 +36,7 @@ used by older imports / the test-suite).
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date
 
 from aggregates.models import Aggregate
@@ -140,7 +141,13 @@ def compute_target_actuals(targets) -> dict[int, dict]:
         min_start = start if min_start is None or start < min_start else min_start
         max_end = end if max_end is None or end > max_end else max_end
 
-    agg_rows: list[tuple] = []
+    # Index approved aggregates once, bucketed by (project, canonical indicator)
+    # — plus by project alone for the rare no-indicator target — so each target
+    # below only scans the aggregates for its own indicator instead of the whole
+    # set. Was O(targets x aggregates), the rollup hot spot (~16s for 5.9k
+    # targets); now O(targets + aggregates).
+    agg_by_pc: dict[tuple[int, int | None], list] = defaultdict(list)
+    agg_by_proj: dict[int, list] = defaultdict(list)
     if all_org_ids and all_project_ids:
         for aggregate in (
             Aggregate.objects.filter(
@@ -151,14 +158,14 @@ def compute_target_actuals(targets) -> dict[int, dict]:
                 period_end__gte=min_start,
             ).select_related('indicator')
         ):
-            agg_rows.append((
-                aggregate.project_id,
-                aggregate.organization_id,
-                aggregate.indicator.canonical_id if aggregate.indicator_id else None,
-                aggregate.period_start,
-                aggregate.period_end,
-                aggregate_total(aggregate.value),
-            ))
+            canonical = aggregate.indicator.canonical_id if aggregate.indicator_id else None
+            total = aggregate_total(aggregate.value)
+            agg_by_pc[(aggregate.project_id, canonical)].append(
+                (aggregate.organization_id, aggregate.period_start, aggregate.period_end, total)
+            )
+            agg_by_proj[aggregate.project_id].append(
+                (aggregate.organization_id, canonical, aggregate.period_start, aggregate.period_end, total)
+            )
 
     # --- Dynamic (derived) target sources — opt-in; default 'fixed' is a no-op.
     # Config lives on ProjectIndicator (project default) with an optional
@@ -221,9 +228,7 @@ def compute_target_actuals(targets) -> dict[int, dict]:
             return 0.0, False
         total_sum = 0.0
         has_any = False
-        for (proj_id, org_id, agg_canonical, p_start, p_end, total) in agg_rows:
-            if proj_id != project_id or agg_canonical != canonical:
-                continue
+        for (org_id, p_start, p_end, total) in agg_by_pc.get((project_id, canonical), ()):
             if org_id not in scope:
                 continue
             if not (p_start <= end and p_end >= start):
@@ -238,11 +243,17 @@ def compute_target_actuals(targets) -> dict[int, dict]:
         own = 0.0
         actual = 0.0
         child_by_org: dict[int, float] = {}
-        for (proj_id, org_id, agg_canonical, p_start, p_end, total) in agg_rows:
-            if proj_id != target.project_id:
-                continue
-            if canonical_indicator is not None and agg_canonical != canonical_indicator:
-                continue
+        # A target with an indicator only counts that canonical's aggregates; a
+        # target without one (rare) counts every canonical in the project — same
+        # semantics as the prior full scan, now served from the pre-built buckets.
+        if canonical_indicator is not None:
+            candidate_rows = agg_by_pc.get((target.project_id, canonical_indicator), ())
+        else:
+            candidate_rows = (
+                (org_id, p_start, p_end, total)
+                for (org_id, _canon, p_start, p_end, total) in agg_by_proj.get(target.project_id, ())
+            )
+        for (org_id, p_start, p_end, total) in candidate_rows:
             if org_id not in scope:
                 continue
             if not (p_start <= end and p_end >= start):  # overlap
