@@ -38,6 +38,10 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.workbook.protection import WorkbookProtection
 
+# KP arrangement identity/versioning lives in the indicators KP catalog. Imported
+# at module level (safe: disaggregation imports reporting_workbook only lazily).
+from indicators.disaggregation import KP_ARRANGEMENT_VERSION
+
 # Bump the minor version for backwards-compatible layout tweaks; bump the major
 # version (and gate the importer) for breaking changes to the cell map schema.
 WORKBOOK_VERSION = "sesigo-reporting-workbook/1"
@@ -645,6 +649,7 @@ def generate_workbook(
     # ── Metadata (hidden) ──
     meta_pairs = [
         ("workbook_version", WORKBOOK_VERSION),
+        ("kp_arrangement_version", KP_ARRANGEMENT_VERSION),
         ("project_id", project.id),
         ("project_code", getattr(project, "code", "") or ""),
         ("project_name", project.name),
@@ -1083,6 +1088,7 @@ def generate_coordinator_workbook(*, project, coordinator, sub_specs, coordinato
     meta = wb.create_sheet(SHEET_META)
     meta_pairs = [
         ("workbook_version", WORKBOOK_VERSION),
+        ("kp_arrangement_version", KP_ARRANGEMENT_VERSION),
         ("workbook_kind", "coordinator_rollup"),
         ("project_id", project.id), ("project_name", project.name),
         ("coordinator_id", coordinator.id), ("coordinator_name", coordinator.name),
@@ -1191,7 +1197,8 @@ def generate_bonaso_workbook(*, project, org_label, coordinator_groups, grand_pl
 
     meta = wb.create_sheet(SHEET_META)
     meta_pairs = [
-        ("workbook_version", WORKBOOK_VERSION), ("workbook_kind", "bonaso_rollup"),
+        ("workbook_version", WORKBOOK_VERSION), ("kp_arrangement_version", KP_ARRANGEMENT_VERSION),
+        ("workbook_kind", "bonaso_rollup"),
         ("project_id", project.id), ("project_name", project.name),
         ("coordinator_count", len(coordinator_groups)), ("sub_count", total_subs),
         ("quarter", quarter), ("fiscal_start_year", fiscal_start_year),
@@ -1271,7 +1278,8 @@ def generate_consolidated_workbook(*, project, org_label, coordinator_specs, gra
 
     meta = wb.create_sheet(SHEET_META)
     meta_pairs = [
-        ("workbook_version", WORKBOOK_VERSION), ("workbook_kind", "consolidated_rollup"),
+        ("workbook_version", WORKBOOK_VERSION), ("kp_arrangement_version", KP_ARRANGEMENT_VERSION),
+        ("workbook_kind", "consolidated_rollup"),
         ("project_id", project.id), ("project_name", project.name),
         ("coordinator_count", len(coordinator_specs)),
         ("coordinator_sheets", "; ".join(coord_titles)),
@@ -1668,6 +1676,10 @@ class ParsedIndicator:
     indicator_id: int
     indicator_code: str
     value: dict
+    # Per-indicator blocking problems (e.g. an unrecognised Key Population
+    # category). When non-empty the importer MUST NOT write this indicator's
+    # value — it is reported for the user to fix, never silently stored/guessed.
+    problems: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1722,8 +1734,21 @@ def parse_workbook(file_obj) -> ParsedWorkbook:
                                  "Please download a fresh workbook and try again."])
 
         form = wb[SHEET_FORM]
-        indicators = _read_cellmap_values(wb[SHEET_CELLMAP], form)
-        return ParsedWorkbook(metadata=metadata, indicators=indicators)
+        indicators, kp_detail = _read_cellmap_values(wb[SHEET_CELLMAP], form)
+
+        # Old-arrangement detection (position-independent). Trigger only when it
+        # actually matters: an explicit OLDER KP arrangement marker, or a label
+        # that had to be remapped to the current structure. A missing marker with
+        # all-current labels is treated as current (the cellmap already mapped it
+        # correctly) so pre-existing workbooks don't raise a spurious warning.
+        warnings: list[str] = []
+        file_arrangement = str(metadata.get("kp_arrangement_version") or "")
+        version_is_older = bool(file_arrangement) and file_arrangement != KP_ARRANGEMENT_VERSION
+        if version_is_older or kp_detail["aliased"]:
+            warnings.append(OLD_KP_TEMPLATE_MESSAGE)
+        warnings.extend(kp_detail["conflicts"])
+
+        return ParsedWorkbook(metadata=metadata, indicators=indicators, warnings=warnings)
     finally:
         wb.close()
 
@@ -1747,7 +1772,77 @@ def _read_metadata(ws) -> dict:
     return metadata
 
 
-def _read_cellmap_values(cellmap_ws, form_ws) -> list[ParsedIndicator]:
+# User-facing message when an upload was built under an older KP arrangement
+# (an explicit older/absent version marker that required remapping, or any
+# category that resolved only via an alias). Wording per the product spec.
+OLD_KP_TEMPLATE_MESSAGE = (
+    "Older Key Population reporting template detected. The report will be mapped "
+    "to the current reporting structure before validation."
+)
+
+
+def _normalize_kp_cells(cells, kp_allowed):
+    """Normalise one indicator's Key-Population axis (identity by label, never by
+    position).
+
+    * Each cell's KP label is resolved to its canonical spelling via the KP
+      catalog, so an older arrangement's labels map onto the current structure.
+    * Cells whose KP is UNRECOGNISED are dropped and reported as problems — never
+      silently stored, and never guessed into a different category.
+    * Cells that collapse onto the same canonical (KP, sex, band) are summed
+      (sum-preserving) and the merge is reported as a conflict note.
+
+    Returns ``(clean_cells, problems, aliased, conflicts)``.
+    """
+    from indicators.disaggregation import classify_kp_label
+
+    clean: dict[tuple[str, str, str], object] = {}
+    sources: dict[str, set[str]] = {}
+    unknown: set[str] = set()
+    aliased = False
+    for (primary, secondary, band), raw in cells.items():
+        match = classify_kp_label(primary, kp_allowed)
+        if match.status == "unknown":
+            unknown.add(str(primary))
+            continue
+        if match.status == "alias":
+            aliased = True
+        target = match.canonical
+        sources.setdefault(target, set()).add(str(primary))
+        key = (target, str(secondary), str(band))
+        num = _to_number(raw)
+        if key in clean:
+            prev = clean[key]
+            if isinstance(prev, (int, float)) and isinstance(num, (int, float)):
+                clean[key] = prev + num
+            elif num is not None:
+                clean[key] = num
+        else:
+            clean[key] = num if num is not None else raw
+
+    problems = [
+        f"Unrecognised Key Population category '{label}'. It is not part of the "
+        "current reporting structure, so this indicator was not imported. Please "
+        "download a fresh workbook and re-enter this indicator."
+        for label in sorted(unknown)
+    ]
+    conflicts = [
+        f"categories {sorted(src)} were both reported and have been combined into '{canonical}'"
+        for canonical, src in sorted(sources.items())
+        if len(src) > 1
+    ]
+    return clean, problems, aliased, conflicts
+
+
+def _read_cellmap_values(cellmap_ws, form_ws):
+    """Reconstruct each indicator's value from the hidden ``_cellmap`` (which
+    carries the KP / sex / age label for every input cell, so parsing never
+    depends on column position) and normalise + validate the KP axis.
+
+    Returns ``(indicators, detail)`` where ``detail`` carries ``aliased`` (any
+    label needed remapping to the current arrangement) and ``conflicts`` (merge
+    notes) for the caller to turn into user-facing warnings.
+    """
     # Snapshot the form once (read_only sheets are forward-only).
     form_values: dict[str, object] = {}
     for row in form_ws.iter_rows(values_only=False):
@@ -1779,14 +1874,39 @@ def _read_cellmap_values(cellmap_ws, form_ws) -> list[ParsedIndicator]:
         else:
             bucket["cells"][(str(primary), str(secondary), str(band))] = cell_value
 
+    # Load referenced indicators so we know which have a Key-Population primary
+    # axis (and its configured values) — KP validation applies only to those;
+    # every other primary (e.g. "Social Media Platform") is left untouched.
+    from indicators.models import Indicator
+    indicators_by_id = {i.id: i for i in Indicator.objects.filter(id__in=order)}
+
     parsed: list[ParsedIndicator] = []
+    aliased_any = False
+    conflicts_all: list[str] = []
     for indicator_id in order:
         bucket = grouped[indicator_id]
+        problems: list[str] = []
+
+        indicator = indicators_by_id.get(indicator_id)
+        kp_allowed = None
+        if indicator is not None:
+            cfg = resolve_matrix_config(indicator)
+            if cfg.primary_is_kp:
+                kp_allowed = cfg.primary_values
+        if kp_allowed is not None and bucket["cells"]:
+            clean, kp_problems, aliased, conflicts = _normalize_kp_cells(bucket["cells"], kp_allowed)
+            bucket["cells"] = clean
+            problems.extend(kp_problems)
+            aliased_any = aliased_any or aliased
+            label = (indicator.code or indicator.name) if indicator else str(indicator_id)
+            conflicts_all.extend(f"{label}: {c}" for c in conflicts)
+
         value = _bucket_to_value(bucket)
-        if value is None:
+        if value is None and not problems:
             continue  # nothing entered for this indicator → skip
-        parsed.append(ParsedIndicator(indicator_id, bucket["code"], value))
-    return parsed
+        parsed.append(ParsedIndicator(indicator_id, bucket["code"], value or {}, problems))
+
+    return parsed, {"aliased": aliased_any, "conflicts": conflicts_all}
 
 
 def _bucket_to_value(bucket) -> dict | None:

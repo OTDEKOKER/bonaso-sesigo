@@ -20,6 +20,7 @@ Config shape::
 from __future__ import annotations
 
 import re
+from collections import namedtuple
 
 from rest_framework import serializers
 
@@ -141,6 +142,64 @@ def canonical_disaggregate_label(label):
     """Map a disaggregate label to its canonical spelling (identity if unknown)."""
     canon = DISAGGREGATE_LABEL_ALIASES.get(_alias_fold(label))
     return canon if canon is not None else label
+
+
+# ── Key-population arrangement versioning ────────────────────────────────────
+# The KP catalog (STANDARD_KP_VALUES + DISAGGREGATE_LABEL_ALIASES) is the stable
+# IDENTITY layer: a KP is identified by its canonical label, never by column /
+# row position, so changing the reported *arrangement* (order) never changes
+# which captured cell maps to which category. KP_ARRANGEMENT_VERSION stamps the
+# CURRENT arrangement into every generated workbook's metadata; an upload built
+# under an older arrangement (older/absent marker, or a label that only resolves
+# via an alias) can then be detected and the submitter told it will be mapped
+# forward before validation. Introducing a future arrangement is a config edit —
+# add its ordered list below and bump the version — never an importer rewrite.
+KP_ARRANGEMENT_VERSION = "v2"
+
+# Documented KP arrangements. Order is display-only (identity is the label); kept
+# as data so detection/versioning stays configuration, not code. "v2" mirrors the
+# current canonical membership (STANDARD_KP_VALUES); "v1" is the prior order.
+KP_ARRANGEMENTS = {
+    "v1": ["GENERAL POP.", "FSW", "MSM", "PWID", "PWD", "LGBTQI+"],
+    "v2": list(STANDARD_KP_VALUES),
+}
+
+# Result of classifying a single KP label against the catalog.
+#   status: "exact" | "alias" | "unknown"
+#   canonical: the canonical label it resolves to (identity when unknown)
+KpMatch = namedtuple("KpMatch", ["status", "canonical"])
+
+
+def classify_kp_label(label, allowed_values=None) -> KpMatch:
+    """Classify a key-population label against the catalog (position-independent).
+
+    Returns ``KpMatch(status, canonical)``:
+      * ``"exact"``   — the label already is a recognised canonical KP;
+      * ``"alias"``   — the label resolved to a canonical KP via a known spelling
+                        variant (e.g. "General population" -> "GENERAL POP.");
+      * ``"unknown"`` — the label matches no recognised KP and must NOT be stored
+                        silently (the caller should flag/reject it).
+
+    ``allowed_values`` (an indicator's own configured KP values) widens the
+    recognised set so a category deliberately configured for that indicator is
+    accepted even if it is not in the house catalog. Identity is always the
+    canonical label — never the column it appeared in.
+    """
+    raw = str(label or "").strip()
+    canonical = canonical_disaggregate_label(raw)
+
+    recognised = {canonical_disaggregate_label(v) for v in STANDARD_KP_VALUES}
+    if allowed_values:
+        recognised.update(
+            canonical_disaggregate_label(str(v).strip())
+            for v in allowed_values
+            if str(v or "").strip()
+        )
+
+    if canonical not in recognised:
+        return KpMatch("unknown", canonical)
+    status = "exact" if _alias_fold(raw) == _alias_fold(canonical) else "alias"
+    return KpMatch(status, canonical)
 
 
 def _deep_add(a, b):

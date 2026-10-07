@@ -2353,6 +2353,12 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 errors.append({'indicator': item.indicator_code or item.indicator_id,
                                'error': 'Indicator no longer exists.'})
                 continue
+            # Blocking problems from parsing (e.g. an unrecognised Key Population
+            # category) → report and skip; never store a partial/guessed value.
+            if getattr(item, 'problems', None):
+                errors.append({'indicator': indicator.code or indicator.name,
+                               'error': ' '.join(item.problems)})
+                continue
             try:
                 self._assert_write_scope(project=project, organization=organization, indicator=indicator)
             except PermissionDenied as exc:
@@ -2416,10 +2422,12 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 'unchanged': planned[self.OUTCOME_UNCHANGED],
                 'to_reset_from_review': planned[self.OUTCOME_RESET_FROM_REVIEW],
             })
-            return Response({'dry_run': True, 'summary': summary, 'errors': errors, 'preview': preview},
+            return Response({'dry_run': True, 'summary': summary, 'errors': errors,
+                             'warnings': parsed.warnings, 'preview': preview},
                             status=status.HTTP_200_OK)
         if errors and not to_write:
-            return Response({'error': 'No rows could be imported.', 'summary': summary, 'errors': errors},
+            return Response({'error': 'No rows could be imported.', 'summary': summary,
+                             'errors': errors, 'warnings': parsed.warnings},
                             status=status.HTTP_400_BAD_REQUEST)
 
         counts = {self.OUTCOME_CREATED: 0, self.OUTCOME_UPDATED: 0,
@@ -2458,7 +2466,8 @@ class AggregateViewSet(IdempotentMutationMixin, viewsets.ModelViewSet):
                 created=summary['created'],
                 updated=summary['updated'],
             )
-        return Response({'dry_run': False, 'summary': summary, 'errors': errors},
+        return Response({'dry_run': False, 'summary': summary, 'errors': errors,
+                         'warnings': parsed.warnings},
                         status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])

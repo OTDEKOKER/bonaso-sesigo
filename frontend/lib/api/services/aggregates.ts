@@ -59,6 +59,9 @@ export interface ReportingWorkbookImportResult {
   messages?: string[];
   summary?: ReportingWorkbookImportSummary;
   errors?: Array<{ indicator?: string | number; error?: string }>;
+  // Non-blocking notices, e.g. "Older Key Population reporting template detected…"
+  // or category-merge notes. The import still proceeds; shown for transparency.
+  warnings?: string[];
 }
 
 export interface AggregateFilters {

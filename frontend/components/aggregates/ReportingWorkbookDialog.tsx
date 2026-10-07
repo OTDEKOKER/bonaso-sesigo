@@ -734,6 +734,16 @@ export function ReportingWorkbookDialog({
               <dt className="text-muted-foreground">Indicators with data</dt>
               <dd>{summary.indicators_valid} of {summary.indicators_found}</dd>
             </dl>
+            {preview.warnings && preview.warnings.length > 0 && (
+              <div className="mt-3 rounded border border-blue-300 bg-blue-50 p-2 text-blue-800">
+                <p className="flex items-center gap-1 font-medium"><AlertTriangle className="h-4 w-4" /> Notices:</p>
+                <ul className="ml-5 list-disc">
+                  {preview.warnings.slice(0, 8).map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {preview.errors && preview.errors.length > 0 && (
               <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-amber-800">
                 <p className="flex items-center gap-1 font-medium"><AlertTriangle className="h-4 w-4" /> Some rows need attention:</p>
